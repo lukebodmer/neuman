@@ -1,0 +1,446 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "presets",
+  "description": "The providers and models Neuman supports, as the server ships them (D76). An operator adds a provider from a preset by supplying a key, and a model by choosing it on a provider they have; the server builds the baseline entry from the preset and refuses a later edit that contradicts one of its facts. Facts are what the model or the route *is* -- the window, whether it can see, the reasoning dialect and the levels a route forwards, the provider's id -- and belong to the release. Policy is what the operator may change: reply length, prices, the default reasoning level. A model reached on this machine's GPU is a `local` route beside the hosted ones: its facts are the weights pinned to a Hugging Face commit and the flags the model needs, and its policy is what the machine chooses. Assembled by the server from one file per entry under `neuman_server/presets/`, keyed by the file's stem.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "providers",
+    "models"
+  ],
+  "properties": {
+    "providers": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/provider"
+      }
+    },
+    "models": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/model"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "logo": {
+      "$ref": "#/$defs/id",
+      "description": "A file stem under the client's `logos/` directory. The client draws a monogram when the file is absent."
+    },
+    "notes": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One or two sentences an operator reads before choosing: what this is for, and what it trades."
+    },
+    "provider": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "url"
+      ],
+      "properties": {
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "logo": {
+          "$ref": "#/$defs/logo"
+        },
+        "notes": {
+          "$ref": "#/$defs/notes"
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "The OpenAI-compatible base URL; `/chat/completions` is appended. https only: a preset is a hosted provider, and the key crosses on every request."
+        },
+        "key_url": {
+          "type": "string",
+          "pattern": "^https://",
+          "description": "Where an operator creates a key for this provider."
+        }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The catalog name the model is added under unless the operator chooses another: the string a user picks in the composer and a role's `models` grant names."
+        },
+        "label": {
+          "$ref": "#/$defs/label"
+        },
+        "logo": {
+          "$ref": "#/$defs/logo"
+        },
+        "notes": {
+          "$ref": "#/$defs/notes"
+        },
+        "facts": {
+          "$ref": "#/$defs/sharedFacts"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        },
+        "routes": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Provider preset id -> what is true of this model reached there. A model reached through two providers shares its window and nothing else: the id, the output ceiling, the prices and which reasoning levels are forwarded all belong to the route. Absent for a model offered only on this machine.",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/route"
+          }
+        },
+        "local": {
+          "$ref": "#/$defs/localRoute"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "routes"
+          ]
+        },
+        {
+          "required": [
+            "local"
+          ]
+        }
+      ]
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verified",
+        "facts"
+      ],
+      "properties": {
+        "verified": {
+          "type": "string",
+          "minLength": 1,
+          "description": "When and from what the route's facts were read, e.g. `2026-10-16, GET https://openrouter.ai/api/v1/models`. A fact without a source is a guess."
+        },
+        "notes": {
+          "$ref": "#/$defs/notes"
+        },
+        "facts": {
+          "$ref": "#/$defs/routeFacts"
+        },
+        "policy": {
+          "$ref": "#/$defs/policy"
+        }
+      }
+    },
+    "sharedFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "context_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vision": {
+          "type": "boolean"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/dialect"
+        }
+      }
+    },
+    "routeFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_model"
+      ],
+      "properties": {
+        "provider_model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "vision": {
+          "type": "boolean"
+        },
+        "reasoning": {
+          "$ref": "#/$defs/dialect"
+        }
+      }
+    },
+    "dialect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "control",
+        "levels"
+      ],
+      "description": "The reasoning dialect and the levels this route accepts: baseline.schema.json#/$defs/reasoning without the default, which is policy.",
+      "properties": {
+        "control": {
+          "enum": [
+            "effort",
+            "budget",
+            "preserved",
+            "toggle"
+          ]
+        },
+        "levels": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Starting values the operator may change after adding the model. A route's policy is merged over the model's.",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "input_cost_per_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cached_input_cost_per_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "output_cost_per_m": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reasoning_default": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Must be one of the route's reasoning levels; the server checks this when it loads the presets."
+        }
+      }
+    },
+    "localRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verified",
+        "facts"
+      ],
+      "description": "The model run on this machine's GPU. Separate from `routes` because nothing here is a provider's: the weights are fetched from Hugging Face into `modelsDir`, and the runtime is started with the flags below.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The catalog name the local model is added under, when it must differ from the model's own: the same weights hosted elsewhere are a second entry, and two entries cannot share the name a user picks."
+        },
+        "verified": {
+          "type": "string",
+          "minLength": 1,
+          "description": "When and from what the facts were read: the Hub API for the pin, a run on named hardware for `vram`."
+        },
+        "notes": {
+          "$ref": "#/$defs/notes"
+        },
+        "facts": {
+          "$ref": "#/$defs/localFacts"
+        },
+        "policy": {
+          "$ref": "#/$defs/localPolicy"
+        }
+      }
+    },
+    "localFacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "weights"
+      ],
+      "properties": {
+        "weights": {
+          "$ref": "#/$defs/weights"
+        },
+        "model_flags": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^-"
+          },
+          "uniqueItems": true,
+          "description": "Flags the model needs on any hardware, such as `--jinja`, without which llama.cpp uses a generic chat template and the model's tool calls do not parse. Flags that are the machine's choice are policy fields, never these."
+        },
+        "reasoning": {
+          "$ref": "#/$defs/dialect"
+        },
+        "vram": {
+          "$ref": "#/$defs/vram"
+        }
+      }
+    },
+    "weights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "revision",
+        "files"
+      ],
+      "description": "What to download, pinned. A revision rather than a branch, and a hash per file, so the bytes a release was measured against are the bytes every appliance runs.",
+      "properties": {
+        "repo": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        },
+        "revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$",
+          "description": "A commit, never `main`."
+        },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/weightsFile"
+          }
+        }
+      }
+    },
+    "weightsFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "size",
+        "sha256",
+        "role"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]+$",
+          "description": "The file's name under `modelsDir`, and in the repository unless `path` says otherwise. No directories: a name that could leave `modelsDir` is refused by the schema rather than by every reader."
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*$",
+          "description": "Where the file is in the repository when that is not `name` at its root, as for a quantisation published under a directory of its own. Only the download reads it: the file is saved as `name`, so every shard of a split model sits beside the first, where llama.cpp looks for them."
+        },
+        "size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "enum": [
+            "model",
+            "mmproj"
+          ],
+          "description": "`model` is the weights: one file, or every shard of a split GGUF in order (`-00001-of-0000N.gguf` first), of which the runtime is started with the first and finds the rest beside it. `mmproj` is the vision projector. A model sees exactly when it has one."
+        }
+      }
+    },
+    "vram": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mib",
+        "measured"
+      ],
+      "description": "What the runtime held on the GPU at the route's default policy. Measured, not computed: it depends on the window, the cache type, the projector and speculation as much as on the file. A proposal for whether the model fits, never a refusal.",
+      "properties": {
+        "mib": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "measured": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Where and how, e.g. `2026-11-02, RTX 3090, nvidia-smi per-process`."
+        }
+      }
+    },
+    "localPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Starting values the operator may change. Typed fields, not a command line: the runtime builds its own argv from these, so a stored document can never hand it an arbitrary flag or file.",
+      "properties": {
+        "context_size": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The window the runtime is started with (`--ctx-size`). A VRAM decision, not a fact about the model."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "gpu_layers": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Layers offloaded to the GPU; 99 is all of any model shipped here."
+        },
+        "speculation": {
+          "enum": [
+            "none",
+            "draft-mtp"
+          ],
+          "description": "Speculative decoding against the model's own multi-token-prediction head. Policy because the draft context costs VRAM the window could have."
+        },
+        "kv_cache": {
+          "enum": [
+            "f16",
+            "q8_0"
+          ],
+          "description": "The number format of the attention cache, both K and V (`--cache-type-k`, `--cache-type-v`). Absent is `f16`, llama.cpp's own. `q8_0` holds the cache in about half the memory, so the same card affords about twice the window, and decodes a little slower once the window is full. Only matched pairs the CUDA build has flash-attention kernels for are offered: any other type drops attention to the CPU without a word (N100)."
+        },
+        "residency": {
+          "enum": [
+            "always",
+            "on-demand"
+          ]
+        },
+        "idle_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How long an on-demand model stays loaded unused."
+        },
+        "reasoning_default": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

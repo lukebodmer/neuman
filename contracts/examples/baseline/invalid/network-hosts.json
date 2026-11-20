@@ -1,0 +1,4 @@
+{
+  "schema_version": 2,
+  "defaults": {"network": {"mode": "any", "hosts": ["github.com"]}}
+}

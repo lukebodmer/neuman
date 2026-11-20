@@ -1,0 +1,61 @@
+# Create or overwrite a text file.
+#
+# `mutating = true` is what makes this ask for approval under the default
+# `auto_accept = "safe"`. `critical = false`: overwriting a file loses its
+# previous contents, which is damage, but the file still exists and the action is
+# within reach the account already had. `critical` is for the approval a person
+# should always see, whatever their mode.
+#
+# Note the `preview` parameter. The harness sets it to resolve the write and
+# render a diff *before* asking for a verdict, then clears it to perform the
+# write. Both go through `edit_plan.plan()`, so the diff a human approved is a
+# description of the write that follows rather than a second opinion about it —
+# and `read` below is what lets a preview diff against the current contents.
+#
+# Note `needs = ["read", "write"]`, not just write. A write resolves the current
+# contents first — for the preview diff, and in the same way `fs_edit` reads
+# `old_text` — so read is a requirement of the call rather than an accident of
+# the gate.
+
+[tool]
+name = "fs_write"
+kind = "client"
+exec = "fs_write"
+summary = "Create a file or replace all of its contents"
+description = """
+Create a file or replace its entire contents. Missing parent directories are \
+created; the path must be within your writable paths. To change part of a file, \
+read it first and write back the whole result.
+"""
+
+wait_ms = 15000
+lifetime_ms = 15000
+max_output_bytes = 4096
+
+# The server lifts the diff out of stdout for the approval card. A persisted
+# file would hide the very thing the human is being asked to approve, so the
+# output is delivered whole.
+persist_output = false
+
+mutating = true
+critical = false
+
+needs = ["read", "write"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["path", "content"]
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute path of the file to write."
+
+[tool.parameters.properties.preview]
+type = "boolean"
+description = "Resolve the write and report the diff without writing. The harness sets this; a caller does not need to."
+
+[tool.parameters.properties.content]
+type = "string"
+description = "The complete new contents of the file."

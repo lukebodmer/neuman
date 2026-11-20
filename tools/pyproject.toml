@@ -1,0 +1,18 @@
+# Style configuration only. `tools/` is not an installable Python package —
+# the scripts are installed by `default.nix` under the bare names their
+# manifests give as `exec`, and a tool is reached by dispatch rather than by
+# import.
+#
+# This file exists so `ruff` applies the same rules here as everywhere else
+# (D22: style is enforced, not preferred). Without it the tools would fall
+# back to ruff's defaults, which is a quieter rule set than the one the rest
+# of the tree is held to.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 96
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF", "BLE"]
+# The docstrings are prose and use en dashes deliberately.
+ignore = ["RUF002"]

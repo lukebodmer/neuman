@@ -1,0 +1,35 @@
+# Nix build symlinks, anchored to the repository root so the pattern cannot
+# reach into a subdirectory. Unanchored `result-*` swallowed three
+# `contracts/examples/runner-rpc/` fixtures named `result-*.json` — they were
+# never committed, so `contracts-test` in CI validated a smaller fixture set
+# than it did locally, including the one guarding D26's sequence gap-checking.
+/result
+/result-*
+
+# The same symlinks, one directory down: `nix build` run from `contracts/`
+# writes them there, and both were committed before the pattern existed. A
+# stray disk image was tracked at the root too.
+/contracts/result
+/contracts/result-*
+/neuman.qcow2
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+/target/
+.direnv/
+.#*
+# Editor scratch files. An agent's file-writing tool leaves these beside the
+# file it is editing, and they are near-copies of real source — so an untracked
+# one is both noise in `git status` and a thing that can be committed by
+# accident, which is worse: the flake builds from the git tree, so a stale
+# duplicate of a module would be visible to the build.
+.neuman-*
+
+# Write-reach probes. Neuman writes a 2-byte `.probe` to confirm a directory is
+# writable, and under a profile that denies unlink it cannot remove its own
+# marker (N109 is the same shape one layer down). Ignored rather than deleted
+# repeatedly: the file is evidence the sandbox is working, and a dirty tree
+# after every session is noise.
+.probe
+.wtest

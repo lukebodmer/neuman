@@ -1,0 +1,39 @@
+# Stop a background job.
+#
+# The other half of `job_output`, and answered the same way, by the client
+# daemon (`neuman_client/jobs.py`). It kills the job's whole process group and
+# answers once the job has ended, with how it ended and the output not yet seen.
+#
+# Not mutating, deliberately. Stopping a command the model started — one the
+# human already approved when it was proposed — takes back an effect rather than
+# making a new one, and a prompt asking a person to approve stopping a runaway
+# build would stand between them and the thing they most want. The session
+# fence still holds: a kill finds only the asking session's jobs.
+
+[tool]
+name = "job_kill"
+kind = "client"
+daemon = true
+summary = "Stop a background job"
+description = """
+Stop a background job and its whole process tree. Answers when it has ended, \
+with the output you have not seen yet.
+"""
+
+wait_ms = 15000
+lifetime_ms = 15000
+max_output_bytes = 16384
+
+mutating = false
+critical = false
+
+needs = []
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["job_id"]
+
+[tool.parameters.properties.job_id]
+type = "string"
+description = "The job's id, from the result that started it."

@@ -1,0 +1,1 @@
+{"tool": {"name": "shell", "kind": "client", "exec": "shell", "description": "Run a command.", "timeout_ms": 120000, "max_output_bytes": 1048576, "mutating": true, "critical": false, "needs": ["read", "write"], "parameters": {}}}

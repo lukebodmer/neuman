@@ -1,0 +1,77 @@
+# Replace exact regions of a file.
+#
+# `needs = ["read", "write"]` for `fs_write`'s reason: an edit reads the file to
+# resolve `old_text` before it writes, so read is a requirement of the call.
+#
+# `mutating = true`, and here the flag is honest in a way `python`'s is not: a
+# call either replaces bytes in a named file or refuses. There is no read-only
+# way to call this, so the approval prompt is never asking about nothing.
+#
+# `critical = false`. The file's previous contents are lost, which is damage,
+# but the referent survives and the action stays inside reach the account
+# already had — the same reading `fs_write` gets. `critical` is for the approval
+# a person should always see.
+#
+# Note the `preview` parameter. The harness sets it to resolve the edits and
+# render a diff *before* asking for a verdict, and clears it to perform the
+# write. Both paths run `edit_plan.plan()`, so the diff a human approved is a
+# description of the write that follows rather than a second opinion about it.
+
+[tool]
+name = "fs_edit"
+kind = "client"
+exec = "fs_edit"
+summary = "Replace exact regions of a text file"
+description = """
+Replace exact regions of an existing text file, leaving the rest unchanged. \
+Each edit's `old_text` must appear exactly once — include surrounding lines to \
+make it unique. Whitespace and indentation must match exactly. Either every \
+edit applies or none do, so a refusal leaves the file untouched. Prefer this \
+over fs_write when changing part of a file.
+"""
+
+wait_ms = 15000
+lifetime_ms = 15000
+max_output_bytes = 65536
+
+# Same as `fs_write`: the diff is lifted for the approval card, so it must
+# arrive whole rather than as a preview of a file.
+persist_output = false
+
+mutating = true
+critical = false
+
+needs = ["read", "write"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["path", "edits"]
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute path of the file to edit. It must already exist."
+
+[tool.parameters.properties.preview]
+type = "boolean"
+description = "Resolve the edits and report the diff without writing. The harness sets this; a caller does not need to."
+
+[tool.parameters.properties.edits]
+type = "array"
+minItems = 1
+description = "The replacements to make, applied together."
+
+[tool.parameters.properties.edits.items]
+type = "object"
+additionalProperties = false
+required = ["old_text", "new_text"]
+
+[tool.parameters.properties.edits.items.properties.old_text]
+type = "string"
+minLength = 1
+description = "The exact text to replace. Must appear exactly once in the file."
+
+[tool.parameters.properties.edits.items.properties.new_text]
+type = "string"
+description = "What to put in its place. May be empty to delete the region."

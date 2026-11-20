@@ -1,0 +1,27 @@
+# The generated artifacts, installable as a package.
+#
+# Only `gen/python` ships. `codegen/` is the generator — the private surface
+# (see README) — and shipping it would give every consumer a dependency on the
+# machinery that produced the thing they actually use, which is what boundary
+# rule 4 exists to prevent.
+[project]
+name = "neuman-contracts"
+version = "0.1.0"
+description = "Generated types and validators for Neuman's wire contracts"
+requires-python = ">=3.12"
+dependencies = ["jsonschema"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["gen/python"]
+include = ["neuman_contracts*"]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = ["gen"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

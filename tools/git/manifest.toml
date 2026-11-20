@@ -1,0 +1,58 @@
+# Git, for getting a repository onto disk to read it.
+#
+# The one tool that combines `network` and `write`, and that combination is the
+# point: no other tool can both reach the internet and put bytes on disk, which
+# is why fetching a repository had no path at all before this. `web_fetch` is
+# network and nothing else (its output is text for the model), and `shell` is
+# read/write. Here the two meet in one tool deliberately: a clone needs both, and
+# splitting it would leave two tools neither of which could finish the job. It
+# runs as the user, on their network, writing where their filesystem permits —
+# which is the whole control now.
+#
+# It runs the real `git`, not a fetch-and-extract shim, so history, branches,
+# `git grep`, `git log -S` and submodules all work. The wrapper only sets the
+# environment a headless git needs (see the module docstring).
+#
+# `mutating = true` because a clone writes into the user's reach; it is not
+# `critical`, because the write is a new directory under a path the user chose
+# and nothing existing is destroyed.
+
+[tool]
+name = "git"
+kind = "client"
+exec = "git"
+summary = "Run git, in the session's working directory"
+description = """
+Run git, in the session's working directory. The intended use is to clone a \
+repository so you can read and search it on disk rather than pulling it into \
+the conversation: `["clone", "--depth", "1", "<url>", "repo"]` clones to \
+`repo/` beside the working directory, and `fs_list`, `fs_search` and `fs_read` \
+read it from there. Anything the user's filesystem permits is reachable; keep a \
+checkout by naming a destination you can write to. \
+`args` is the git argv after the program name. Git runs with no credentials and \
+no terminal, so private repositories and interactive prompts are not available. \
+A clone still running after two minutes keeps running as a background job when \
+you have `job_output`, and is killed otherwise; the result says which.
+"""
+
+# A large clone outlives two minutes without anything being wrong, so it becomes
+# a background job as a long command does (D98); the hour is the hard cap.
+wait_ms = 120000
+lifetime_ms = 3600000
+max_output_bytes = 262144
+
+mutating = true
+critical = false
+
+needs = ["network", "read", "write"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["args"]
+
+[tool.parameters.properties.args]
+type = "array"
+items = { type = "string" }
+minItems = 1
+description = 'The git arguments, as argv: e.g. ["clone", "--depth", "1", "https://github.com/owner/repo.git", "repo"] — clones into `repo` beside the working directory.'

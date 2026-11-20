@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "tool-package",
+  "description": "The parsed content of one tools/packages/<id>.toml: a set of tools an operator enables together from the administration page's Tools section (D101). A tool no package names is built in and always present. A package is part of the release — its tools' manifests and programs ship with the server and the client like every other tool's — so enabling one downloads nothing and never hands a client code it does not already hold (D3). What it may need on the user's machine is a program the user installs themselves (`requires`), and a long-running companion the client starts when a tool needs it (`host`).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["package"],
+  "properties": {
+    "package": {"$ref": "#/$defs/package"}
+  },
+  "$defs": {
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "summary", "description", "publisher", "tools"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$", "description": "Must equal the file's name without `.toml`. The name the baseline's `packages` lists."},
+        "title": {"type": "string", "minLength": 1, "maxLength": 40, "description": "The tile's heading."},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 120, "description": "One line under the heading, for a person deciding whether to enable it."},
+        "description": {"type": "string", "minLength": 1, "description": "What the package lets someone do, what it needs, and what enabling it exposes — written for the operator, not the model. Each tool's own `description` is what the model is told."},
+        "publisher": {"enum": ["neuman", "community"], "description": "Who wrote it. Both are reviewed into the release; `community` says the tools came from outside the project and the project maintains them less closely."},
+        "tools": {"type": "array", "items": {"type": "string", "pattern": "^[a-z_][a-z0-9_]*$"}, "minItems": 1, "uniqueItems": true, "description": "The tool names this package holds. Each must have a manifest, and a tool belongs to at most one package."},
+        "requires": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["program", "name", "url"],
+          "description": "A program the user installs on their own machine for the tools to work. Neuman never downloads it: when it is missing, a dispatch is refused with `missing_program` and a sentence naming it and where to get it, which the model passes on.",
+          "properties": {
+            "program": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._+-]*$", "description": "The executable's name, looked for on the PATH the Neuman client runs with."},
+            "name": {"type": "string", "minLength": 1, "description": "What a person calls it."},
+            "url": {"type": "string", "pattern": "^https://", "description": "Where to get it."}
+          }
+        },
+        "host": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["exec"],
+          "description": "A long-running companion — a program in a window the user works in — that the package's tools talk to over a `0600` Unix socket in the user's runtime directory. The client starts it when one of the tools is dispatched and nothing answers, and leaves it running: closing its window ends it, and the next call starts it again.",
+          "properties": {
+            "exec": {"type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$", "description": "Resolved from the client's own trusted tool directory, exactly as a manifest's `exec` is (D3) — never a path. No manifest names it, so no dispatch can run it."}
+          }
+        }
+      }
+    }
+  }
+}

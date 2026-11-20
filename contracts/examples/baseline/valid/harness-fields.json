@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "defaults": {"auto_accept": "safe", "max_iterations": 20},
+  "roles": {
+    "engineer": {"models": ["anthropic/claude-opus-5"], "tokens_daily": 200000, "auto_accept": "yolo"},
+    "contractor": {"auto_accept": "never", "max_iterations": 8, "tokens_daily": 20000}
+  },
+  "users": [
+    {"name": "alice", "roles": ["engineer"]},
+    {"name": "bob", "roles": ["contractor"]}
+  ]
+}

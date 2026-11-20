@@ -1,0 +1,107 @@
+# Query your own Neuman sessions, including what was actually said and done.
+#
+# The only server-native tool: the decision core answers it directly and no
+# dispatch ever crosses to a client (docs/decisions.md D13). That is why `needs` is
+# empty — it touches no filesystem and never leaves the core, so there is no
+# reach to require. A user with no granted paths at all can still ask what they
+# have run.
+#
+# `needs = []` is a subset of every reach, so the capability gate admits this for
+# anyone whose policy lists it. The scope check is not the gate's job here: the
+# handler queries by the acting account's id, so a session belonging to someone
+# else is not found rather than refused.
+#
+# The handler is registered in composition/http/ws.py. A manifest declaring
+# server-native with no registered handler fails closed at dispatch rather than
+# falling through to a client — this file is what makes the existing handler
+# reachable at all.
+#
+# **Payloads are returned, and this used to be the tool's defining limitation.**
+# `events` answered with `{seq, ts, kind}` and dropped the `payload` column
+# entirely, so a session could be described but never read: which tool ran, what
+# the error said, what the model replied were all in Postgres and none of it was
+# reachable. Asked to diagnose a failed turn, Neuman correctly identified a
+# 300.037s stall as the gateway read timeout from *timing alone*, named the two
+# rows that would confirm the cause, and then had to stop — the rows were
+# `harness_event` and it could not see inside them. A tool that can prove a
+# diagnosis is worth reaching for is worth finishing.
+#
+# So the shape here is built around a real constraint: a session is routinely
+# tens of thousands of rows (12,893 in the one above, mostly `response_chunk`),
+# and `max_output_bytes` is 256 KiB. Four actions, ordered by what a diagnosis
+# actually does:
+#
+#   * `kinds` — orient. Counts per kind plus the time span, reading nothing.
+#   * `events` — read a window, with `kind` filtering, `last` for the tail
+#     where failures announce themselves, and `after`/`limit` to walk forward.
+#     Payloads are clipped per event and say so.
+#   * `event` — one row, whole, never clipped. The end of a diagnosis.
+#   * `list` — which sessions exist.
+#
+# The clipping is the part worth being careful about: a clipped payload carries
+# `payload_clipped` and its true size, so the model can *see* that it is holding
+# a fragment and go read the row whole. Silent truncation would have been a tool
+# that lies by omission, which is worse than one that returns nothing.
+
+[tool]
+name = "session_query"
+kind = "server-native"
+summary = "Read your own Neuman sessions"
+description = """
+Read your own Neuman sessions: what was said, which tools ran, and why a turn \
+ended. Only your own are visible; reading anyone else's is an admin action and \
+goes through `neuman-admin session`. \
+Actions: `list` your sessions; `kinds` for one session's event-kind counts and \
+time span (start here — sessions often exceed 10,000 events); `events` to read \
+a window, optionally filtered by `kind` (comma-separated), with `last` for the \
+final N events or `after`+`limit` to page forward; `event` with a `seq` to get \
+one event's payload complete and unclipped. \
+In `events`, large payloads are clipped and marked `payload_clipped` with the \
+real byte count — re-read that seq with `event` to see all of it. \
+To diagnose a failed turn: `kinds` first, then `events` with `last` around 10, \
+then `event` on whichever seq names the cause.
+"""
+
+wait_ms = 5000
+lifetime_ms = 5000
+max_output_bytes = 262144
+
+mutating = false
+critical = false
+
+needs = []
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+
+[tool.parameters.properties.action]
+enum = ["list", "kinds", "events", "event"]
+description = "'list' returns your sessions; 'kinds' summarises one session; 'events' reads a window; 'event' returns one event whole. Defaults to 'list'."
+
+[tool.parameters.properties.session_id]
+type = "string"
+description = "Required for 'kinds', 'events' and 'event'. Must be a session you own."
+
+[tool.parameters.properties.seq]
+type = "integer"
+description = "For 'event': which event to return, by its sequence number."
+
+[tool.parameters.properties.kind]
+type = "string"
+description = "For 'events': only these kinds, comma-separated (e.g. 'tool_proposal,tool_result,harness_event'). Filtering happens before paging."
+
+[tool.parameters.properties.last]
+type = "integer"
+minimum = 1
+description = "For 'events': return the final N events instead of paging from the start. The fastest way to see how a turn ended."
+
+[tool.parameters.properties.after]
+type = "integer"
+description = "For 'events': return events with seq greater than this. Use the response's 'next_after' to continue."
+
+[tool.parameters.properties.limit]
+type = "integer"
+minimum = 1
+maximum = 200
+description = "For 'events': how many events to return, default 50, capped at 200."

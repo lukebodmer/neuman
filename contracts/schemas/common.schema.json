@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "common",
+  "description": "Definitions shared across contracts. This file describes no instance on its own; other schemas reference its definitions.",
+  "$defs": {
+    "absPath": {
+      "type": "string",
+      "description": "An absolute path without a trailing slash and without parent segments. Shape only: whether a path is within an account's reach is policy's answer, computed by the server from the composed fragments.",
+      "pattern": "^/",
+      "allOf": [
+        {"not": {"pattern": "/$"}},
+        {"not": {"pattern": "(^|/)\\.\\.($|/)"}}
+      ]
+    },
+    "policyPath": {
+      "type": "string",
+      "description": "A path a `files_read` or `files_write` entry names: an absolute path, or exactly `$HOME` for the acting account's home directory. `$HOME` is the spelling to prefer whenever the client may not be on the server's machine — it names the home of whichever machine runs the tool, which the client reports, while an absolute path names one machine's directory (N145). Either way an entry naming the home expands to the configured data subdirectories rather than the home itself, so dotfiles are excluded by construction.",
+      "anyOf": [
+        {"$ref": "#/$defs/absPath"},
+        {"const": "$HOME"}
+      ]
+    },
+    "userName": {
+      "type": "string",
+      "description": "A Linux account name.",
+      "pattern": "^[a-z_][a-z0-9_-]{0,31}$"
+    },
+    "network": {
+      "enum": ["none", "any", null],
+      "description": "Whether the layer grants the network. `none` withholds every tool declaring `needs = [\"network\"]`; `any` admits them; null inherits. There is no host list: those tools run on the acting user's own machine over their network, so Neuman cannot narrow where they connect, and a list nothing enforced would read as a control that does not exist (N146)."
+    }
+  }
+}

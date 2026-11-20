@@ -1,0 +1,1 @@
+{"tool": {"name": "fs_read", "kind": "client", "description": "Read a UTF-8 text file within the user's readable paths.", "exec": "fs_read", "wait_ms": 5000, "lifetime_ms": 5000, "max_output_bytes": 262144, "mutating": false, "critical": false, "needs": ["read"], "parameters": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}}}

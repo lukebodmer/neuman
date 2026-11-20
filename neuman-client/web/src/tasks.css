@@ -1,0 +1,591 @@
+/* The task view, inside the chat window (D99).
+
+   Every colour is a palette token, and most shapes are the chat window's own:
+   the rail rows are `#sessions .row`, the steps are `.work-run` rows with their
+   spine and nodes, a reply is `.turn.agent`. This file is only what those do
+   not already describe — the rail's second list, the overview, the step cards
+   and the bar in the composer's place. */
+
+/* -- the window in task mode -------------------------------------------------
+   The transcript and the composer stand aside rather than being torn down: a
+   conversation left mid-turn keeps streaming into its view, and Sessions puts
+   it back exactly as it was. */
+body.tasks-mode #log,
+body.tasks-mode #context { display: none !important; }
+body.tasks-mode,
+body.tasks-mode.drafting { grid-template-rows: minmax(0, 1fr) auto; }
+body.tasks-mode #sessions-sort { display: none; }
+
+#tasks-view {
+  grid-area: log;
+  min-height: 0;
+  overflow-y: auto;
+  /* The transcript's measure, so a task reads in the same column a session does. */
+  padding-inline: max(16px, calc((100% - 78ch) / 2));
+}
+#tasks-content {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding-block: 56px 32px;
+  font-size: 14px;
+}
+
+/* The composer's slot, on the task view's measure. */
+#tasks-dock {
+  grid-area: composer;
+  width: calc(100% - 32px);
+  max-width: 78ch;
+  margin: 0 auto 14px;
+}
+#tasks-dock > .tasks-bar { flex: 1; }
+
+/* -- the rail ----------------------------------------------------------------- */
+
+#sessions-title { display: flex; align-items: baseline; gap: 7px; }
+#rail-mode {
+  font-size: 11px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+#tasks-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
+#sessions .group.alarm { color: var(--bad); }
+
+#sessions #tasks-list .task-row {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  column-gap: 8px;
+}
+#sessions #tasks-list .task-row .snippet { grid-column: 2 / -1; }
+#sessions #tasks-list .row.overview {
+  grid-template-columns: max-content minmax(0, 1fr);
+  color: var(--dim);
+  margin-bottom: 2px;
+}
+#sessions #tasks-list .row.overview.current { color: var(--accent); }
+#tasks-list .row.overview svg { width: 13px; height: 13px; align-self: center; }
+.tasks-rail-empty { padding: 8px 16px; margin: 0; color: var(--dim); }
+
+/* A status is a dot as well as a word. Its colour names the run, never the
+   only carrier: the snippet beside it says the same in words. */
+.task-row .dot,
+.tasks-notice .dot,
+.tasks-run .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--tone, var(--inert));
+  align-self: center;
+}
+.tone-ok { --tone: color-mix(in srgb, var(--ok) 75%, var(--line)); }
+.tone-bad { --tone: var(--bad); }
+.tone-warn { --tone: var(--warn); }
+.tone-live { --tone: var(--accent); }
+#sessions .task-row.tone-live .when { color: var(--accent); opacity: 1; }
+
+#tasks-link, #sessions-link {
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#sessions-link { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 6px; color: var(--dim); }
+#sessions-link:hover { background: var(--hover); color: var(--text); }
+#sessions-link svg { width: 14px; height: 14px; flex: none; }
+#tasks-badge { margin-left: auto; font-size: 11px; color: var(--bad); }
+
+/* -- shared pieces --------------------------------------------------------------- */
+
+.tasks-head { display: flex; flex-direction: column; gap: 6px; }
+.tasks-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.tasks-title {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 600;
+  text-wrap: balance;
+  min-width: 0;
+}
+input.tasks-title-input {
+  flex: 1;
+  min-width: 12ch;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px dashed var(--line);
+  border-radius: 0;
+  padding: 0 0 2px;
+  color: var(--text);
+}
+input.tasks-title-input:focus { border-bottom-color: var(--accent); }
+.tasks-spacer { flex: 1; }
+.tasks-sub { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--dim); font-size: 13px; }
+.tasks-sub b { color: var(--text); font-weight: 500; }
+#tasks-content .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+
+.tasks-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.tasks-aside {
+  margin-left: auto;
+  font-size: 12px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.tasks-aside b { color: var(--text); font-weight: 500; }
+
+.tasks-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--tone, var(--dim));
+}
+.tasks-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* The schedule's switch: one control, one meaning. */
+.tasks-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: none;
+  padding: 4px 2px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.tasks-switch:hover:not(:disabled) { color: var(--text); }
+.tasks-switch .track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--inert);
+  transition: background 0.15s;
+}
+.tasks-switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel);
+  transition: transform 0.15s;
+}
+.tasks-switch[aria-checked="true"] .track { background: var(--accent); }
+.tasks-switch[aria-checked="true"] .track::after { transform: translateX(12px); }
+
+.tasks-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--dim);
+}
+.tasks-icon svg { width: 14px; height: 14px; }
+.tasks-icon.small { width: 22px; height: 22px; font-size: 12px; line-height: 1; }
+button.small { font-size: 12px; padding: 3px 9px; }
+
+.tasks-menu-wrap { position: relative; }
+.tasks-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(var(--shadow) / 0.45);
+}
+.tasks-menu button { border: 0; background: none; text-align: left; padding: 6px 9px; }
+.tasks-menu button:hover { background: var(--hover); }
+.tasks-menu button.danger { color: var(--bad); }
+
+/* -- the overview ------------------------------------------------------------------ */
+
+.tasks-conn { display: inline-flex; align-items: center; gap: 7px; color: var(--dim); font-size: 13px; }
+.tasks-conn i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.tasks-conn.off i { background: var(--warn); }
+
+.tasks-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  max-width: 60ch;
+  color: var(--dim);
+}
+.tasks-empty p { margin: 0; line-height: 1.55; }
+
+.tasks-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.tasks-stat { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; }
+.tasks-stat + .tasks-stat { border-left: 1px solid var(--line); }
+.tasks-stat b { font-size: 22px; font-weight: 600; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.tasks-stat b.live { color: var(--accent); }
+.tasks-stat b.bad { color: var(--bad); }
+.tasks-stat span { color: var(--dim); font-size: 12px; }
+
+.tasks-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tasks-section > .tasks-label { margin-bottom: 0; }
+
+.tasks-notice {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--tone, var(--line)) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--tone, var(--panel)) 7%, var(--panel));
+  cursor: pointer;
+}
+.tasks-notice:hover { border-color: var(--tone, var(--accent)); }
+.tasks-notice-title { font-weight: 500; min-width: 0; }
+.tasks-notice-title .dim { font-weight: 400; color: var(--dim); }
+.tasks-notice-go { color: var(--accent); font-size: 12px; }
+.tasks-notice-why { grid-column: 2 / -1; color: var(--dim); font-size: 12.5px; overflow-wrap: anywhere; }
+
+.tasks-two { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 24px; }
+
+.tasks-upcoming { display: flex; flex-direction: column; }
+.tasks-day {
+  padding: 8px 2px 2px;
+  color: var(--dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.tasks-up {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: baseline;
+  padding: 5px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.tasks-up:hover, .tasks-hist-row:not(.tasks-hist-axis):hover { background: var(--hover); }
+.tasks-up .tm, .tasks-up .rel { color: var(--dim); font-size: 12px; }
+.tasks-up .nm, .tasks-hist-row .nm {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tasks-hist { display: flex; flex-direction: column; gap: 2px; }
+.tasks-hist-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: center;
+  padding: 3px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.tasks-hist-row .nm.dim { color: var(--dim); }
+.tasks-hist-axis { cursor: default; color: var(--dim); font-size: 11px; padding-block: 0 2px; }
+.tasks-cells, .tasks-cells-axis { width: calc(14 * 10px + 13 * 3px); }
+.tasks-cells { display: grid; grid-template-columns: repeat(14, 10px); gap: 3px; }
+.tasks-cells-axis { display: flex; justify-content: space-between; }
+.cell {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--surface-raised);
+}
+.cell.s-succeeded { background: color-mix(in srgb, var(--ok) 75%, var(--panel)); }
+.cell.s-failed { background: var(--bad); }
+.cell.s-budget { background: var(--warn); }
+.cell.s-running { background: var(--accent); }
+.cell.s-cancelled { background: var(--inert); }
+.cell.s-missed { background: transparent; box-shadow: inset 0 0 0 1.5px var(--bad); }
+.tasks-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--dim); font-size: 11.5px; }
+.tasks-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.tasks-legend .cell { width: 9px; height: 9px; }
+
+/* -- a task's steps: the work rail ---------------------------------------------------
+   The transcript's run, with a fourth column for the step's name. The node is
+   the step's result in the run being shown, so a task page is also its run
+   report. */
+.work-run.tasks-steps {
+  grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
+  margin-inline: 0;
+}
+.work-run > .task-step { cursor: pointer; font-size: 13px; }
+.work-run > .task-step.s-succeeded { --node: color-mix(in srgb, var(--ok) 70%, var(--line)); }
+.work-run > .task-step.s-failed { --node: var(--bad); }
+.work-run > .task-step.s-budget { --node: var(--warn); }
+.work-run > .task-step.s-running { --node: var(--accent); }
+.work-run > .task-step.s-running::before { animation: pulse 1.4s ease-in-out infinite; }
+.work-run > .task-step.s-pending::before,
+.work-run > .task-step.s-skipped::before,
+.work-run > .task-step.s-cancelled::before {
+  background: var(--bg);
+  box-shadow: 0 0 0 2px var(--line);
+}
+.task-step .verb.agent { color: var(--violet); }
+.task-step .verb.leaves { color: var(--dim); font-weight: 500; }
+.task-step .name { color: var(--text); font-weight: 500; }
+.task-step .subject.cmd { font-family: ui-monospace, monospace; font-size: 12px; }
+.task-step .state { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.task-step .state.tone-bad { color: var(--bad); }
+.task-step .state.tone-warn { color: var(--warn); }
+.task-step .state.tone-live { color: var(--accent); }
+.work-run > .task-outputs { cursor: default; }
+.work-run > .task-outputs:hover { background: none; }
+.work-run > .task-outputs::before { border-radius: 2px; }
+.tasks-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  white-space: normal;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.tasks-files .there { color: var(--ok); }
+.tasks-files .missing { color: var(--dim); text-decoration: line-through; }
+.work-run > .task-add { color: var(--accent); }
+.work-run > .task-add::before { background: var(--bg); box-shadow: 0 0 0 2px var(--accent); }
+.work-run > .task-add .verb { grid-column: 1 / -1; font-weight: 500; }
+
+/* The editor's rail: a grip at the row's end, and no result column. */
+.tasks-steps.editing > .task-step { padding-right: 84px; }
+.tasks-grip { position: absolute; right: 4px; top: 2px; display: flex; gap: 2px; }
+.tasks-grip button { border-color: transparent; background: transparent; }
+.tasks-grip button:hover:not(:disabled) { border-color: var(--line); color: var(--text); }
+
+/* The card a step opens, like a tool card in the transcript, but as tall as
+   what it holds: a step's output is the thing being read here. */
+.work-run > .tasks-detail {
+  grid-column: 1 / -1;
+  margin: 2px 0 8px 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.tasks-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font-size: 12px; color: var(--dim); }
+.tasks-live { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); }
+.tasks-live i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite; }
+.tasks-link-button { border: 0; background: none; padding: 0; color: var(--accent); font-size: 12px; }
+.tasks-link-button:hover:not(:disabled) { text-decoration: underline; }
+
+.tasks-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 7px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+.tasks-fields.inset { padding: 10px 12px; border-radius: 6px; background: var(--bg); }
+.tasks-fields dt { color: var(--dim); font-size: 12px; padding-top: 2px; }
+.tasks-fields dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.tasks-fields dd.prose { white-space: pre-wrap; }
+.work-run > .tasks-form { display: grid; }
+.tasks-form input, .tasks-form select, .tasks-form textarea { width: 100%; font-size: 13px; }
+.tasks-form textarea { resize: vertical; min-height: 64px; }
+.tasks-form input.tasks-short { width: 10ch; }
+.tasks-hint { display: block; margin-top: 4px; color: var(--dim); font-size: 11.5px; }
+.tasks-chips, .tasks-tool-pick { display: flex; flex-wrap: wrap; gap: 4px; }
+.tasks-tag {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: var(--dim);
+  background: var(--panel);
+}
+.tasks-tool-pick .tasks-tag[aria-pressed="true"] {
+  color: var(--accent);
+  background: var(--tint-accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+}
+
+.tasks-output {
+  margin: 0;
+  padding: 10px 12px;
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-inset);
+  color: var(--work);
+  font: 12px/1.5 ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tasks-output.bad { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.tasks-error {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
+  border-radius: 8px;
+  color: var(--bad);
+  font-size: 13px;
+}
+
+/* An agent step's trace: the transcript's own rail, set in a little. */
+.tasks-trace-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tasks-trace-box > p { margin: 0; }
+.work-run.tasks-trace { margin-inline: 0; }
+.work-run.tasks-trace > .tasks-result { grid-column: 1 / -1; margin: 2px 0 6px; }
+.work-run.tasks-trace > .tasks-fold { cursor: pointer; }
+.work-run.tasks-trace > .tasks-working .preview { animation: pulse 1.4s ease-in-out infinite; }
+.tasks-say { max-width: none; font-size: 14px; }
+
+.work-run > .tasks-choose { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tasks-kind { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 9px 11px; text-align: left; }
+.tasks-kind.run b { color: var(--accent); }
+.tasks-kind.agent b { color: var(--violet); }
+.tasks-kind small { color: var(--dim); font-size: 12px; }
+
+/* -- runs: the session-row idiom ------------------------------------------------------ */
+
+.tasks-runs {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.tasks-run {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content 5em;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 12px;
+  border-left: 2px solid transparent;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.tasks-run + .tasks-run { border-top: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.tasks-run:hover { background: var(--hover); }
+.tasks-run.current { background: var(--tint-accent); border-left-color: var(--accent); }
+.tasks-run .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tasks-run .what span { margin-left: 6px; color: var(--dim); font-size: 12px; }
+.tasks-run .num { color: var(--dim); font-size: 12px; text-align: right; }
+.tasks-more {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: none;
+  padding: 7px 12px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.tasks-more:hover:not(:disabled) { color: var(--accent); }
+
+/* -- the editor's sentences ------------------------------------------------------------ */
+
+.tasks-sentences {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.tasks-sentence { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 13px; }
+.tasks-sentence > .k { flex: none; width: 92px; color: var(--dim); font-size: 12px; }
+.tasks-sentence > .tasks-hint { flex-basis: 100%; margin: 0 0 0 100px; }
+.tasks-sentence input, .tasks-sentence select { font-size: 13px; padding: 4px 7px; }
+.tasks-sentence .tasks-path { flex: 1; min-width: 16ch; }
+.tasks-sentence .tasks-zone { width: 20ch; }
+.tasks-input-edit { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  padding: 3px; border: 1px solid var(--line); border-radius: 8px; }
+.tasks-input-edit .tasks-input-name { width: 11ch; }
+.tasks-input-edit .tasks-input-default { width: 10ch; }
+input.tasks-wide { width: 100%; }
+
+/* -- the bar in the composer's place ----------------------------------------------------- */
+
+.tasks-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35);
+}
+.tasks-bar-lead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  min-width: 0;
+  color: var(--dim);
+  font-size: 13px;
+}
+.tasks-bar-error { color: var(--bad); }
+.tasks-input { display: inline-flex; align-items: center; gap: 6px; }
+.tasks-input select, .tasks-input input { font-size: 13px; padding: 4px 7px; }
+.tasks-run-now { display: inline-flex; align-items: center; gap: 6px; }
+.tasks-run-now svg { width: 11px; height: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .work-run > .task-step.s-running::before,
+  .tasks-live i,
+  .work-run.tasks-trace > .tasks-working .preview { animation: none; }
+}
+
+@media (max-width: 720px) {
+  #tasks-content { padding-top: 60px; }
+  .tasks-two { grid-template-columns: minmax(0, 1fr); }
+  .tasks-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tasks-stat:nth-child(3) { border-left: 0; }
+  .tasks-stat:nth-child(n + 3) { border-top: 1px solid var(--line); }
+  .work-run.tasks-steps { grid-template-columns: max-content max-content minmax(0, 1fr); }
+  .tasks-steps .task-step .subject:not(.tasks-files) { display: none; }
+  .tasks-run { grid-template-columns: max-content minmax(0, 1fr) max-content; }
+  .tasks-run .cost { display: none; }
+  .tasks-fields { grid-template-columns: minmax(0, 1fr); }
+  .tasks-sentence > .k { width: 100%; }
+  .tasks-sentence > .tasks-hint { margin-left: 0; }
+}

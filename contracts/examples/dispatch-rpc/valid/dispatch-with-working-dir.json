@@ -1,0 +1,1 @@
+{"type": "dispatch", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "tool": "shell", "args": {"command": "make test"}, "wait_ms": 120000, "lifetime_ms": 3600000, "session_id": "s-7f3a", "working_dir": "/home/alice/project", "surfaces": {"read": ["/home/alice/project"], "write": ["/home/alice/project"]}}

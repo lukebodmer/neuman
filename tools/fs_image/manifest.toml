@@ -1,0 +1,52 @@
+# Look at an image.
+#
+# The only tool whose result the model does not read. Its output is base64 bytes
+# that the harness lifts out and attaches to the next request as an `image_url`
+# part, so the model sees a picture rather than a wall of base64 (D28).
+#
+# `max_output_bytes` is sized for base64's 4/3 inflation on the tool's own 4 MiB
+# input cap, plus room for the media type: 4 MiB of PNG is ~5.6 MiB encoded. The
+# transport's line limit is 8 MiB, so this stays inside it with margin.
+#
+# Not mutating: reading a file changes nothing. But it is the one read that costs
+# real money — a megapixel screenshot is on the order of a thousand tokens of
+# input — which is why it is a separate grant from `fs_read` rather than a flag
+# on it. An operator who wants reads but not vision can grant exactly that.
+
+[tool]
+name = "fs_image"
+kind = "client"
+exec = "fs_image"
+summary = "Look at an image file"
+description = """
+Look at an image file. Use this when you need to see the contents of a picture — \
+a screenshot, a diagram, a photo. Works only within your readable paths, and only \
+with a model that accepts image input; if the current model is text-only the call \
+is refused with a message saying so. For a file that is not an image, use fs_read, \
+which reports what the file actually is.
+"""
+
+wait_ms = 15000
+lifetime_ms = 15000
+max_output_bytes = 6291456
+
+# The server lifts this stdout into an image payload for the provider, so the
+# bytes are transformed rather than shown. There is nothing a preview could
+# stand for, and a persisted file would be useless to the one consumer.
+persist_output = false
+returns_image = true
+
+mutating = false
+critical = false
+
+needs = ["read"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["path"]
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute path of the image to look at."

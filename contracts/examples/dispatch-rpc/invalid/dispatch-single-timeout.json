@@ -1,0 +1,1 @@
+{"type": "dispatch", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "tool": "fs_read", "args": {}, "timeout_ms": 5000, "surfaces": {"read": [], "write": []}}

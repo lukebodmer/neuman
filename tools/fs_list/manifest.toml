@@ -1,0 +1,67 @@
+# List a directory's entries.
+#
+# The cheapest read tool in the registry: one `scandir`, no file contents, no
+# recursion. Its timeout is correspondingly short — a listing that takes seconds
+# is a mount that is not answering, not a big directory.
+#
+# Cheap to *run* is not the same as cheap to *read*, which is the lesson N82
+# taught. A DICOM export of 4,080 files listed its first thousand names —
+# `._FILE1`, `._FILE10`, `._FILE100` — and filled a 16k context, ending the
+# session with `exceed_context_size_error`. Those thousand names carried about
+# as much information as one line saying how many there were, because they
+# differed only in a serial number.
+#
+# So past `SUMMARY_THRESHOLD` entries the tool groups by name shape, collapsing
+# runs of digits. The same directory now answers in 263 bytes. `summarise`
+# forces it either way, because the threshold is a default and not a judgement
+# about what a caller needs.
+
+[tool]
+name = "fs_list"
+kind = "client"
+exec = "fs_list"
+summary = "List the entries of a directory"
+description = """
+List the entries of a directory. Returns one entry per line as `d` or `f`, a \
+tab, then the name — directories first, then files, each sorted. Lists only \
+within your readable paths. Use this to discover what a directory contains \
+before reading or searching it. \
+A directory with more than 200 entries is summarised instead: entries are \
+grouped by name shape with runs of digits shown as `#`, one line per group \
+with its count and range. That is usually the better answer for a data \
+directory — thousands of names differing only by a serial number cost a great \
+deal of context and say little. Pass `summarise` to force either form.
+"""
+
+wait_ms = 5000
+lifetime_ms = 5000
+max_output_bytes = 65536
+
+mutating = false
+critical = false
+
+needs = ["read"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["path"]
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute directory to list."
+
+[tool.parameters.properties.dirs_only]
+type = "boolean"
+description = "Return only subdirectories, omitting files."
+
+[tool.parameters.properties.limit]
+type = "integer"
+minimum = 1
+maximum = 1000
+description = "Maximum number of entries to return, or of groups when summarised."
+
+[tool.parameters.properties.summarise]
+type = "boolean"
+description = "Force grouped output (true) or full names (false). Omit to decide by size: directories over 200 entries are grouped."

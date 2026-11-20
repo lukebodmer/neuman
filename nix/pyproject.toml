@@ -1,0 +1,21 @@
+# Style configuration only. `nix/` is not a Python package — it holds the VM
+# tests' probes, which are Python that drives production adapters from inside a
+# guest.
+#
+# This file exists so `ruff` holds them to the same rules as the rest of the
+# tree (D22: style is enforced, not preferred). They were outside the lint
+# check until an unused import in a new probe made it clear they had never been
+# linted, which matters more here than it sounds: `client_probe.py` and
+# `gateway_probe.py` are the only callers of some production code, so they are
+# closer to being part of the system than a test usually is.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 96
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF", "BLE"]
+# The docstrings and comments are prose and use en dashes deliberately.
+# RUF002/RUF003 exist to catch look-alike characters in identifiers, which
+# this is not.
+ignore = ["RUF002", "RUF003"]

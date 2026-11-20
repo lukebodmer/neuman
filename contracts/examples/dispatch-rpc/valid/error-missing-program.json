@@ -1,0 +1,1 @@
+{"type": "error", "rpc_version": 1, "dispatch_id": "d-7", "code": "missing_program", "message": "blender_view needs Blender, which is not installed on this machine"}

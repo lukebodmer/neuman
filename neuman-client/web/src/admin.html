@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Manage Neuman</title>
+  <link rel="stylesheet" href="/palette.css" />
+  <link rel="stylesheet" href="/admin.css" />
+</head>
+<body class="admin">
+  <div id="login" class="admin-card admin-login hidden">
+    <h1 id="admin-login-title">Manage Neuman</h1>
+    <p class="dim">Sign in with an administrator account.</p>
+    <input id="username" name="username" placeholder="account" autocomplete="username" />
+    <input id="password" name="password" type="password" placeholder="password" autocomplete="current-password" />
+    <button class="primary" id="login-go" type="button">Sign in</button>
+    <div class="msg" id="login-msg"></div>
+  </div>
+
+  <div id="panel" class="hidden">
+    <!-- The rail is the page's only map. Eleven sections stacked never wrap,
+         they cost no height in the content, and a group label gives the eye
+         somewhere to land before it starts reading words (D80). -->
+    <div class="admin-shell">
+      <aside class="admin-rail" id="admin-rail">
+        <div class="admin-brand">
+          <span class="admin-brand-mark" id="admin-brand-mark">N</span>
+          <!-- The wordmark is the field that renames the appliance (D82): this
+               page is administrators only, so the label and the control are one
+               element, and an operator changes the name where they read it. -->
+          <span class="admin-brand-text">
+            <strong id="admin-brand-name" role="button" tabindex="0"
+                    title="Rename this appliance">Neuman</strong>
+            <span>manage</span>
+          </span>
+        </div>
+
+        <nav id="tabs" class="admin-nav" aria-label="Administration sections">
+          <button type="button" data-tab="overview" aria-current="page" title="Overview">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.6" /><rect x="14" y="3" width="7" height="7" rx="1.6" /><rect x="3" y="14" width="7" height="7" rx="1.6" /><rect x="14" y="14" width="7" height="7" rx="1.6" /></svg>
+            <span class="admin-nav-label">Overview</span>
+          </button>
+
+          <p class="admin-nav-group">Access</p>
+          <button type="button" data-tab="accounts" aria-current="false" title="Accounts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.5" /><path d="M5 20c0-3.3 3.1-5.6 7-5.6s7 2.3 7 5.6" /></svg>
+            <span class="admin-nav-label">Accounts</span>
+            <span class="admin-nav-badge hidden" data-badge="accounts"></span>
+          </button>
+          <button type="button" data-tab="roles" aria-current="false" title="Roles">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5.4c0 4.3-2.9 7.7-7 9.6-4.1-1.9-7-5.3-7-9.6V6z" /></svg>
+            <span class="admin-nav-label">Roles</span>
+            <span class="admin-nav-badge hidden" data-badge="roles"></span>
+          </button>
+          <button type="button" data-tab="groups" aria-current="false" title="Groups">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2" /><path d="M2.6 19.5c0-3 2.8-5 6.4-5s6.4 2 6.4 5" /><path d="M16.2 5.3a3.2 3.2 0 0 1 0 5.4" /><path d="M17.6 14.7c2.3.6 3.8 2.2 3.8 4.8" /></svg>
+            <span class="admin-nav-label">Groups</span>
+          </button>
+
+          <p class="admin-nav-group">Agent</p>
+          <button type="button" data-tab="providers" aria-current="false" title="Providers">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4.2 4.2 0 0 0 .4-8.4A5.6 5.6 0 0 0 6.8 9.4 4.4 4.4 0 0 0 7 18z" /></svg>
+            <span class="admin-nav-label">Providers</span>
+            <span class="admin-nav-badge hidden" data-badge="providers"></span>
+          </button>
+          <button type="button" data-tab="models" aria-current="false" title="Models">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 3l1.7 4.6L17 9.3l-4.3 1.7L11 15.6l-1.7-4.6L5 9.3l4.3-1.7z" /><path d="M18 15l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z" /></svg>
+            <span class="admin-nav-label">Models</span>
+            <span class="admin-nav-badge hidden" data-badge="models"></span>
+          </button>
+          <button type="button" data-tab="tools" aria-current="false" title="Tools">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg>
+            <span class="admin-nav-label">Tools</span>
+          </button>
+          <button type="button" data-tab="prompt" aria-current="false" title="Prompt">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M4 12h13" /><path d="M4 17h8" /></svg>
+            <span class="admin-nav-label">Prompt</span>
+          </button>
+
+          <p class="admin-nav-group">Activity</p>
+          <button type="button" data-tab="sessions" aria-current="false" title="Sessions">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5a2.5 2.5 0 0 1-2.5 2.5H8l-4 3.5V6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5z" /></svg>
+            <span class="admin-nav-label">Sessions</span>
+          </button>
+          <button type="button" data-tab="usage" aria-current="false" title="Usage">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18" /><path d="M6.5 20v-6" /><path d="M12 20V6" /><path d="M17.5 20v-9" /></svg>
+            <span class="admin-nav-label">Usage</span>
+          </button>
+          <button type="button" data-tab="audit" aria-current="false" title="Audit">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6" /><path d="M9 17h4" /></svg>
+            <span class="admin-nav-label">Audit</span>
+          </button>
+          <button type="button" data-tab="events" aria-current="false" title="Events">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2.4-6 4.2 12 2.4-6h5" /></svg>
+            <span class="admin-nav-label">Events</span>
+            <span class="admin-nav-badge hidden" data-badge="events"></span>
+          </button>
+        </nav>
+
+        <div class="admin-rail-foot">
+          <div class="admin-who">
+            <span class="admin-avatar" id="who-initials"></span>
+            <span class="admin-who-text"><strong id="who"></strong><span>administrator</span></span>
+          </div>
+          <a class="admin-rail-link" href="/" title="Back to chat">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 6l-6 6 6 6" /><path d="M4 12h16" /></svg>
+            <span class="admin-nav-label">Back to chat</span>
+          </a>
+        </div>
+        <button id="rail-toggle" class="admin-rail-toggle" type="button" aria-expanded="true" aria-controls="admin-rail" title="Collapse navigation" aria-label="Collapse navigation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7z" /></svg>
+        </button>
+      </aside>
+
+      <div class="admin-content">
+        <div id="msg" class="admin-msg" role="status"></div>
+
+        <main class="admin-body">
+          <!-- A section opens with a sticky head: its name, one line of what it is
+               for, and the action the section is for — because a roster is taller
+               than a window and the reader should not have to scroll back up to
+               remember where they are (D80).
+
+               Overview has no head. Its name is the rail's current item, it has no
+               action of its own, and the line under the name was a sentence about
+               the section rather than anything the operator could use. -->
+          <section id="tab-overview" class="admin-section">
+            <div class="admin-page-body">
+              <div id="overview-attention" class="admin-card"></div>
+              <div class="admin-overview-row">
+                <div id="overview-now" class="admin-card"></div>
+                <div id="overview-today" class="admin-card"></div>
+              </div>
+              <div id="overview-recent" class="admin-card"></div>
+              <p id="overview-about" class="dim admin-stamp"></p>
+            </div>
+          </section>
+
+          <section id="tab-accounts" class="admin-section hidden">
+            <div class="admin-page-body">
+              <!-- The list. Search and paging run on the server: an appliance can
+                   carry hundreds of accounts, and one page is one query rather than
+                   one request per row. -->
+              <div id="account-list">
+                <div class="admin-toolbar">
+                  <input
+                    id="account-search"
+                    type="search"
+                    placeholder="Search accounts or groups…"
+                    aria-label="Search accounts or groups"
+                    autocomplete="off"
+                  />
+                  <button id="new-account" type="button">+ New account</button>
+                </div>
+                <div class="admin-card admin-list-card">
+                  <table class="admin-table admin-accounts" id="account-table">
+                    <thead>
+                      <tr>
+                        <th>Account</th>
+                        <th>Groups</th>
+                        <th>Status</th>
+                        <!-- Today and Sessions are the first two figures on the
+                             account's own page; they are the columns dropped
+                             below 1080px so six columns never become a
+                             scrollbar (N172). -->
+                        <th class="opt">Today</th>
+                        <th class="opt">Sessions</th>
+                        <th>Last seen</th>
+                      </tr>
+                    </thead>
+                    <tbody id="accounts"></tbody>
+                  </table>
+                </div>
+                <div class="admin-pager">
+                  <span id="accounts-page" class="dim"></span>
+                  <button id="accounts-prev" type="button" title="Previous page" aria-label="Previous page">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l-6 6 6 6" /><path d="M4 12h16" /></svg>
+                  </button>
+                  <button id="accounts-next" type="button" title="Next page" aria-label="Next page">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 6l6 6-6 6" /><path d="M20 12H4" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- One account. A view swap rather than an expanding row: the detail
+                   is a policy editor, a tool matrix, usage and sessions, and it would
+                   push the list off the screen. Back returns to the same search and
+                   page (D71). -->
+              <div id="account-detail" class="hidden">
+                <button id="account-back" type="button" class="admin-back">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l-6 6 6 6" /><path d="M4 12h16" /></svg>
+                  Accounts
+                </button>
+
+                <div class="admin-detail-head">
+                  <div>
+                    <h2 id="account-name"></h2>
+                    <p id="account-sub" class="dim"></p>
+                  </div>
+                  <div class="admin-menu-host" id="account-menu-host">
+                    <button id="account-manage" class="admin-menu-trigger" type="button" aria-expanded="false" aria-controls="account-menu">
+                      Manage
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                    </button>
+                    <div id="account-menu" class="admin-menu hidden">
+                      <button id="account-reset" type="button">Reset password</button>
+                      <button id="account-admin" type="button">Make administrator</button>
+                      <hr />
+                      <button id="account-disable" type="button">Disable account</button>
+                    </div>
+                  </div>
+                </div>
+
+                <nav id="account-tabs" class="admin-segmented" aria-label="Account sections">
+                  <button type="button" data-account-tab="overview" aria-current="page">Overview</button>
+                  <button type="button" data-account-tab="policy" aria-current="false">Policy</button>
+                  <button type="button" data-account-tab="tools" aria-current="false">Tools</button>
+                  <button type="button" data-account-tab="limits" aria-current="false">Limits</button>
+                  <button type="button" data-account-tab="usage" aria-current="false">Usage</button>
+                  <button type="button" data-account-tab="sessions" aria-current="false">Sessions</button>
+                </nav>
+
+                <section class="admin-account-section" id="account-overview">
+                  <div class="admin-card">
+                    <h2>Identity</h2>
+                    <div id="account-identity" class="admin-status"></div>
+                  </div>
+                  <div class="admin-card">
+                    <h2>Groups <span class="admin-tip" data-tip="Groups this account belongs to. Each one gives it that group's roles. Select a group for details."></span></h2>
+                    <div id="account-groups" class="admin-chips"></div>
+                    <div id="account-groups-add" class="admin-add-panel hidden"></div>
+                  </div>
+                  <div class="admin-card">
+                    <h2>Roles in force <span class="admin-tip" data-tip="Roles this account holds, given directly or through a group. A role from a group stays until the account leaves that group. Select a role for details."></span></h2>
+                    <div id="account-roles" class="admin-chips"></div>
+                    <div id="account-roles-add" class="admin-add-panel hidden"></div>
+                    <div id="account-role-conflicts"></div>
+                  </div>
+                </section>
+
+                <section class="admin-account-section hidden" id="account-policy">
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <h2>Effective policy <span class="admin-tip" data-tip="What this account can do right now: defaults, then its roles, then its overrides. An override is the final say on a field, and later role changes do not reach it."></span></h2>
+                      <button id="policy-edit" type="button" class="admin-edit">Add override</button>
+                    </div>
+
+                    <div class="admin-form">
+                      <div class="admin-field">
+                        <div class="admin-field-label">Files read</div>
+                        <div>
+                          <div id="policy-read" class="admin-paths"></div>
+                        </div>
+                        <div class="admin-field-source" id="policy-read-source"></div>
+                      </div>
+
+                      <div class="admin-field">
+                        <div class="admin-field-label">Files write</div>
+                        <div>
+                          <div id="policy-write" class="admin-paths"></div>
+                        </div>
+                        <div class="admin-field-source" id="policy-write-source"></div>
+                      </div>
+
+                      <div class="admin-field admin-field-switch">
+                        <div class="admin-field-label">Web tools <span class="admin-tip" data-tip="Whether this account may use network tools. They run on the user's own machine, over their network."></span></div>
+                        <div>
+                          <div class="admin-segmented" id="policy-network" role="group" aria-label="Web tools">
+                            <button type="button" class="admin-on" data-value="any" aria-pressed="false">On</button>
+                            <button type="button" data-value="none" aria-pressed="false">Off</button>
+                          </div>
+                        </div>
+                        <div class="admin-field-source" id="policy-network-source"></div>
+                      </div>
+
+                      <div class="admin-field">
+                        <div class="admin-field-label">Models</div>
+                        <div id="policy-models" class="admin-chips"></div>
+                        <div class="admin-field-source" id="policy-models-source"></div>
+                      </div>
+
+                      <div class="admin-field admin-field-switch">
+                        <div class="admin-field-label">Approval ceiling <span class="admin-tip" data-tip="The most permissive approval mode this account may choose. Never asks before everything. Safe asks before mutating or critical actions. Yolo asks only before critical actions."></span></div>
+                        <div class="admin-segmented" id="policy-ceiling" role="group" aria-label="Approval ceiling">
+                          <button type="button" data-value="never" aria-pressed="false">Never</button>
+                          <button type="button" data-value="safe" aria-pressed="false">Safe</button>
+                          <button type="button" data-value="yolo" aria-pressed="false">Yolo</button>
+                        </div>
+                        <div class="admin-field-source" id="policy-ceiling-source"></div>
+                      </div>
+
+                      <div class="admin-field admin-field-switch">
+                        <div class="admin-field-label">Approval mode <span class="admin-tip" data-tip="The approval mode in force now. The user can change it, up to the ceiling."></span></div>
+                        <div class="admin-segmented" id="policy-mode" role="group" aria-label="Approval mode">
+                          <button type="button" data-value="never" aria-pressed="false">Never</button>
+                          <button type="button" data-value="safe" aria-pressed="false">Safe</button>
+                          <button type="button" data-value="yolo" aria-pressed="false">Yolo</button>
+                        </div>
+                        <div class="admin-field-source" id="policy-mode-source"></div>
+                      </div>
+                    </div>
+
+                    <div class="admin-row admin-save">
+                      <button id="policy-save" type="button" class="primary">Save</button>
+                      <button id="policy-cancel" type="button">Cancel</button>
+                      <button id="policy-clear" type="button">Clear all overrides</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-account-section hidden" id="account-tools">
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <h2>Effective tools <span class="admin-tip" data-tip="The tools this account can use. An override is the final say on this list. Users can narrow it per session but not widen it."></span></h2>
+                      <button id="tools-edit" type="button" class="admin-edit">Add override</button>
+                    </div>
+                    <div id="tool-matrix"></div>
+                    <div class="admin-row admin-save">
+                      <button id="tools-save" type="button" class="primary">Save</button>
+                      <button id="tools-cancel" type="button">Cancel</button>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="admin-account-section hidden" id="account-limits">
+                  <div class="admin-card">
+                    <div class="admin-card-head">
+                      <h2>Effective limits</h2>
+                      <button id="limits-edit" type="button" class="admin-edit">Add override</button>
+                    </div>
+
+                    <div class="admin-form">
+                      <div class="admin-field admin-field-switch">
+                        <div class="admin-field-label">Daily tokens <span class="admin-tip" data-tip="The most tokens this account can use in a day. Resets at 00:00 UTC. Blank uses the cap from its roles."></span></div>
+                        <div>
+                          <input id="limit-tokens" type="number" min="1" placeholder="No override" />
+                          <div class="admin-meter"><i id="limit-meter"></i></div>
+                          <p class="dim admin-hint" id="limit-usage"></p>
+                        </div>
+                        <div class="admin-field-source" id="limit-tokens-source"></div>
+                      </div>
+
+                      <div class="admin-field admin-field-switch">
+                        <div class="admin-field-label">Max steps per turn</div>
+                        <div><input id="limit-steps" type="number" min="1" /></div>
+                        <div class="admin-field-source" id="limit-steps-source"></div>
+                      </div>
+
+                    </div>
+
+                    <div class="admin-row admin-save">
+                      <button id="limits-save" type="button" class="primary">Save</button>
+                      <button id="limits-cancel" type="button">Cancel</button>
+                    </div>
+
+                  </div>
+                </section>
+
+                <section class="admin-account-section hidden" id="account-usage">
+                  <div class="admin-card">
+                    <h2>Last 7 days <span class="admin-tip" data-tip="Tokens this account used each day, from finished model calls as reported by the provider. Every bar uses the same scale, so days compare directly. Days run 00:00 to 00:00 UTC."></span></h2>
+                    <div id="account-usage-strip" class="admin-status"></div>
+                    <div id="account-usage-week" class="admin-week"></div>
+                  </div>
+                </section>
+
+                <section class="admin-account-section hidden" id="account-sessions">
+                  <div class="admin-card">
+                    <h2>Sessions</h2>
+                    <table class="admin-table admin-expanding">
+                      <thead>
+                        <tr><th>Title</th><th>Created</th><th>Tokens</th></tr>
+                      </thead>
+                      <tbody id="account-sessions-body"></tbody>
+                    </table>
+                    <p id="account-sessions-note" class="dim admin-hint"></p>
+                  </div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-roles" class="admin-section hidden">
+            <div class="admin-page-body">
+              <div class="admin-toolbar">
+                <input
+                  id="role-search"
+                  type="search"
+                  placeholder="Search roles or who holds them…"
+                  aria-label="Search roles or who holds them"
+                  autocomplete="off"
+                />
+                <button id="new-role" type="button">+ New role</button>
+              </div>
+              <div class="admin-card admin-list-card">
+                <table class="admin-table admin-expanding">
+                  <thead>
+                    <tr>
+                      <th>Role</th>
+                      <th>Grants</th>
+                      <th>Inherited by</th>
+                    </tr>
+                  </thead>
+                  <tbody id="roles"></tbody>
+                </table>
+              </div>
+              <div class="admin-pager">
+                <span id="roles-count" class="dim"></span>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-groups" class="admin-section hidden">
+            <div class="admin-page-body">
+              <div class="admin-toolbar">
+                <input
+                  id="group-search"
+                  type="search"
+                  placeholder="Search groups, roles or accounts…"
+                  aria-label="Search groups, roles or accounts"
+                  autocomplete="off"
+                />
+                <button id="new-group" type="button">+ New group</button>
+              </div>
+              <div class="admin-card admin-list-card">
+                <table class="admin-table admin-expanding">
+                  <thead>
+                    <tr>
+                      <th>Group</th>
+                      <th>Roles</th>
+                      <th>Members</th>
+                    </tr>
+                  </thead>
+                  <tbody id="groups"></tbody>
+                </table>
+              </div>
+              <div class="admin-pager">
+                <span id="groups-count" class="dim"></span>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-models" class="admin-section hidden">
+            <div class="admin-page-body">
+              <!-- Where a model runs is the first thing that decides what adding it
+                   means: a key at a provider, or a download onto this machine's GPU.
+                   Two answers across the card's width, this machine first because it
+                   is the half a fresh appliance has something to offer on. -->
+              <div class="admin-segmented admin-where" id="models-where" role="group" aria-label="Where models run">
+                <button type="button" data-where="local">On this machine</button>
+                <button type="button" data-where="cloud">Cloud</button>
+              </div>
+              <!-- One tile per model, and the tile is the whole object: it adds one
+                   that is not here, downloads its weights, or opens its settings. -->
+              <div class="admin-card">
+                <h2>Models</h2>
+                <div class="admin-chips admin-filters" id="model-filters"></div>
+                <div id="model-tiles" class="admin-tile-grid"></div>
+                <p id="models-ungranted" class="dim admin-hint"></p>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-tools" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Tools</h1>
+                <p>What the agent can do. Built-in tools are always here; a package adds more for the whole appliance, and a role decides who may use them.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <!-- A package is part of the release: enabling one downloads nothing and
+                   grants nothing. What it needs on a person's machine is theirs to
+                   install, and the tile says what (D101). -->
+              <div class="admin-card">
+                <h2>Packages</h2>
+                <div id="package-tiles" class="admin-tile-grid"></div>
+                <p class="dim admin-hint">Enabling a package grants its tools to nobody: add them to a role.</p>
+              </div>
+              <div class="admin-card">
+                <h2>Built in</h2>
+                <div id="builtin-tools" class="admin-tool-list"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-providers" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Providers</h1>
+                <p>Where a key lives: a file only the server can read, never shown again, never in a backup.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <h2>Providers <span class="admin-tip" data-tip="A provider needs only its API key. The key is stored where only the server can read it, and is never shown again or backed up."></span></h2>
+                <div id="provider-tiles" class="admin-tile-grid"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-prompt" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Prompt</h1>
+                <p>Text added to every turn's system prompt. It is not policy: it does not grant anything.</p>
+              </div>
+              <div class="admin-page-actions">
+                <button id="save-prompt" type="button" class="primary">Save prompt</button>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <textarea id="prompt" class="admin-json" spellcheck="false"></textarea>
+              </div>
+              <div class="admin-card">
+                <h2>Composed prompt <span class="admin-tip" data-tip="What the model is told, section by section, and where each part comes from. Read-only. Working directory instructions appear only after a turn has run."></span></h2>
+                <div class="admin-row">
+                  <input id="compose-account" placeholder="account" />
+                  <input id="compose-working-dir" placeholder="working directory (optional)" />
+                  <button id="compose-prompt" type="button">Show</button>
+                </div>
+                <p id="compose-note" class="dim admin-hint"></p>
+                <div id="composed-sections"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-sessions" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Sessions</h1>
+                <p>Every conversation, its account, and what it cost.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <div class="admin-row">
+                  <input id="session-account" placeholder="account (optional)" />
+                  <button id="load-sessions" type="button">Load</button>
+                </div>
+                <div id="sessions"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-usage" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Usage</h1>
+                <p>Tokens, measured where they were spent.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <h2>Today</h2>
+                <p id="usage-note" class="dim"></p>
+                <div id="usage-summary"></div>
+                <div id="usage"></div>
+                <p id="usage-caveat" class="dim admin-stamp"></p>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-audit" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Audit</h1>
+                <p>Who did what, in order, in a chain that can be verified.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <div class="admin-row">
+                  <input id="audit-query" placeholder="search text" />
+                  <button id="load-audit" type="button">Search</button>
+                  <button id="verify-audit" type="button">Verify chain</button>
+                </div>
+                <pre id="audit-verify" class="admin-pre hidden"></pre>
+                <div id="audit"></div>
+              </div>
+            </div>
+          </section>
+
+          <section id="tab-events" class="admin-section hidden">
+            <header class="admin-page-head">
+              <div class="admin-page-head-text">
+                <h1>Events</h1>
+                <p>Warnings and errors, which is everything the server thought worth telling an operator.</p>
+              </div>
+            </header>
+            <div class="admin-page-body">
+              <div class="admin-card">
+                <div class="admin-row">
+                  <select id="event-level">
+                    <option value="">all warnings and errors</option>
+                    <option value="warning">warning</option>
+                    <option value="error">error</option>
+                  </select>
+                  <button id="load-events" type="button">Load</button>
+                </div>
+                <div id="events"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <div id="dialog" class="admin-dialog-backdrop hidden">
+    <div class="admin-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <h2 id="dialog-title"></h2>
+      <div id="dialog-body"></div>
+      <div id="dialog-error" class="bad"></div>
+      <div class="admin-row admin-dialog-actions">
+        <button id="dialog-delete" type="button" class="hidden"></button>
+        <button id="dialog-cancel" type="button">Cancel</button>
+        <button id="dialog-ok" type="button" class="primary"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tip" class="admin-tooltip hidden" role="tooltip"></div>
+
+  <script src="/admin.js"></script>
+</body>
+</html>

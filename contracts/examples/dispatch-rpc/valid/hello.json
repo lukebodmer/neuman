@@ -1,0 +1,1 @@
+{"type": "hello", "rpc_version": 1, "home": "/home/alice", "drops": "/home/alice/.local/state/neuman/drops", "tools": ["fs_read", "fs_write", "shell"]}

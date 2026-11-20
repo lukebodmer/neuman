@@ -1,0 +1,23 @@
+{
+  "schema_version": 2,
+  "defaults": {},
+  "roles": {},
+  "users": [{"name": "alice", "roles": ["alice-models"]}],
+  "roles": {"alice-models": {"models": ["deepseek-flash", "qwen"]}},
+  "providers": {
+    "deepseek": {"url": "https://api.deepseek.com/v1", "api_key_file": "/run/secrets/deepseek-key"},
+    "local-qwen": {"url": "http://127.0.0.1:8081/v1", "api_key_file": null}
+  },
+  "models": {
+    "deepseek-flash": {
+      "provider": "deepseek",
+      "provider_model": "deepseek-v4.1-flash",
+      "vision": true,
+      "context_tokens": 131072,
+      "max_tokens": 16384,
+      "input_cost_per_m": 0.27,
+      "output_cost_per_m": 1.1
+    },
+    "qwen": {"provider": "local-qwen", "provider_model": "qwen", "context_tokens": 32768}
+  }
+}

@@ -1,0 +1,1 @@
+{"tool": {"name": "session_query", "kind": "server-native", "description": "Query your own Neuman sessions.", "wait_ms": 5000, "lifetime_ms": 5000, "max_output_bytes": 262144, "mutating": false, "critical": false, "needs": [], "parameters": {"type": "object"}}}

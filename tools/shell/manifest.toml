@@ -1,0 +1,77 @@
+# Run a shell command on the user's own machine.
+#
+# `mutating = true`, and that is the whole control. There is no sandbox to fall
+# back on: the command runs as the user and reaches what the user reaches (SPEC
+# section 5), so the approval verdict is the only thing between the model and
+# the filesystem. Declaring it false to avoid prompting would silently skip
+# approval for every destructive command, which is the entire class of in-reach
+# damage D23 names as the residual risk.
+#
+# `critical = false`: `yolo` runs shell commands without asking. That is the
+# operator's choice of convenience over a prompt, and it is where the choice has
+# teeth — `rm` in a shell command deletes. A deployment that does not want that
+# does not run `yolo`.
+#
+# The cost is real: a user who mostly runs read-only commands will approve a lot
+# of `ls`. The dedicated read tools are not mutating, so the model should reach
+# for them first — they are faster, answer in a shape that needs no parsing, and
+# do not prompt (D59). The real fix is per-call classification, a predicate over
+# the parsed argv evaluated at gate time, so `ls` and `rm -rf` are different
+# decisions; that is known, unbuilt, and needs a schema field.
+
+[tool]
+name = "shell"
+kind = "client"
+exec = "shell"
+summary = "Run a shell command in the user's environment"
+description = """
+Run a shell command on this machine, as the user, in their own environment. \
+The command runs with their `PATH`, so the tools a terminal would reach for are \
+present — `ls`, `cat`, `grep`, `find`, `git` and the rest. \
+Prefer the dedicated tools where they fit: `fs_list`, `fs_read` and `fs_search` \
+are faster, answer in a shape that needs no parsing, and do not require \
+approval. \
+Deletion is real: `rm` deletes and `mv` moves, and nothing routes through a \
+trash unless the machine's own tooling does. \
+When two readings of the data would give different answers, prefer a short \
+command that tells them apart over a long one that assumes one of them. \
+A command still running after two minutes keeps running as a background job \
+when you have `job_output`, and is killed otherwise; the result says which. \
+Do not background work yourself with `&` or `nohup`: a job the result names \
+can be followed and stopped, and one you detached cannot.
+"""
+
+# Two minutes of waiting, an hour of living (D98). Most commands finish well
+# inside the wait. The ones that do not — a build, a test suite, a large
+# download — are usually not mistakes, and killing them at the wait taught the
+# model to hide the work behind `setsid nohup … &`, which no kill reaches and no
+# record follows. So a command still running at the wait becomes a background
+# job, which `job_output` follows and `job_kill` stops, and the hour is the hard
+# cap on it. D15's separate `started` deadline still catches a client that never
+# begins the work at all.
+wait_ms = 120000
+lifetime_ms = 3600000
+max_output_bytes = 1048576
+
+mutating = true
+critical = false
+
+# Both, because a shell command can do either, and the gate needs the account to
+# hold the reach. The manifest cannot narrow what the client's own environment
+# allows: `needs` was never what kept a shell off the network — the sandbox was,
+# and it is gone (SPEC section 5).
+needs = ["read", "write"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["command"]
+
+[tool.parameters.properties.command]
+type = "string"
+minLength = 1
+description = "The command line to run."
+
+[tool.parameters.properties.cwd]
+type = "string"
+description = "Absolute directory to run in. Must be within your reach. Omit it to run in the session's working directory, which is where the dispatch already starts."

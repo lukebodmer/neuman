@@ -1,0 +1,1 @@
+{"tool": {"name": "shell", "kind": "script", "description": "Run a shell command.", "exec": "shell", "wait_ms": 5000, "lifetime_ms": 5000, "max_output_bytes": 262144, "mutating": true, "critical": false, "needs": ["read", "write"], "parameters": {}}}

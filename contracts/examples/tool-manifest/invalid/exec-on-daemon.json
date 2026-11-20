@@ -1,0 +1,1 @@
+{"tool": {"name": "job_output", "kind": "client", "daemon": true, "exec": "job_output", "description": "Show how a background job is doing.", "wait_ms": 600000, "lifetime_ms": 600000, "max_output_bytes": 16384, "mutating": false, "critical": false, "needs": [], "parameters": {}}}

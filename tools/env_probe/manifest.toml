@@ -1,0 +1,79 @@
+# Report which development-environment state a directory is in.
+#
+# **Granted to no role, and that is the design.** The model has
+# `python(action="describe")` for this question and a fuller answer to it; this
+# manifest exists for the two callers that cannot make a tool call —
+# `/api/environment`, which answers the browser when a human picks a working
+# directory, and the harness, which states the environment in the system prompt.
+#
+# A manifest no role grants is invisible to `grantable()`, so it never reaches
+# the model's tool schemas, while the client advertises it in the handshake like
+# any other installed tool and a route can dispatch it. That split is what the
+# directory chooser already relies on: `/api/browse` dispatches `fs_list`
+# outside the harness because the human clicked a folder in their own picker,
+# and an approval card per click trains people to approve without reading.
+#
+# `diagnostic = true`, which is what keeps it out of the tool chooser. The first
+# version left it false on the argument that the flag means "appliance test
+# scaffolding" and this is a real tool with a real answer. That was reasoning
+# about the flag's name instead of its effect: an ungranted row renders greyed
+# out, struck through, and captioned "An operator grants tools in
+# `services.neuman`" — an invitation to grant a capability that is not one, for a
+# question the user never asks. The flag's actual job is "registered, dispatched
+# by the appliance, never chosen by a person", and that is exactly this.
+#
+# It confers nothing and withholds nothing: `diagnostic` is presentation only
+# and appears nowhere in the gate, so dispatch is decided for this tool exactly
+# as for any other.
+#
+# `mutating = false` is true in the strong sense here, not as a judgement about
+# a call: the tool resolves cached text and runs no subprocess at all, which is
+# the whole reason it exists apart from `describe`.
+
+[tool]
+name = "env_probe"
+kind = "client"
+exec = "env_probe"
+summary = "Report a directory's development-environment state"
+description = """
+Report whether a directory has a realised development environment, as JSON on \
+stdout: `reason` is `ok` when one resolved, else the resolver's name for the \
+state — `no_environment` (not a project; the standard library is what is \
+there), `env_unrealised`, `env_stale`, `env_collected`, `env_untrusted`, \
+`env_unreadable`. When `ok`, also reports the store profile and the Python the \
+directory means. Resolves cached text and runs nothing. \
+Prefer `python` with `action="describe"`: it answers the same question and also \
+lists what can be imported, which is usually what the question was really \
+about.
+"""
+
+# A `.direnv` rc runs to 135 KB and the work is one parse plus a few `stat`
+# calls, so this is generous. A probe that takes seconds is a stalled mount,
+# which is the same reasoning `fs_list` uses for its own short deadline.
+wait_ms = 5000
+lifetime_ms = 5000
+
+# One JSON object naming a handful of store paths. The rc file itself is never
+# forwarded.
+max_output_bytes = 8192
+
+mutating = false
+critical = false
+
+# Hidden from the tool chooser. See the header: the gate is unaffected.
+diagnostic = true
+
+# Delivered inline: the caller parses the whole object, and a preview plus a
+# path to the rest would be unparseable.
+persist_output = false
+
+needs = ["read"]
+paths = ["cwd"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+
+[tool.parameters.properties.cwd]
+type = "string"
+description = "Absolute directory to probe. Omit to probe the session's working directory, which is where the dispatch already starts."

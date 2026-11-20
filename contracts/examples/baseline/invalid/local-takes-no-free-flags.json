@@ -1,0 +1,1 @@
+{"schema_version": 2, "defaults": {}, "roles": {}, "users": [], "models": {"m": {"provider_model": "m", "local": {"extra_flags": ["--model", "/etc/shadow"]}}}}

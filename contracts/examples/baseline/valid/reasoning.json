@@ -1,0 +1,36 @@
+{
+  "schema_version": 2,
+  "defaults": {},
+  "roles": {},
+  "users": [],
+  "providers": {
+    "deepseek": {"url": "https://api.deepseek.com/v1", "api_key_file": "/run/secrets/deepseek"},
+    "local": {"url": "http://127.0.0.1:8081/v1", "api_key_file": null}
+  },
+  "models": {
+    "deepseek-reasoner": {
+      "provider": "deepseek",
+      "provider_model": "deepseek-reasoner",
+      "reasoning": {
+        "control": "budget",
+        "levels": ["low", "medium", "high"],
+        "default": "medium"
+      }
+    },
+    "qwen": {
+      "provider": "local",
+      "provider_model": "qwen",
+      "reasoning": {
+        "control": "effort",
+        "levels": ["none", "low", "medium", "high"],
+        "default": "medium"
+      }
+    },
+    "qwen-toggle": {
+      "provider": "local",
+      "provider_model": "qwen",
+      "reasoning": {"control": "toggle", "levels": ["off", "on"], "default": "on"}
+    },
+    "plain": {"provider": "local", "provider_model": "plain"}
+  }
+}

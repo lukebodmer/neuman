@@ -1,0 +1,66 @@
+# Search file contents and names.
+#
+# The long-wait read tool: a regex across a large tree is the most common way
+# for a dispatch to spend real time without anything being wrong. Its wait is
+# deliberately well above fs_read's, and still far below the appliance-wide
+# ceiling in NEUMAN_TOOL_WAIT_MS, which the harness applies as
+# min(manifest.wait_ms, config.tool_wait_ms). Its lifetime is its wait: a
+# search the model is not waiting for has no one to read it.
+
+[tool]
+name = "fs_search"
+kind = "client"
+exec = "fs_search"
+summary = "Search file contents or names for a pattern"
+description = """
+Search for a regular expression in file contents under a file or directory, \
+or match file names with `name_only`. Searches only within your readable paths. \
+Returns matching lines with their file and line number, newest-modified files \
+first, stopping at `limit` matches or a byte budget and saying which. A hit in a \
+very long line — a minified page, a spilled document — prints the hit and a few \
+hundred characters around it, cut ends marked, rather than the whole line. \
+Narrow the pattern or path when it stops early.
+"""
+
+wait_ms = 60000
+lifetime_ms = 60000
+max_output_bytes = 262144
+
+# Delivered inline. The tool bounds its own output by `limit` and a byte budget
+# and says when it stopped, so persisting it would hand back a preview of a
+# result the caller asked for and a scratch file it rarely opens.
+persist_output = false
+
+mutating = false
+critical = false
+
+needs = ["read"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["pattern"]
+
+[tool.parameters.properties.pattern]
+type = "string"
+minLength = 1
+description = "Regular expression to match."
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute file or directory to search. Omit to search the working directory."
+
+[tool.parameters.properties.glob]
+type = "string"
+description = "Only consider files whose name, or path relative to `path`, matches this glob — e.g. '*.py' (any depth) or 'src/**/*.py' (scoped)."
+
+[tool.parameters.properties.name_only]
+type = "boolean"
+description = "Match the pattern against file names instead of contents."
+
+[tool.parameters.properties.limit]
+type = "integer"
+minimum = 1
+maximum = 1000
+description = "Maximum number of matches to return."

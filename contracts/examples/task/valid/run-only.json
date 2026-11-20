@@ -1,0 +1,22 @@
+{
+  "name": "Nightly backup",
+  "workspace": "/home/alice/projects",
+  "run_root": "/data/backup-runs",
+  "steps": [
+    {
+      "kind": "run",
+      "name": "backup",
+      "argv": [
+        "restic",
+        "backup",
+        "/home/alice/projects"
+      ],
+      "timeout_s": 3600
+    }
+  ],
+  "schedule": {
+    "kind": "daily",
+    "time": "02:00",
+    "timezone": "America/Los_Angeles"
+  }
+}

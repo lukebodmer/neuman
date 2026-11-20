@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "defaults": {},
+  "roles": {},
+  "users": [],
+  "models": {
+    "qwen": {
+      "provider": "local",
+      "provider_model": "qwen",
+      "reasoning": {"control": "effort", "levels": []}
+    }
+  }
+}

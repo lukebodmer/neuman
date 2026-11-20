@@ -1,0 +1,32 @@
+{
+  "name": "site update",
+  "workspace": "/home/alice/projects/site",
+  "run_root": "/data/runs",
+  "inputs": [
+    {
+      "name": "kind",
+      "description": "queued: the oldest request from the dashboard. sweep: prices, re-checks, new releases.",
+      "values": [
+        "queued",
+        "sweep"
+      ],
+      "required": true,
+      "default": "queued"
+    }
+  ],
+  "steps": [],
+  "schedule": {
+    "kind": "daily",
+    "time": "06:15",
+    "timezone": "America/Los_Angeles",
+    "inputs": {
+      "kind": "sweep"
+    }
+  },
+  "outputs": [
+    "claims.json",
+    "report.md",
+    "result.json"
+  ],
+  "enabled": true
+}

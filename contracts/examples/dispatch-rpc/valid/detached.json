@@ -1,0 +1,1 @@
+{"type": "detached", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "sequence": 3, "job_id": "7f3a9c", "wall_ms": 120004, "lifetime_ms": 3600000, "persisted_out": "/home/alice/.local/state/neuman/spill/shell-d1c0ffee12345678.out", "persisted_err": "/home/alice/.local/state/neuman/spill/shell-d1c0ffee12345678.err"}

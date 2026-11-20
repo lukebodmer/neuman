@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neuman-admin"
+version = "0.1.0"
+description = "Operator CLI for a Neuman appliance"
+requires-python = ">=3.12"
+dependencies = ["httpx"]
+
+[project.scripts]
+neuman-admin = "neuman_admin.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 96
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF", "BLE"]
+# The docstrings are prose and use en dashes deliberately. RUF002 exists to
+# catch look-alike characters in identifiers, which this is not.
+ignore = ["RUF002"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

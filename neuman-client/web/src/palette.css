@@ -1,0 +1,474 @@
+  /* ===========================================================================
+     THE PALETTE
+
+     Every colour in either document comes from a token declared here. That is a
+     hard rule, not a preference, and a test enforces it: a literal in a rule is
+     a colour one palette gets right and the others get wrong, and it stays
+     invisible until someone switches theme. The chat window's stylesheet had 35
+     of them, plus 11 black shadows — `#22262e` alone appeared 17 times as the
+     hover surface, which the palette had no name for.
+
+     **Tokens are semantic, not indexed.** They say what a colour is *for*
+     (`--surface-raised`) rather than what it is (`base02`). A flat indexed list
+     — the base16 shape, which exists because a terminal has no semantics, only
+     ANSI slots — cannot express the thing that matters here: contrast is a
+     property of a *pair*, ink against a surface. Naming the pair is what lets
+     one test assert `--text` on `--bg` across every palette at once, instead of
+     re-deriving which combinations are load-bearing per theme.
+
+     **A palette sets the roots and nothing else.** Everything else — hovers,
+     tinted surfaces, the hue washes on the window chrome — is `color-mix` over
+     those roots, so adding a palette is filling in a form rather than
+     redesigning. Where a derivation must run the *other way* in light mode (a
+     hover is lighter on a dark surface and darker on a light one), the
+     direction is itself a token: `--lift`.
+
+     The four tinted surfaces that stylesheet used to carry as hand-mixed
+     constants
+     (`#253048` behind the user's message, `#2a1d20` for a destructive hover,
+     `#2a2419` and `#4a4030` for the amber pair) are derived now. They were the
+     `--wash`/`--edge` idea the window chrome already expressed declaratively,
+     written out by hand and therefore correct only in the palette they were
+     sampled from.
+
+     Every ink/surface pair below is checked against WCAG AA — 7:1 for prose,
+     4.5:1 for everything else that carries text — by
+     `test_every_palette_is_legible`. The numbers in the comments are measured,
+     not asserted by eye.
+
+     **This file is the whole of what two documents share.** It was the head of
+     `neuman.css`, which is the chat window's stylesheet end to end, and the
+     administration page loaded that file for the tokens `admin.css` uses —
+     inheriting every layout rule in it, down to a `#sessions` rail fixed to the
+     left edge of the window (N158). A palette is the only thing the two
+     documents have in common, so it is the only thing in a file both load. The
+     two base rules at the foot — border-box, and the scrollbar — are here for
+     the same reason: identical in both documents, and a second copy is how two
+     surfaces come to scroll differently.
+     ======================================================================== */
+
+  /* The bare `:root` *is* the dark palette — no `[data-palette]` guard, so a
+     document with no attribute yet still has a complete set of tokens and
+     nothing can render unstyled. `.swatch[data-palette="dark"]` is named here
+     too, and that is not cosmetic: a swatch inherits tokens through the
+     document, so inside a light document the dark sample would inherit light's
+     values and paint a second light rectangle. Naming it here gives it dark's
+     tokens from the one place they are written. */
+  :root, .swatch[data-palette="dark"] {
+    /* -- the surfaces, back to front ---------------------------------------
+       Four planes, and their order is the contract: `--bg` is the window,
+       `--panel` is a card on it, `--surface-raised` is a control on the card,
+       `--surface-inset` is a well *below* it — an input, a code block, the
+       matte behind an image. `--surface-raised` is the one this stylesheet
+       most needed and never had. */
+    --bg: #15181e;
+    --panel: #1c2027;
+    --surface-raised: #252a33;
+    --surface-inset: #101318;
+    --line: #343c4a;
+
+    /* -- the inks -----------------------------------------------------------
+       `--text` is prose, `--dim` is metadata, `--work` is the work trace: a
+       tool row's subject, which sits a step back from the agent's prose. A
+       neutral between the two rather than a hue — the accent already means
+       action and state, and a coloured trace would compete with it.
+
+       `--ink-on-accent` is the only ink that is not a neutral: it goes on a
+       filled accent button, so it must be legible against `--accent`
+       specifically rather than against any surface. In light mode it inverts
+       to white, which is why it cannot be `--bg`.
+
+       `--ink-emphatic` is bold text in markdown — brighter than `--text` on a
+       dark palette and darker on a light one, so it cannot be a constant. */
+    --text: #e7eaf0;
+    --dim: #96a0b0;
+    --work: color-mix(in srgb, var(--text) 55%, var(--dim));
+    --ink-on-accent: #10131a;
+    --ink-emphatic: #ffffff;
+
+    /* -- the meanings -------------------------------------------------------
+       Five hues, each with a job. `--accent` is action and state, `--warn` is
+       "careful, and reversible", `--bad` is failure and the destructive act,
+       `--ok` is success, `--violet` identifies the model surfaces. A sixth hue
+       would need a sixth meaning, and there isn't one. */
+    --accent: #6f9df5;
+    --warn: #dda25c;
+    --bad: #f0798f;
+    --ok: #8fc866;
+    --violet: #b48ef2;
+
+    /* A status dot that is off, idle or unknown. Not `--dim`: that is ink, and
+       this is a filled shape whose only job is to read as "no signal" against
+       the panel it sits on. */
+    --inert: #4d5565;
+
+    /* -- the derivation controls --------------------------------------------
+       `--lift` is the colour a surface moves *toward* to read as hovered. On a
+       dark palette that is white; on a light one it is black, and flipping this
+       single token is what makes every hover in either layout stylesheet
+       correct in light mode
+       without one `@media` override or a second set of rules.
+
+       `--shadow` is the channel triplet a shadow is drawn in, as a bare `R G B`
+       so each use can set its own alpha. Pure black is right on a dark palette
+       and reads as dirt on a light one, where a shadow wants to be a cool tint
+       of the surface's own darkness.
+
+       `--wash` and `--edge` are how much of a window's *identity* hue bleeds
+       into its surface and its border; the wash is faint and the edge carries
+       the rest. `--tint` is the same idea for a *semantic* hue — the amber
+       behind a destructive hover — and is held low enough that the hue stays
+       legible as ink on its own tint, which is the constraint that sets it.
+       `--tint-hover` is the deeper tint a control takes under the pointer. It
+       is a palette value rather than one fixed step: how far a hue can deepen
+       before it loses contrast against its own ink is a property of the
+       palette, and gruvbox dark runs out of room sooner than the rest. */
+    --lift: #ffffff;
+    /* Each maker's own colour, from its logo, and the same in every palette because
+       it is theirs rather than ours. */
+    --brand-deepseek: #4d6bfe;
+    --brand-glm: #0039c6;
+    --brand-qwen: #665cee;
+    --brand-ink: #ffffff;
+    /* The modal veil behind the settings dialog. Deliberately *not* derived from
+       `--shadow`: a scrim stays a dark veil in every palette, including light,
+       because what it communicates is "this is behind" and a pale veil says
+       nothing. It is the one place a near-black is correct on a white theme. */
+    --scrim: rgb(12 16 24 / 0.5);
+    /* The opaque fill a mask gradient needs. A mask reads only the alpha
+       channel, so this is not a palette choice and no theme overrides it — it is
+       a token because the rule against colour literals in rules has no
+       exception for a value nobody sees, and an exception is how the rule
+       widens. */
+    --mask-opaque: #000;
+    --shadow: 0 0 0;
+    --wash: 8%;
+    --edge: 35%;
+    --tint: 11%;
+    --tint-hover: 16%;
+
+    /* How far a surface moves toward `--lift` per step. Two steps, because the
+       file only ever needed two: a hover, and a track sunk below one. */
+    --lift-1: 7%;
+    --lift-2: 13%;
+
+    /* The native surfaces the UA paints and CSS cannot: form controls, the
+       caret, the text selection, and the scrollbar on any platform where
+       Blink's pseudo-elements do not apply. Declared so a light palette does
+       not get dark-mode widgets stamped over it. */
+    color-scheme: dark;
+    accent-color: var(--accent);
+  }
+
+  /* -- the derived surfaces ---------------------------------------------------
+     Written once here rather than at each of the forty-odd call sites that used
+     to carry a literal.
+
+     `--hover` is a control's hover. It mixes from `--panel` rather than from
+     `--surface-raised` because that is what the layout actually does: the chips
+     and rows that hover are transparent at rest and sit *on* a panel, so the
+     surface appearing under the pointer is the panel lifted, not a raised
+     control lifted again.
+
+     `--track` is the unfilled part of a meter or bar: sunk below the panel in
+     the same direction a hover rises, which reads as a channel. */
+  :root {
+    --hover: color-mix(in srgb, var(--lift) var(--lift-1), var(--panel));
+    --track: color-mix(in srgb, var(--lift) var(--lift-2), var(--panel));
+
+    /* A semantic hue laid into a surface: the user's own message, and the hover
+       on an act that warns or destroys. `--edge-warn` is the border that goes
+       with the amber one — the only tinted *border* in either stylesheet. */
+    --tint-accent: color-mix(in srgb, var(--accent) var(--tint), var(--panel));
+    --tint-accent-hover: color-mix(in srgb, var(--accent) var(--tint-hover), var(--panel));
+    --tint-bad: color-mix(in srgb, var(--bad) var(--tint), var(--panel));
+    --tint-warn: color-mix(in srgb, var(--warn) var(--tint), var(--panel));
+    --edge-warn: color-mix(in srgb, var(--warn) var(--edge), var(--line));
+  }
+
+  /* ===========================================================================
+     LIGHT
+
+     Not the dark palette inverted. An inversion gives you the same contrast
+     ratios with none of the intent: the hues have to come *down* in lightness
+     to stay legible on white, and the shadow stops being black. The surface
+     order is preserved rather than flipped — an inset well is still darker than
+     its card, and a raised control is still the one nearer the eye — because
+     the order is a statement about depth, not about brightness.
+
+     `--lift: #000` does most of the work. Every hover in the layout is a mix
+     toward `--lift`, so one token reverses all of them.
+     ======================================================================== */
+  :root[data-palette="light"], .swatch[data-palette="light"] {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --surface-raised: #eef0f4;
+    --surface-inset: #f0f2f5;
+    --line: #d6dae2;
+
+    --text: #1a1f29;
+    --dim: #5c6675;
+    --ink-on-accent: #ffffff;
+    --ink-emphatic: #000000;
+
+    /* Darkened against the dark palette's values — the same hues at the same
+       lightness are unreadable on white. Each clears 4.5:1 on `--panel` and on
+       `--hover`, which the test checks rather than trusts. */
+    --accent: #2d5fc4;
+    --warn: #8a5a12;
+    --bad: #c42d4c;
+    --ok: #3f7a22;
+    --violet: #7540c4;
+
+    --inert: #a8b0bd;
+
+    /* The direction every derived surface moves in. This line is the palette. */
+    --lift: #000000;
+    /* A cool near-black rather than pure black: a grey shadow on white reads as
+       smudge, and the slight blue keeps it reading as depth. */
+    --shadow: 24 30 42;
+
+    /* A wash shows at a lower percentage on a white panel than on a dark one,
+       and a hover needs a smaller step because the eye is adapted to light. */
+    --wash: 6%;
+    --tint: 10%;
+    --tint-hover: 16%;
+    --lift-1: 4%;
+    --lift-2: 8%;
+
+    color-scheme: light;
+  }
+
+  /* ===========================================================================
+     NORD
+
+     Nord (nordtheme.com) mapped onto the same roles, with two deliberate
+     departures from the published hexes.
+
+     The surfaces sit one step below the official Polar Night: `nord0` (#2e3440)
+     is specified as a *background*, and using it as the card left every hue
+     short of contrast on top of it. Here the window takes a darker shade and
+     `nord0`'s role passes to the panel beneath the official value.
+
+     `--bad` and `--violet` are lightened from `nord11` (#bf616a) and `nord15`
+     (#b48ead). This is not a liberty taken for taste: `nord11` measures 3.05:1
+     on `nord0`, and `--bad` carries real small text here — error messages, a
+     failed tool's state, the login fault. Authentic Nord is a beautiful palette
+     that is not accessible for red text on its own background, and an
+     unreadable error message is a bug, not a theme. The greens, blues and
+     yellows are the published values untouched.
+     ======================================================================== */
+  :root[data-palette="nord"], .swatch[data-palette="nord"] {
+    --bg: #1e232b;
+    --panel: #272c36;
+    --surface-raised: #333945;
+    --surface-inset: #191d24;
+    --line: #3f4654;
+
+    --text: #eceff4;
+    --dim: #9aa8bc;
+    --ink-on-accent: #1e232b;
+    --ink-emphatic: #ffffff;
+
+    --accent: #88c0d0;
+    --warn: #ebcb8b;
+    --bad: #dc9099;
+    --ok: #a3be8c;
+    --violet: #c4a3c5;
+
+    --inert: #55607a;
+
+    /* Nord lifts toward its own Snow Storm rather than pure white, which is
+       what keeps a hover inside the palette instead of bleaching out of it. */
+    --lift: #eceff4;
+    --shadow: 0 0 0;
+
+    color-scheme: dark;
+  }
+
+  /* ===========================================================================
+     EVERFOREST
+
+     Everforest (github.com/sainnhe/everforest) at its **hard** background in
+     both modes. The hard variant is the least washed-out of the three: bg_dim
+     and bg0 in dark, bg0 and bg1 in light. The four planes follow the scheme's
+     own background ladder — panel at bg0, the window below it (bg_dim in dark,
+     bg1 in light), a raised control above the panel in dark and below it in
+     light, and the well below the window. The dark well is bg_dim darkened a
+     step: the published scale stops at bg_dim, and an inset has to sit below
+     the window.
+
+     The light inks are not the published ones. Everforest's light `fg`
+     (#5c6a72) measures 5.40:1 on its own bg0 (#fffbef), its yellow 2.2:1 on
+     the card, and its red, green and blue between 2.8 and 3.3:1 there; they
+     are darkened until they pass, keeping the hue, for the reason Nord's red
+     is lightened. The light line is bg4 darkened a step too: the published bg4
+     measures 1.22:1 on the card, below the 1.35:1 floor a border has to clear.
+     The dark side keeps the published fg, accent and meanings,
+     except the red: it clears 4.5:1 on the card but not on the hover or on its
+     own tint, so it is lightened a step. `--lift-1` is 5% rather than 7%
+     because the published fg is also the lift, and at 7% the hovered surface
+     came within 6.95:1 of the prose it carries.
+     ======================================================================== */
+  :root[data-palette="everforest-dark"], .swatch[data-palette="everforest-dark"] {
+    --bg: #1e2326;
+    --panel: #272e33;
+    --surface-raised: #2e383c;
+    --surface-inset: #181c1e;
+    --line: #414b50;
+
+    --text: #d3c6aa;
+    --dim: #9da9a0;
+    --ink-on-accent: #1e2326;
+    --ink-emphatic: #fffbef;
+
+    --accent: #7fbbb3;
+    --warn: #dbbc7f;
+    --bad: #ea898b;
+    --ok: #a7c080;
+    --violet: #d699b6;
+
+    --inert: #4f5b58;
+
+    --lift: #d3c6aa;
+    --shadow: 0 0 0;
+    --tint: 8%;
+    --tint-hover: 12%;
+    --lift-1: 5%;
+    --lift-2: 10%;
+
+    color-scheme: dark;
+  }
+
+  :root[data-palette="everforest-light"], .swatch[data-palette="everforest-light"] {
+    --bg: #f8f5e4;
+    --panel: #fffbef;
+    --surface-raised: #f2efdf;
+    --surface-inset: #edeada;
+    --line: #d6d1be;
+
+    --text: #414b51;
+    --dim: #5b655a;
+    --ink-on-accent: #ffffff;
+    --ink-emphatic: #1e2326;
+
+    --accent: #28657f;
+    --warn: #7f5a00;
+    --bad: #a93937;
+    --ok: #5a6601;
+    --violet: #a04b85;
+
+    --inert: #a6b0a0;
+
+    --lift: #000000;
+    --shadow: 30 35 38;
+    --wash: 6%;
+    --tint: 10%;
+    --tint-hover: 14%;
+    --lift-1: 4%;
+    --lift-2: 8%;
+
+    color-scheme: light;
+  }
+
+  /* ===========================================================================
+     GRUVBOX
+
+     Gruvbox (github.com/morhetz/gruvbox) mapped onto the same roles. Dark uses
+     the published dark scale: dark0 for the window, dark1 for the card, dark2
+     for a raised control, and dark0_hard for the well below it. Light uses
+     light0_hard as the card — the panel has to be the lightest plane — with
+     light0 as the window, light0_soft the raised control and light1 the well.
+
+     The published bright red measures 3.37:1 on dark1 and the bright blue
+     4.31:1; the red carries error text and the blue is the accent, so both are
+     lightened until they clear the floors. The light theme's yellow measures
+     3.4:1 on its card and its green 4.3:1, so both are darkened; its blue, red
+     and magenta are the published faded values untouched. The hover step is 5%
+     and the resting tint 8% on dark because the lightened accent is the tight
+     pair. This theme also sets the New-session hover to 11%, the lowest of the
+     seven: 12% measures 4.47:1 with its accent ink.
+     ======================================================================== */
+  :root[data-palette="gruvbox-dark"], .swatch[data-palette="gruvbox-dark"] {
+    --bg: #282828;
+    --panel: #3c3836;
+    --surface-raised: #504945;
+    --surface-inset: #1d2021;
+    --line: #665c54;
+
+    --text: #ebdbb2;
+    --dim: #bdae93;
+    --ink-on-accent: #282828;
+    --ink-emphatic: #fbf1c7;
+
+    --accent: #a3bcb3;
+    --warn: #fabd2f;
+    --bad: #ff9f93;
+    --ok: #b8bb26;
+    --violet: #dc98aa;
+
+    --inert: #7c6f64;
+
+    --lift: #fbf1c7;
+    --shadow: 0 0 0;
+    --tint: 8%;
+    --tint-hover: 11%;
+    --lift-1: 5%;
+    --lift-2: 10%;
+
+    color-scheme: dark;
+  }
+
+  :root[data-palette="gruvbox-light"], .swatch[data-palette="gruvbox-light"] {
+    --bg: #fbf1c7;
+    --panel: #f9f5d7;
+    --surface-raised: #f2e5bc;
+    --surface-inset: #ebdbb2;
+    --line: #d5c4a1;
+
+    --text: #3c3836;
+    --dim: #635950;
+    --ink-on-accent: #ffffff;
+    --ink-emphatic: #282828;
+
+    --accent: #076678;
+    --warn: #7f520c;
+    --bad: #9d0006;
+    --ok: #615c0b;
+    --violet: #8f3f71;
+
+    --inert: #a89984;
+
+    --lift: #000000;
+    --shadow: 40 40 40;
+    --wash: 6%;
+    --tint: 10%;
+    --tint-hover: 14%;
+    --lift-1: 4%;
+    --lift-2: 8%;
+
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  /* Scrollbars. Chromium on Linux draws a persistent classic scrollbar in
+     system colours — a white track and grey stepper arrows — so every dark
+     surface here wears a bright, chunky stripe. Blink's scrollbar
+     pseudo-elements restyle it: a transparent track, a translucent rounded
+     thumb that firms up on hover, and no arrows. This is the *look* of
+     Chromium's overlay scrollbars; whether they also fade out when idle is a
+     browser feature flag (`OverlayScrollbar`), not something CSS turns on. */
+  *::-webkit-scrollbar { width: 12px; height: 12px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    /* The transparent border insets the thumb from the track's edges, so it
+       reads as a floating pill rather than a bar wedged against the content. */
+    background: color-mix(in srgb, var(--dim) 45%, transparent);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--dim) 70%, transparent);
+  }
+  *::-webkit-scrollbar-corner { background: transparent; }
+  *::-webkit-scrollbar-button { display: none; }

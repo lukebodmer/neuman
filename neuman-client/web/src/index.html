@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neuman</title>
+
+<!--
+  The icon: a Game of Life glider, the Private AI Solutions mark, drawn in
+  `favicon.svg` and rasterised from it.
+  Served from this directory like everything else here — `default.nix` copies
+  the whole of `src/`, so an asset needs no packaging change, and `img-src
+  'self'` already permits same-origin images, so it needs no CSP change either.
+
+  The SVG is first because a browser that can render it gets one drawing at
+  every size. The `.ico` is still declared for the browsers that ask for
+  `/favicon.ico` regardless of what is written here, and the PNGs are the
+  explicit sizes for everything else.
+
+  The touch icon is the same drawing with the tile's corners squared: iOS masks
+  an apple-touch-icon itself, so a rounded source would be rounded twice.
+-->
+<link rel="icon" href="favicon.svg" type="image/svg+xml" />
+<link rel="icon" href="favicon.ico" sizes="any" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+
+<!--
+  Six files, no build step, no dependencies: this page, two scripts and three
+  stylesheets.
+
+  It was one file until the CSP was actually exercised in a browser:
+  `style-src 'self'` and `script-src 'self'` permit *same-origin files* and
+  never inline content, so every inline <style> and <script> in this page was
+  blocked and none of the JavaScript had ever run (N46). Everything that
+  appeared to work was the server; the login "worked" only because a native
+  form submission needs no script.
+
+  The split is the right way round. Weakening the CSP with 'unsafe-inline' on
+  the untrusted network surface (docs/spec.md §3) to keep a single file would be trading
+  a real defence for a convenience, and the convenience survives: six files
+  still edit-and-reload with no toolchain.
+
+  This is deliberately the smallest thing that exercises the whole protocol:
+  log in, open a session, stream tokens, approve a tool call, see the result.
+  It is meant to be iterated on, so it stays a file you can edit and reload
+  rather than a toolchain you have to run.
+
+  What it must get right is the security handshake, because that is the part
+  the server will refuse if the client is wrong and the part a rewrite would
+  most easily drop:
+
+    * the session token is in an HttpOnly cookie this page cannot read, and
+      never touches JavaScript;
+    * every unsafe request carries the CSRF token from the login response in
+      an `x-csrf-token` header — the cookie alone is not enough to act;
+    * the WebSocket authenticates on upgrade from the same cookie, so there is
+      no second login and no token in the URL.
+
+  Everything it renders comes from `contracts/schemas/ws.schema.json`. An
+  unknown message type is shown rather than ignored: a client that silently
+  drops what it does not understand is a client that hides a protocol change.
+-->
+
+<!-- The palette first: the tokens every colour in the file below comes
+     through, and the two base rules both documents share. It is a separate
+     file because the administration page needs it too and must not inherit a
+     line of this window's layout (N158). -->
+<link rel="stylesheet" href="palette.css" />
+<link rel="stylesheet" href="neuman.css" />
+<!-- The task view's layout: the overview, a task and its editor (D99). Its own
+     file because it is its own surface, drawn in this window's tokens. -->
+<link rel="stylesheet" href="tasks.css" />
+
+<!-- Login. Shown until /api/me succeeds, which is also the reconnect path: a
+     server restart invalidates the session and the page returns here. -->
+<!-- Not a `<form>`.
+     The credentials-in-the-URL problem (N44) came from a real form submission:
+     the handler calls preventDefault(), but a submit that happens before the
+     script has run — or after anything in it throws — gets the browser default,
+     which is a GET with the fields in the query string.
+     `method="post"` fixed the leak and replaced it with a POST to `/` that the
+     origin guard correctly rejects as `Origin: null`, because a native form
+     submission is not a fetch and carries no usable Origin. Right refusal,
+     wrong request.
+     A div cannot submit. There is no default behaviour to suppress, so no
+     ordering or exception can produce one — which is the only version of this
+     that is safe to get wrong. Enter still works, wired explicitly below. -->
+<div id="login">
+  <h1 id="login-title">Neuman</h1>
+  <input id="username" name="username" placeholder="username" autocomplete="username" required />
+  <input id="password" name="password" type="password" placeholder="password" autocomplete="current-password" required />
+  <button class="primary" id="login-go">Sign in</button>
+  <div class="msg" id="login-msg"></div>
+</div>
+
+<!-- The session rail: the working set first, then past sessions. `GET
+     /api/sessions` names what is stored and `GET /api/sessions/{id}` opens one;
+     `GET /api/active` names the account's working set — what is running, what
+     was opened recently, and what holds a reply nobody has read — which is one
+     list for every window and every device. A session with a turn in flight
+     keeps its socket and its own transcript here; the rail says which of them
+     is thinking, which is waiting for a person, and which is doing that in
+     another window — and a call waiting for a verdict is drawn from the
+     branch's own record of the wait, so it can be answered wherever it is seen
+     (D63).
+
+     An overlay at every width: it floats over the transcript with a shadow, so
+     opening a glance beside the transcript never squeezes the transcript. It
+     reads top-down as the brand, the way to start a session, and the list.
+
+     It holds the task list too. Tasks in the foot turns this rail into the
+     task list and the window into the task view, keeping the brand, New and
+     the search box where they are; Sessions in the same place turns it back
+     (D99). -->
+<aside id="sessions" class="hidden">
+  <!-- The brand and the three controls that act on the list: start a session,
+       search it, and order it. The wordmark lives here because this is the one
+       persistent region on the left edge; there is no global bar to carry it. -->
+  <div id="sessions-head">
+    <!-- The brand and, beside it, which list the rail is showing. A sibling
+         rather than a child: `applyAgentName` writes the brand's text. -->
+    <div id="sessions-title">
+      <div id="sessions-brand">Neuman</div>
+      <span id="rail-mode" class="hidden">Tasks</span>
+    </div>
+    <!-- The rail's primary act, and deliberately not a filled one: the accent
+         fill made it the loudest thing in the panel, and the search and sort
+         beneath it read as another application's controls. It is a tinted
+         surface with accent ink instead — a box, so it still reads as a button,
+         spending one hue rather than a slab of it. The plus is a drawn path for
+         the rule stated throughout this file: a typed pictograph renders at a
+         different weight, baseline and colour in every font the appliance might
+         fall back to. -->
+    <button id="new">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      <span id="new-label">New session</span>
+    </button>
+    <!-- The search and the sort, on one row because both order what is under
+         them: one narrows the list by what was said, the other decides which
+         date puts a row where. The sort control is the small drawn glyph at the
+         right end — three lines losing length, the shape a list that is being
+         arranged reads as. Its menu drops over the list rather than escaping
+         the panel: unlike a row's action menu, which is parented to `body`
+         because the row it anchors to can scroll out from under it, this one is
+         anchored to a fixed row of the head. -->
+    <div id="sessions-find">
+      <input id="sessions-filter" class="chooser-filter" type="text" spellcheck="false"
+             autocomplete="off" autocapitalize="off" placeholder="Search sessions…"
+             aria-label="Search sessions" />
+      <button id="sessions-sort" type="button" aria-haspopup="menu" aria-expanded="false"
+              title="Sort sessions" aria-label="Sort sessions">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2.5 4h11M2.5 8h7M2.5 12h4" fill="none" stroke="currentColor"
+                stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+      </button>
+      <!-- The two dates a session has. `Last activity` is the default and the
+           one the list shows when it opens: the row you want is almost always
+           the one you were last working in. "Activity" rather than "used" or
+           "opened" because it is exactly what the time is — the newest of the
+           session's creation, the last thing said in it, and the moment it was
+           closed — and because the server's own retention clock is the same
+           fact under the same name. -->
+      <div id="sessions-sort-menu" class="hidden" role="menu" aria-label="Sort sessions">
+        <button type="button" role="menuitemradio" data-sort="used" aria-checked="true">
+          Last activity
+        </button>
+        <button type="button" role="menuitemradio" data-sort="created" aria-checked="false">
+          Date created
+        </button>
+      </div>
+    </div>
+  </div>
+  <div id="sessions-list"></div>
+  <div id="tasks-list" class="hidden"></div>
+  <!-- The way into the administration page, and only an administrator gets the
+       row. It is here rather than in Settings because Settings is about the
+       account and this is about the appliance, and because the page's own rail
+       ends in Back to chat, so the door and the way back are the same spot on
+       the same edge (D91). A link, because it goes somewhere: it leaves this
+       window for a different job, tables and mutations, not a conversation. -->
+  <div id="sessions-foot" class="hidden">
+    <!-- Tasks is every account's own work, so this row is not gated on
+         authority the way Manage is: a person can schedule their own agent
+         without being an operator. A button, not a link: it changes what this
+         window shows rather than leaving it, and the count beside it is how a
+         run that needs a look reaches someone in a conversation (D99). -->
+    <button id="tasks-link" type="button">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="5.2" fill="none" stroke="currentColor"
+                stroke-width="1.6" />
+        <path d="M8 5v3.2l2.1 1.3" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      Tasks
+      <span id="tasks-badge" class="hidden"></span>
+    </button>
+    <button id="sessions-link" type="button" class="hidden">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M3 3.5h10v7H7l-3 2.5v-2.5H3z" fill="none" stroke="currentColor"
+              stroke-width="1.5" stroke-linejoin="round" />
+      </svg>
+      Sessions
+    </button>
+    <a id="admin-link" href="/admin.html" class="hidden">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M2.5 5h6M11.5 5h2M2.5 11h2M7.5 11h6" fill="none" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" />
+        <circle cx="10" cy="5" r="1.6" fill="none" stroke="currentColor"
+                stroke-width="1.6" />
+        <circle cx="6" cy="11" r="1.6" fill="none" stroke="currentColor"
+                stroke-width="1.6" />
+      </svg>
+      <span id="admin-link-label">Manage Neuman</span>
+    </a>
+  </div>
+</aside>
+<!-- The fold grip, a fixed control straddling the rail's edge. A grip inside the
+     pane would fold away with it and leave nothing to click, so it sits outside.
+     It drags to set the rail's width and folds it on a click that does not move. -->
+<button id="sessions-grip" type="button" aria-expanded="true" aria-controls="sessions"
+        title="Hide the session list">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7z"/></svg>
+  <!-- The rail folded is the one state where a turn in flight has no other
+       surface. The count is the number of running sessions, and turns amber
+       with a `!` when one of them is blocked on a human (D63). -->
+  <span id="sessions-grip-badge" class="hidden" aria-hidden="true"></span>
+</button>
+<!-- The rail's right edge as a drag handle, full height. It resizes and nothing
+     else — the grip owns the fold — so a press on it that does not move does
+     nothing. Pointer-only: the grip is the keyboard control. -->
+<div id="sessions-resize" aria-hidden="true"></div>
+
+<!-- The account: a circle in the window's top-right corner. It is the one control
+     with no region to belong to — nothing in the transcript, the rail or the
+     composer owns "who am I" — so it is pinned to the corner instead, where a
+     round avatar reads as the signed-in person. The initials stand for the name;
+     `title` and `aria-label` carry the whole of it, and the menu holds Settings
+     and Sign out. It replaced a gear glyph, which named neither act and was the
+     one typed pictograph this file otherwise avoids.
+
+     It opens Settings *directly* now rather than a two-item menu. The menu held
+     Settings and Sign out, which made the one thing people came for two clicks
+     away; Sign out moved into the dialog's sidebar, where it reads as the last
+     item of the account surface rather than as a peer of "Settings". One
+     surface fewer, and `aria-haspopup="dialog"` because that is now what it
+     opens. -->
+<button id="account-toggle" title="Account and settings" aria-haspopup="dialog"
+        aria-expanded="false">
+  <span id="account-initials"></span>
+</button>
+
+<!-- Settings: a centered modal over a scrim, not a card in the corner.
+     It grew past what a corner card can hold. A 360px panel pinned under the
+     chip was right while the content was one read-only policy list; with
+     interface preferences, the account's own instructions, a permissions
+     reading and usage it needs two axes — a column of sections and a body wide
+     enough to show a table — and anchoring that to a chip in the corner would
+     put a 600px dialog half off the screen.
+
+     Centered, so it is the thing you are looking at; over a scrim, so what it
+     covers is visibly inactive rather than merely behind. It deliberately does
+     *not* fill the window: the transcript stays visible around it, because this
+     is consulted mid-conversation and a full-screen takeover loses the place
+     you were reading.
+
+     Dismissed by the scrim, by Escape, or by the close button — the same three
+     ways as every other floating surface here, and the scrim is what makes
+     "click anywhere else" a real target rather than a guess. -->
+<div id="scrim" class="hidden"></div>
+<aside id="settings" class="hidden" role="dialog" aria-modal="true"
+       aria-labelledby="settings-title" tabindex="-1">
+  <!-- The tabs. A column rather than a row across the top: the names read
+       faster stacked, and a vertical list has room for the account's own name
+       above it and Sign out below — so the sidebar is the whole account surface
+       and the body is only ever the selected section. -->
+  <nav id="settings-nav" role="tablist" aria-orientation="vertical"
+       aria-label="Settings sections">
+    <div id="settings-who">
+      <span id="settings-name"></span>
+    </div>
+    <button role="tab" id="tab-interface" aria-controls="pane-interface"
+            aria-selected="true">Interface</button>
+    <button role="tab" id="tab-account" aria-controls="pane-account"
+            aria-selected="false">Account</button>
+    <button role="tab" id="tab-sessions" aria-controls="pane-sessions"
+            aria-selected="false">Sessions</button>
+    <button role="tab" id="tab-assistant" aria-controls="pane-assistant"
+            aria-selected="false">Assistant</button>
+    <button role="tab" id="tab-permissions" aria-controls="pane-permissions"
+            aria-selected="false">Permissions</button>
+    <button role="tab" id="tab-usage" aria-controls="pane-usage"
+            aria-selected="false">Usage</button>
+
+    <!-- Pinned to the bottom of the sidebar, away from the tabs, because it is
+         not a section you visit — it is the way out of the appliance. -->
+    <button id="logout">Sign out</button>
+  </nav>
+
+  <div id="settings-main">
+    <div id="settings-head">
+      <h2 id="settings-title">Interface</h2>
+      <button id="settings-close" aria-label="Close settings">✕</button>
+    </div>
+
+    <div id="settings-body">
+      <!-- Interface: preferences about the account, not governed state. They
+           ride with the identity rather than `localStorage` for the reason D53
+           gives — someone signing in from a second machine wants their own
+           theme, and the server has to be able to write them for
+           `customize-neuman`. -->
+      <section id="pane-interface" role="tabpanel" aria-labelledby="tab-interface">
+        <!-- The theme picker, first: it is the preference you can see the effect
+             of while the dialog is still open, and the one most people come here
+             for. A row of swatch buttons rather than a `<select>` — a colour
+             scheme is a thing you look at, and a dropdown hides every option
+             but the chosen one behind a click. `aria-pressed` carries the state
+             rather than a checked radio, because these are buttons that act
+             immediately rather than a form to submit.
+
+             The swatches are drawn from each theme's own tokens, so a theme
+             whose colours change cannot end up with a stale sample beside it —
+             the same reason nothing else here hardcodes a colour. -->
+        <div class="pref pref-block">
+          <span>
+            <span class="pref-name">Theme</span>
+            <span class="pref-what">Applies immediately, and follows this
+              account rather than this browser.</span>
+          </span>
+          <div id="pref-palette" role="group" aria-label="Theme">
+            <button type="button" data-palette="dark" aria-pressed="true">
+              <span class="swatch" data-palette="dark" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Dark
+            </button>
+            <button type="button" data-palette="light" aria-pressed="false">
+              <span class="swatch" data-palette="light" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Light
+            </button>
+            <button type="button" data-palette="nord" aria-pressed="false">
+              <span class="swatch" data-palette="nord" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Nord
+            </button>
+            <button type="button" data-palette="everforest-dark" aria-pressed="false">
+              <span class="swatch" data-palette="everforest-dark" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Everforest Dark
+            </button>
+            <button type="button" data-palette="everforest-light" aria-pressed="false">
+              <span class="swatch" data-palette="everforest-light" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Everforest Light
+            </button>
+            <button type="button" data-palette="gruvbox-dark" aria-pressed="false">
+              <span class="swatch" data-palette="gruvbox-dark" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Gruvbox Dark
+            </button>
+            <button type="button" data-palette="gruvbox-light" aria-pressed="false">
+              <span class="swatch" data-palette="gruvbox-light" aria-hidden="true"><i class="sw-bg"></i><i class="sw-panel"></i><i class="sw-accent"></i></span>
+              Gruvbox Light
+            </button>
+          </div>
+        </div>
+        <label class="pref">
+          <input type="checkbox" id="pref-hide-reasoning">
+          <span>
+            <span class="pref-name">Collapse the reasoning chain</span>
+            <span class="pref-what">Thinking still streams and is still
+              recorded — its row starts closed instead of opening itself.</span>
+          </span>
+        </label>
+      </section>
+
+      <!-- Sessions: how long this window keeps a session open once it stops
+           being live. Its own section rather than a row in Interface because it
+           is about the working set rather than about how the client looks, and
+           because the answer is a number with a unit rather than a switch.
+
+           A preference of the account, not of the browser, and stored like the
+           table: it is about how this person works, so it follows them to
+           another machine, while what it *acts on* — the views this window
+           holds — is per window (D53, D63). The number input writes on change,
+           not on every keystroke, for the reason the instructions box writes on
+           Save: half-typed numbers are not settings. -->
+      <!-- Account: the one credential this person owns. A temporary password an
+           administrator set is replaced here; the server refuses every route
+           except this one until it is. -->
+      <section id="pane-account" role="tabpanel" aria-labelledby="tab-account"
+               class="hidden">
+        <div class="pref pref-block">
+          <span>
+            <span class="pref-name">Change password</span>
+            <span class="pref-what">At least 12 characters. A password an
+              administrator gave you is temporary; replace it here.</span>
+          </span>
+          <div class="pw-form">
+            <input id="pw-current" type="password" placeholder="current password"
+                   autocomplete="current-password" />
+            <input id="pw-new" type="password" placeholder="new password (12+ characters)"
+                   autocomplete="new-password" />
+            <input id="pw-repeat" type="password" placeholder="repeat new password"
+                   autocomplete="new-password" />
+            <button id="pw-save" type="button">Change password</button>
+            <p id="pw-note" class="pref-what" role="status"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="pane-sessions" role="tabpanel" aria-labelledby="tab-sessions"
+               class="hidden">
+        <div class="pref pref-block">
+          <span>
+            <span class="pref-name" id="pref-active-minutes-name">Keep sessions active for</span>
+            <span class="pref-what" id="pref-active-minutes-what">A session stays in
+              Active this many minutes after you last opened it or said anything in it.
+              The list is the account's, not this window's, so opening one on your laptop
+              keeps it there on your phone too. A turn that is running and a reply you
+              have not read stay until they are dealt with, whatever this says. 0 keeps
+              only the session on screen and whatever is running.</span>
+          </span>
+          <div class="pref-row">
+            <input type="number" id="pref-active-minutes" min="0" max="1440"
+                   step="5" inputmode="numeric"
+                   aria-labelledby="pref-active-minutes-name"
+                   aria-describedby="pref-active-minutes-what" />
+            <span class="pref-what" aria-hidden="true">minutes</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Assistant: the person's own standing instructions, the middle tier
+           between the operator's text in the administration page and the
+           working directory's `AGENTS.md` (D65). Account-scoped rather than per
+           session, because a style preference is not something to retype in
+           every conversation.
+
+           Additive: it cannot replace the generated prompt, so it cannot drop
+           the identity or the untrusted-output rule, and it grants nothing —
+           reach is policy. That is the one part of Open WebUI's per-account
+           system prompt this deliberately does not copy. -->
+      <section id="pane-assistant" role="tabpanel" aria-labelledby="tab-assistant"
+               class="hidden">
+        <div class="pref pref-block">
+          <span>
+            <span class="pref-name" id="pref-instructions-label">Your instructions</span>
+            <span class="pref-what">Added to every conversation on this account.
+              Say how you want replies shaped — how long, how formal, what to
+              skip. It cannot change what Neuman can reach or approve.</span>
+          </span>
+          <textarea id="pref-instructions" rows="8" maxlength="2000"
+                    aria-labelledby="pref-instructions-label"
+                    aria-describedby="pref-instructions-note"
+                    placeholder="e.g. Keep replies short. Use bulleted lists for steps and prose for explanations."></textarea>
+          <div class="pref-row">
+            <span class="pref-what" id="pref-instructions-count" aria-hidden="true"></span>
+            <button type="button" id="pref-instructions-save" disabled>Save</button>
+          </div>
+          <p class="hint" id="pref-instructions-note" role="status"></p>
+        </div>
+
+        <div class="pref pref-block">
+          <span>
+            <span class="pref-name">Default model</span>
+            <span class="pref-what">What a new conversation starts with. A
+              conversation keeps its own choice once you change it there, so
+              this only decides where the next one begins.</span>
+          </span>
+          <div class="pref-row">
+            <select id="pref-default-model" aria-label="Default model"></select>
+            <select id="pref-default-reasoning" aria-label="Default reasoning level"></select>
+          </div>
+          <p class="hint" id="pref-default-note" role="status"></p>
+        </div>
+      </section>
+
+      <!-- Permissions: a reading, never a control. Tools are deliberately gone
+           from here — the composer's tool chip is where a person sees and
+           chooses them (D50), and two renderings of one grant is the drift this
+           file keeps warning about. What is left is the reach itself: where
+           this account can read and write, what it can reach on the network,
+           and the guardrails around a turn. -->
+      <section id="pane-permissions" role="tabpanel" aria-labelledby="tab-permissions"
+               class="hidden"></section>
+
+      <!-- Usage: today, against today's cap. -->
+      <section id="pane-usage" role="tabpanel" aria-labelledby="tab-usage"
+               class="hidden"></section>
+    </div>
+  </div>
+</aside>
+
+<div id="log" class="hidden"></div>
+<!-- The task view, in the transcript's place, and its bar in the composer's:
+     Run now where Send is, Save while editing. Both are drawn by `tasks.js`. -->
+<main id="tasks-view" class="hidden" aria-label="Tasks"><div id="tasks-content"></div></main>
+<footer id="tasks-dock" class="hidden"></footer>
+
+<!-- Everything between the transcript and the message box answers one question:
+     what will the model see? The working directory, the attached files, and the
+     message being typed, in that order — so the context a turn carries reads
+     bottom-up as one group rather than being split across the window.
+
+     Both selectors open *upward* as cards floating above the context panel (see
+     the CSS): a menu below them would be off the bottom of the viewport.
+
+     Neither is a grant. A working directory outside what policy grants for
+     reading is refused by the server, and an attachment is a path the agent reads
+     with `fs_read` — the sandbox profile is still built from policy either way.
+     A file dropped anywhere on the window becomes one of those paths: the daemon
+     serving this page writes it to its own `drops/` directory (D102). -->
+
+<!-- One container, so the rule above the group belongs to the group. With a
+     border on each of the three instead, whichever ones were visible drew a
+     hairline through a continuous panel. -->
+<div id="context" class="hidden">
+  <!-- The way back to the tail after scrolling up in the transcript. It floats
+       just above this card, inside the transcript's region but outside `#log`'s
+       flow — a control in that flow would add height to the very thing it is
+       meant to scroll. Shown only when the reader has left the bottom and there
+       is more below (N141), and it is the button counterpart to the wheel: one
+       sets the state, the other returns to it. -->
+  <button id="jump-live" class="hidden" title="Jump to latest" aria-label="Jump to latest">
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M5 10.5l5 5 5-5" /></svg>
+  </button>
+  <!-- A chooser, not a filesystem browser. The OS file dialog never gives a web
+       page an absolute path, and the server runs as `neuman` so it cannot list a
+       0700 home to draw one itself. What it *can* do is offer the paths policy
+       actually reaches — which has a property a browser lacks, in that it cannot
+       offer something the server will refuse.
+
+       Inside `#context` and absolutely positioned off its top edge, so a chooser
+       is a card floating above the thing it configures rather than a strip across
+       the window. In flow they were full-bleed bars at the bottom of the screen —
+       furniture belonging to the browser, pushing the composer down as they grew.
+       Anchoring them to the card means they inherit its measure and alignment for
+       free, and opening one no longer moves the message box. -->
+  <!-- Each chooser is a type-ahead field over a list of rows.
+       The field is a *sibling* of the row list, not inside it: both render
+       functions clear their list with `innerHTML = ""` on every navigation, and
+       an input in that subtree would be destroyed mid-keystroke — losing focus,
+       the caret and whatever had been typed, on the very keystroke that caused
+       the navigation.
+
+       It replaces an invisible filter. Printable keys were already captured and
+       matched against the rows, but with nothing on screen showing what had been
+       typed: the list simply got shorter and Backspace was the only way to find
+       out why. The same keystrokes now land in a field that says what it has.
+
+       It also takes a whole path. Typing or pasting `/srv/eng/docs` and pressing
+       Enter goes there directly, which is the part that makes a deep tree
+       bearable — the alternative was a click per level. -->
+  <div id="cwd-menu" class="hidden" aria-label="Working directory">
+    <input id="cwd-filter" class="chooser-filter" type="text" spellcheck="false"
+           autocomplete="off" autocapitalize="off" placeholder="Filter, or type a path…"
+           aria-label="Filter directories, or type an absolute path"
+           aria-controls="cwd-rows" />
+    <!-- Three panels, one per level: where the directory sits (left), the
+         directory itself (centre), and the contents of the row highlighted there
+         (right). The centre is the only panel a choice is taken from; the sides
+         are context, and they are what stopped the chevron on the right of a row
+         from being the only way into a folder. Each panel scrolls on its own — a
+         filter that scrolls off the top of the list it filters is worse than
+         none.
+
+         The crumb bar is a container rather than a built element because the
+         path and the button change on every navigation and every selection, and
+         `paintCrumbs` is the one writer of both. -->
+    <div id="cwd-crumbs" class="crumbs"></div>
+    <div class="chooser-strip">
+      <div class="chooser-panel left">
+        <div id="cwd-left-head" class="chooser-head"></div>
+        <div id="cwd-left" class="chooser-rows" role="listbox" aria-label="Parent directory"></div>
+      </div>
+      <div class="chooser-panel">
+        <div id="cwd-centre-head" class="chooser-head"></div>
+        <div id="cwd-rows" class="chooser-rows" role="listbox" tabindex="-1"
+             aria-label="Directories"></div>
+      </div>
+      <div class="chooser-panel right">
+        <div id="cwd-right-head" class="chooser-head"></div>
+        <div id="cwd-right" class="chooser-rows" role="listbox"
+             aria-label="Contents of the highlighted folder"></div>
+      </div>
+    </div>
+    <!-- Clearing the directory is the one act here that is not a choice of
+         directory, so it is the menu's footer rather than a row in the list: a
+         row would be read as another directory, and it would have to live inside
+         the `listbox`, where a button is not allowed. Hidden by default and
+         shown by `showWorkingDir` only while a directory is set — a control that
+         clears what is not set is a dead one, and `hidden` in the markup keeps
+         it off screen in the moment before any session has been read. -->
+    <button id="cwd-clear" class="chooser-clear hidden">Clear working directory</button>
+  </div>
+  <div id="attach-menu" class="hidden" aria-label="Attach a file">
+    <input id="attach-filter" class="chooser-filter" type="text" spellcheck="false"
+           autocomplete="off" autocapitalize="off" placeholder="Filter, or type a path…"
+           aria-label="Filter files, or type an absolute path"
+           aria-controls="attach-rows" />
+    <div id="attach-crumbs" class="crumbs"></div>
+    <div class="chooser-strip">
+      <div class="chooser-panel left">
+        <div id="attach-left-head" class="chooser-head"></div>
+        <div id="attach-left" class="chooser-rows" role="listbox" aria-label="Parent directory"></div>
+      </div>
+      <div class="chooser-panel">
+        <div id="attach-centre-head" class="chooser-head"></div>
+        <div id="attach-rows" class="chooser-rows" role="listbox" tabindex="-1"
+             aria-label="Files and directories"></div>
+      </div>
+      <div class="chooser-panel right">
+        <div id="attach-right-head" class="chooser-head"></div>
+        <div id="attach-right" class="chooser-rows" role="listbox"
+             aria-label="Contents of the highlighted folder"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- One input surface, not a row of separate widgets.
+       The border, background and focus ring belong to this element; the textarea
+       inside it is transparent and borderless, and the buttons are bare glyphs
+       on the same field. A bordered box beside a bordered button beside another
+       bordered button is the arrangement that read as a 90s toolbar — the parts
+       are the same, what changed is that only the *group* is drawn.
+
+       The icons are inline SVG rather than emoji or glyph characters: 📎 and ⏹
+       render at a different weight, baseline and colour on every platform, and
+       one of them arrives in full colour whatever the theme. `currentColor` also
+       lets each button carry its own state colour without a second asset. -->
+  <footer class="hidden" id="composer">
+    <!-- The commands still running on this machine, above the files this
+         message carries. A person who started a build has to see it and stop
+         it without asking the model to (D98), and it is the one row here that
+         changes while the person does nothing. Hidden until there is one: an
+         empty strip is a line to read and dismiss on every turn.
+
+         Above the attachments because it is the same kind of fact — what this
+         field is carrying — and older: the job outlives the message that
+         started it, where an attachment belongs to the message being typed. -->
+    <div id="jobs" class="hidden"></div>
+    <!-- The attached files, inside the field rather than in a strip above it.
+         A chip is part of the message being composed — it is what this message
+         carries — and a bar with its own edge said the opposite: that the files
+         belonged to the window and the text belonged to the box.
+
+         Directly above the text they qualify, so the field grows downward from
+         them. `#composer` is a column for exactly this; the controls are the
+         row below. -->
+    <div id="attachments" class="hidden"></div>
+
+    <div id="composer-row">
+    <!-- The working directory comes first: it is the *scope* a message is sent
+         in, and an attachment is a thing added to the message within it. The
+         broader fact reads first, and the directory is also the one of the two
+         that persists across a whole conversation.
+
+         Still not a native dialog, and that is not a UI choice (gotcha N57): a
+         browser never hands a page an absolute path — `<input type="file">`
+         gives bytes and a bare filename — and a working directory *is* an
+         absolute path the server stores. The chooser produces real paths
+         because the listing runs in the runner as the user. -->
+    <button id="cwd-pick" title="Choose a working directory" aria-label="Choose a working directory" aria-expanded="false">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M2.75 15.25V5.5a1 1 0 0 1 1-1h3.4a1 1 0 0 1 .78.37l.92 1.13h7.4a1 1 0 0 1 1 1v8.25a1 1 0 0 1-1 1h-12.5a1 1 0 0 1-1-1Z" /></svg>
+    </button>
+    <!-- Attaching is "add something to this message", which is what a plus
+         says. The paperclip was a picture of a physical act nobody performs;
+         this is the same affordance every current chat surface uses. Beside the
+         directory because they are the same kind of act: both say what this
+         message carries with it. They used to sit in a strip above the
+         composer, which separated "the file I am attaching" from "the directory
+         I am working in" by a horizontal rule for no reason either states. -->
+    <button id="attach" title="Attach a file" aria-label="Attach a file" aria-expanded="false">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5v11M4.5 10h11" /></svg>
+    </button>
+    <textarea id="input" placeholder="Send a message…  (Enter to send, Shift+Enter for a newline)" rows="1"></textarea>
+    <!-- Stopping is control of *this turn*, so it belongs with the box that
+         steers this turn rather than in the header among global controls. Shown
+         only while a turn runs (`setBusy`): a permanently visible, permanently
+         disabled button is furniture.
+
+         A filled square is the stop glyph everywhere a transport control exists,
+         and it reads at this size where the word "Stop" needed room the row did
+         not have once the box became the frame. -->
+    <button id="interrupt" class="danger hidden" disabled title="Stop this turn" aria-label="Stop this turn">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="4.5" width="11" height="11" rx="2" fill="currentColor" stroke="none" /></svg>
+    </button>
+    <!-- An upward arrow, not the word. Send is the one control whose meaning is
+         fully carried by direction, and the label was the widest thing in a row
+         that is now inside the input itself. `aria-label` keeps the name. -->
+    <button class="primary" id="send" title="Send" aria-label="Send">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15.5v-11M5 9.5 10 4.5l5 5" /></svg>
+    </button>
+    </div>
+  </footer>
+
+  <!-- Token counts, below the composer rather than in the transcript.
+       They were a `note` after every turn, so the log filled with lines that are a
+       running total rather than part of the conversation — and each one pushed the
+       actual exchange further up. A status line is the right shape for a number that
+       is only ever its latest value. -->
+  <!-- The context bar. Hidden until a turn reports both a prompt size and a
+       window, because a bar needs a denominator and a guessed one is worse than
+       none — budgeting against a number nobody had recorded is what ended two
+       sessions (N86). `title` carries the exact figures for anyone who wants
+       them; the bar is for the glance that says "running out". -->
+  <!-- The footer states what is standing, and what the last turn cost.
+       Two kinds of fact, so two ends of one line: on the left the settings that
+       persist across turns — how often Neuman stops to ask, and where it works —
+       and on the right the numbers that are only ever their latest value.
+
+       The working directory moved down here from its own row above the
+       composer, and is a control now rather than the label it was: a press on
+       the path opens the same chooser the folder button in the field opens, so
+       the answer to "where am I" is also the way to change it. -->
+  <div id="status">
+    <!-- Approval, where the decisions are made.
+         It lived in Settings, which is now two clicks away behind the account
+         chip — so the one setting about a person's own attention was the
+         hardest thing in the UI to find, and invisible at the moment it
+         matters: before you send, not when the first card appears.
+
+         A chip rather than the three-button row it replaces. The row is right
+         for a settings panel and wrong here, where three permanently visible
+         buttons would outweigh the message box for a setting changed rarely.
+         The dot carries the state at a glance and the popover carries the
+         choice — which is the same shape as the session row menu, for the same
+         reason: a short list of named acts.
+
+         Not operator-gated, deliberately. `PUT /api/policy/auto-accept` needs
+         only an authenticated session, because this is a preference about the
+         person rather than about the appliance — which is also why it could not
+         move into the Models card, that being operator-only. -->
+    <button id="approval-chip" aria-haspopup="menu" aria-expanded="false">
+      <span class="dot"></span>
+      <span id="approval-mode">safe</span>
+    </button>
+
+    <!-- The model in use, and the way to what is resident and what it costs.
+         It moved down here from the header: the model is a per-turn scope
+         choice, the same family as approval and reasoning, and reasoning levels
+         are the model's own declaration, so the two belong adjacent.
+
+         For an operator the chip opens the models card; for everyone else the
+         plain `<select>` is the whole chooser, because `/api/models/state` is
+         operator-only (D32). One slot, `applyAdmin` swaps which control shows. -->
+    <button id="gpu-toggle" class="hidden" title="Models and GPU" aria-expanded="false">
+      <span id="gpu-model">—</span>
+    </button>
+    <!-- Hidden for an operator and shown for everyone else, and still the single
+         source of truth for what a turn sends. The *choosing* moved into the
+         model panel, where a row can say whether a model runs on this GPU and
+         what it costs; moving the value too would mean two places deciding which
+         model is in use. -->
+    <select id="model" title="Model"></select>
+
+    <!-- How hard the model thinks: the other per-turn choice on this line.
+         Moved here from the models panel, which is about which model is
+         installed rather than how the next turn runs. The levels are the
+         model's own declaration, so the chip is rebuilt when the model changes
+         and hidden entirely for a model that declares none.
+
+         The mark is a depth meter — one bar per live level, filled to the one in
+         force — and the word beside it is the level's own name. It was a fixed
+         sparkle, and a mark that never changes is decoration: the approval dot a
+         few pixels away is worth a glance precisely because it *is* the state.
+         Not coloured, though, and that is the difference. Approval's three hues
+         are a risk ramp (red stops everything, green stops nothing); a level is
+         not good or bad, so a colour here would invent a judgement and spend
+         red/amber/green where they have to keep meaning danger. A count carries
+         depth with no valence, which is why the bars are filled rather than
+         tinted. They are also shaped unlike the approval dot on purpose: a
+         round dot on this line already means risk. -->
+    <button id="reasoning-chip" class="hidden" aria-haspopup="menu" aria-expanded="false">
+      <span class="depth" aria-hidden="true"></span>
+      <span id="reasoning-level"></span>
+    </button>
+
+    <!-- Which branch of this session the next message runs in. Invisible until
+         there is more than one branch, because "main" on a session that has
+         never forked says nothing. A fork never adds a row to the rail: it adds
+         an entry here. -->
+    <button id="branch-chip" class="hidden" aria-haspopup="menu" aria-expanded="false"
+            title="Branches of this session">
+      <span id="branch-label">main</span>
+      <span class="chev" aria-hidden="true">▾</span>
+    </button>
+
+    <!-- The path, and the action that belongs to it. Hidden entirely when none
+         is set: a line saying "no working directory" states a default nobody
+         chose, and the folder button in the field is visible either way.
+
+         The path is a button rather than the label it was: it is shaped like
+         the chips beside it and opens the same chooser the folder button opens,
+         so the directory can be changed from where it is stated rather than
+         only from the field below. -->
+    <!-- The path is the control: a press opens the chooser, which is also where
+         the directory is cleared. That used to be a ✕ beside the path — a small
+         destructive target, one stray click from the path and from the setting
+         itself, for an act that belongs where you have already gone on
+         purpose. -->
+    <span id="cwd-bar" class="hidden">
+      <button id="cwd-current" title="Change the working directory" aria-expanded="false">no working directory</button>
+    </span>
+
+    <!-- The far end of the line: the last turn's numbers, then the chip that
+         narrows the tool set. The gauge sits inside the last mark on the line
+         rather than at its edge, because the chip is the control and the gauge
+         is a reading.
+
+         One group, because the auto margin that pushes this end as far right as
+         it goes has to belong to something that is always present. The chip is
+         hidden for an account granted fewer than two tools — a permanent state,
+         not a loading one — so a margin on the chip itself would leave the count
+         unpinned for that whole account, and the footer would end in empty space.
+         Held here, the group is pinned whatever the chip is doing. -->
+    <span id="status-end">
+      <!-- The last turn's numbers, stacked: what the turn used, over the bar
+           that says how close the context is to being summarized.
+
+           The count used to sit to the *right* of the bar, at the same size as
+           the chips beside it — so the three quietest characters on the line
+           read as another control rather than as the gauge's caption. Above it
+           and a size down, the pairing is unmistakable: the number is what went
+           in, and the bar is what that number means. -->
+      <span id="status-numbers">
+        <span id="usage"></span>
+        <span id="context-bar" class="hidden" title="">
+          <span id="context-fill"></span>
+        </span>
+      </span>
+
+      <!-- Which tools this conversation may use. The one per-turn scope choice
+           that is subtractive, so it sits beside the context bar it protects:
+           every tool advertised is schema in the window whether it is called or
+           not. Deselecting narrows what the model is told exists; it cannot
+           widen anything, because policy is still the ceiling and the gate
+           re-checks every call (D50). Hidden until the tool list has loaded,
+           and hidden for good when there is nothing to choose between. -->
+      <button id="tools-chip" class="hidden" aria-haspopup="dialog" aria-expanded="false"
+              title="Tools this conversation can use">
+        <svg class="wrench" viewBox="0 0 20 20" aria-hidden="true"><path d="M13.3 2a4.7 4.7 0 0 0-4.4 6.3L2.6 14.6a1.4 1.4 0 0 0 0 2l.8.8a1.4 1.4 0 0 0 2 0l6.3-6.3A4.7 4.7 0 0 0 18 6.7l-2.4 2.4-2.7-2.7L15.3 4a4.7 4.7 0 0 0-2-2z"/></svg>
+        <span id="tools-count"></span>
+      </button>
+    </span>
+  </div>
+
+  <div id="branch-menu" class="hidden" role="menu" aria-label="Branches">
+    <div id="branch-choices"></div>
+    <p class="hint">A branch is the same conversation up to the point it forked. Files and messages from before that point already happened.</p>
+  </div>
+
+  <!-- The three modes, opened from the chip. Rendered by `renderApproval`, the
+       same function that drew the settings row — one renderer, so the mode in
+       force and the ceiling cannot be stated two ways. -->
+  <div id="approval-menu" class="hidden" role="menu" aria-label="Approval mode">
+    <div id="approval-choices"></div>
+    <p class="hint" id="approval-current"></p>
+    <p class="hint" id="approval-ceiling"></p>
+  </div>
+
+  <!-- The reasoning levels the current model declares, one button each. A menu
+       rather than a segmented row on the status line: the levels change per
+       model, and a row that grows and shrinks with the model is the layout
+       shift the status line was built to avoid. -->
+  <div id="reasoning-menu" class="hidden" role="menu" aria-label="Reasoning level">
+    <div id="reasoning-choices"></div>
+    <p class="hint">How hard the model thinks on the next message.</p>
+  </div>
+
+  <!-- The tools this conversation may use, one checkbox each.
+       A dialog rather than a menu: a menu's items each do a thing and close,
+       and this is a set of independent toggles the user works through before
+       going back to typing. Tools policy does not grant are listed too, shown
+       as unavailable with the reason — the chooser is the one place a person can
+       see the whole surface, and a tool silently absent reads as a missing
+       feature rather than an ungranted one. -->
+  <aside id="tools-menu" class="hidden" role="dialog" aria-label="Tools">
+    <div class="tools-head">
+      <strong>Tools for this conversation</strong>
+      <!-- One control, two states. A separate "clear" would mean two buttons
+           where the question is binary, and the label says which way the press
+           goes rather than naming the state it is already in. -->
+      <button id="tools-all"></button>
+    </div>
+    <div id="tools-rows"></div>
+    <p class="hint" id="tools-hint"></p>
+  </aside>
+
+  <!-- What this appliance serves, what is resident, and what it costs.
+       Operator-only because GPU capacity and the model inventory are appliance
+       topology — an ordinary user picks a name from what policy grants and needs
+       nothing more. It opens *upward* from the model control on the status line,
+       like the other per-turn popovers, rather than hanging from a bar. -->
+  <aside id="models" class="hidden" role="dialog" aria-label="Models and GPU"></aside>
+</div>
+
+<!-- The branches at one fork point, opened from the node in the transcript.
+     A body-level card because the node is in a scrolling transcript: an
+     absolutely positioned menu inside `#log` would be clipped by its overflow
+     and would move with the text it annotates. It is deliberately small — the
+     parent (the branch the fork came from) and its children — because this is
+     the local question "what else starts here?", not the session's whole tree. -->
+<div id="fork-menu" class="hidden" role="menu" aria-label="Branches from this point"></div>
+
+<script src="neuman.js" defer></script>
+<script src="tasks.js" defer></script>

@@ -1,0 +1,32 @@
+{
+  "name": "Kimi-K3.1-Pro",
+  "label": "Kimi K3.1 Pro",
+  "logo": "kimi",
+  "notes": "A 1M-token window and image input, built for long coding runs. Always reasons, and reasons at max unless asked otherwise.",
+  "facts": {
+    "context_tokens": 1048576,
+    "reasoning": {
+      "control": "preserved",
+      "levels": ["low", "high", "max"]
+    }
+  },
+  "policy": {
+    "reasoning_default": "max"
+  },
+  "routes": {
+    "openrouter": {
+      "verified": "2026-11-05, GET https://openrouter.ai/api/v1/models and Moonshot's thinking-models and reasoning-effort guides; no turn spent yet",
+      "notes": "Prices are the listed rate; hosts behind the route range from $0.40 to $4 input, and the reported cost is what a turn is charged.",
+      "facts": {
+        "provider_model": "moonshotai/kimi-k3.1-pro",
+        "vision": true
+      },
+      "policy": {
+        "max_tokens": 131072,
+        "input_cost_per_m": 2,
+        "cached_input_cost_per_m": 0.2,
+        "output_cost_per_m": 10
+      }
+    }
+  }
+}

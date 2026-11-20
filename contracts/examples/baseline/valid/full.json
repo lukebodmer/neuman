@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "defaults": {"files_read": ["/usr/share/doc"]},
+  "roles": {
+    "engineer": {"tools": ["fs_read", "fs_write", "fs_search", "shell"], "files_read": ["/srv/eng"], "files_write": ["/srv/eng/work"]},
+    "auditor": {"tools": ["fs_read"], "files_read": ["/srv/finance"], "network": "none"}
+  },
+  "users": [
+    {"name": "alice", "roles": ["engineer"]},
+    {"name": "bob", "roles": ["auditor"]}
+  ]
+}

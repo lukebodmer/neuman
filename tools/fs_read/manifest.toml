@@ -1,0 +1,61 @@
+# Read a text file.
+#
+# The narrowest useful tool, and the one that defines the shape of the rest:
+# `needs = ["read"]` means the capability gate admits it only for a user whose
+# composed policy grants at least one readable path, and the manifest's `paths`
+# makes the client's tool host check the argument against those before the tool
+# runs. The tool itself does no checking, deliberately: one check upstream rather
+# than a second implementation inside every file tool.
+
+[tool]
+name = "fs_read"
+kind = "client"
+exec = "fs_read"
+summary = "Read a text file"
+description = """
+Read a UTF-8 text file. Returns the file's contents, or an error if the path is \
+outside your readable paths, is not a regular file, or is not valid UTF-8. Use \
+`offset` and `limit` to page through a large file rather than reading it whole. \
+When the returned page is not the whole file it ends with \
+`[showing lines X-Y of N; use offset=Z to continue]`; continue with that offset \
+until the notice is gone. A single line longer than a whole page — a minified \
+page, a spilled document — returns its first bytes and says how long the line is; \
+use `fs_search` to find text further inside it.
+"""
+
+wait_ms = 15000
+lifetime_ms = 15000
+max_output_bytes = 262144
+
+# The page is delivered inline: this tool bounds its own output by the caller's
+# `limit` and a byte budget, and announces when it stopped. Persisting it would
+# hand back a preview of a page the model explicitly asked for, and a scratch
+# file it rarely opens.
+persist_output = false
+
+# Reading changes nothing, so no approval is ever required for it.
+mutating = false
+critical = false
+
+needs = ["read"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["path"]
+
+[tool.parameters.properties.path]
+type = "string"
+description = "Absolute path of the file to read."
+
+[tool.parameters.properties.offset]
+type = "integer"
+minimum = 1
+description = "1-indexed line to start from. Omit to start at the beginning."
+
+[tool.parameters.properties.limit]
+type = "integer"
+minimum = 1
+maximum = 5000
+description = "Maximum number of lines to return."

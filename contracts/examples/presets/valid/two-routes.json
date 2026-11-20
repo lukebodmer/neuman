@@ -1,0 +1,28 @@
+{
+  "providers": {
+    "origin": {"label": "Origin", "url": "https://api.origin.test/v1", "key_url": "https://origin.test/keys", "logo": "origin"},
+    "router": {"label": "Router", "url": "https://router.test/api/v1"}
+  },
+  "models": {
+    "flash": {
+      "name": "Flash-1",
+      "label": "Flash 1",
+      "logo": "origin",
+      "notes": "Fast and cheap.",
+      "facts": {"context_tokens": 1048576, "vision": true},
+      "policy": {"reasoning_default": "high"},
+      "routes": {
+        "origin": {
+          "verified": "2026-10-20, the provider's guide",
+          "facts": {"provider_model": "flash", "reasoning": {"control": "budget", "levels": ["off", "high"]}},
+          "policy": {"max_tokens": 131072, "input_cost_per_m": 0.15, "cached_input_cost_per_m": 0.003, "output_cost_per_m": 0.6}
+        },
+        "router": {
+          "verified": "2026-10-16, GET /models",
+          "notes": "Cheaper input, a third of the output ceiling.",
+          "facts": {"provider_model": "origin/flash", "reasoning": {"control": "budget", "levels": ["off", "high"]}}
+        }
+      }
+    }
+  }
+}

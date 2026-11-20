@@ -1,0 +1,7 @@
+{
+  "label": "DeepSeek",
+  "logo": "deepseek",
+  "notes": "DeepSeek's own API. The longest replies its models allow, at the origin's prices.",
+  "url": "https://api.deepseek.com/v1",
+  "key_url": "https://platform.deepseek.com/api_keys"
+}

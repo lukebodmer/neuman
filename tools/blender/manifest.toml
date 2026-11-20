@@ -1,0 +1,109 @@
+# Change the scene in the user's Blender.
+#
+# Blender is the user's, like the browser (D31): the Blender package's host runs
+# it on their machine in a window they work in, started by the client when one
+# of these tools first needs it, and answers on a `0600` socket in their runtime
+# directory (D101). Not MCP: a manifest already states what a tool needs,
+# and a tool list discovered from a running program at dispatch time is what D3
+# forbids (D100).
+#
+# `mutating = true` because `exec` runs model-written Python inside Blender as
+# the user — `python`'s blast radius, plus the open scene — and `open`, `save`,
+# `export` and `render` change the scene or write files. Looking is split out
+# into `blender_scene` and `blender_view`, which do not ask under `safe`: an
+# agent building a model looks after every change, and a prompt per look would
+# make the loop unusable (D59). `critical = false` for `python`'s reason.
+#
+# `paths = ["path"]`, checked against the account's *write* surfaces because the
+# tool is mutating. That covers `open` too, which costs something: a .blend on a
+# read-only share cannot be opened here and has to be copied somewhere writable
+# first.
+#
+# Never a background job (D98), unlike `python`. Stopping a job kills the tool
+# process, and here that would not stop Blender, which finishes the code it was
+# given — its main thread cannot be interrupted from outside — so `job_kill`
+# would be a control that lies. The call waits instead, up to ten minutes for a
+# render, and a timeout says the work may still be running in Blender.
+
+[tool]
+name = "blender"
+kind = "client"
+# `neuman-blender-tool`, not `blender`, for `python`'s reason: a file called
+# `blender` in a bin directory that reaches a PATH shadows Blender itself.
+exec = "neuman-blender-tool"
+summary = "Build and change 3D models in the user's live Blender"
+description = """
+Change the scene in the user's own Blender, which is open in a window they can \
+see and work in while you do. Every change you make appears there immediately, \
+and each call is one step on Blender's undo stack, named "Neuman: …", so the user \
+can Ctrl-Z it.
+
+Actions:
+- `exec`: run Python `code` inside Blender. `bpy`, `bmesh` and `mathutils` are \
+already imported. Whatever the code prints is returned; an exception returns its \
+traceback and fails the call (changes made before it stay, and are undoable). \
+Each call starts with a fresh namespace, so define helpers in the same call that \
+uses them. The code runs with a 3D viewport as its context, so `bpy.ops` \
+operators that need one work.
+- `new`: replace the scene with an empty one (no camera, no light). Unsaved work \
+in the current scene is lost — check `blender_scene` for "(modified)" and ask \
+before discarding something the user made.
+- `open`: open the .blend at `path`. Scripts embedded in the file never run.
+- `save`: save to `path`, or to the file it was opened from when `path` is omitted.
+- `export`: write the scene to `path`; the extension picks the format \
+(.glb, .gltf, .obj, .stl, .ply, .fbx, .usd/.usda/.usdc/.usdz). \
+`selected_only` exports just the selection.
+- `render`: a final render from the scene camera to the PNG at `path`, with the \
+scene's own engine and settings. Can take minutes, and Blender's window is frozen \
+while it runs.
+
+A call that runs past ten minutes times out, but Blender keeps running the work \
+until it finishes — check `blender_scene` before repeating it.
+
+Building a model from a description: work in metres with Z up. Make one part per \
+call and give every object a meaningful name; prefer `bpy.data` and `bmesh` for \
+geometry you compute, and modifiers (bevel, subdivision, mirror, array, boolean, \
+solidify) for shape you would otherwise model vertex by vertex. Give surfaces \
+materials through the Principled BSDF node's "Base Color", "Metallic" and \
+"Roughness" inputs. After each change, look: `blender_view` shows you the result \
+and `blender_scene` lists names, sizes and counts — check proportions against \
+the request before moving on, and fix what is wrong rather than describing it.
+
+Paths must be inside your writable paths.
+
+If Blender is not open, the first call opens it and waits for it. If it is not \
+installed on the user's machine, the call is refused with where to get it: tell \
+the user, and do not try to work around it.
+"""
+
+wait_ms = 600000
+lifetime_ms = 600000
+max_output_bytes = 1048576
+
+mutating = true
+critical = false
+
+needs = ["read", "write"]
+paths = ["path"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["action"]
+
+[tool.parameters.properties.action]
+type = "string"
+enum = ["exec", "new", "open", "save", "export", "render"]
+description = "What to do."
+
+[tool.parameters.properties.code]
+type = "string"
+description = "For `exec`: Python to run inside Blender."
+
+[tool.parameters.properties.path]
+type = "string"
+description = "For `open`, `save`, `export` and `render`: an absolute file path."
+
+[tool.parameters.properties.selected_only]
+type = "boolean"
+description = "For `export`: export only the selected objects."

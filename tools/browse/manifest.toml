@@ -1,0 +1,78 @@
+# Drive the browser the user's machine owns.
+#
+# The browser is the user's, not the appliance's: `neuman-browser` runs on the
+# user's machine, starts a real Chromium there, and exposes its Chrome DevTools
+# Protocol endpoint on a socket the `browse` tool dials. This tool opens one tab
+# in that browser and reuses it. There is no server-side browser and no headless
+# fallback (D31): headless browsers are blocked by enough sites, unpredictably,
+# that one would be a support burden rather than a capability.
+#
+# `mutating = true` because `eval` runs model-chosen JavaScript in a page that may
+# hold a session. Under the default `auto_accept = "safe"` every call asks, which is
+# the correct direction for a tool that can click things on the internet.
+#
+# No `needs = ["network"]`: the endpoint is a Unix socket when one is configured,
+# and a socket is a filesystem object rather than a host. The browser uses the
+# user's own network exactly as it would if they had opened it by hand.
+
+[tool]
+name = "browse"
+kind = "client"
+exec = "browse"
+summary = "Browse the web in a visible Chromium window"
+description = """
+Browse the web in the user's own Chromium. Actions: `search` a query, `open` a \
+URL, `read` the current or a given page as text, `shot` a screenshot to a file \
+(then use fs_image to look at it), and `eval` JavaScript in the page. Neuman opens \
+one tab in the browser `neuman-browser` started and keeps that tab between calls, \
+so a search can be followed by opening a result without a window appearing each \
+time. If no browser is connected, the call fails and says so; there is no \
+headless fallback.
+"""
+
+# A cold Chromium start plus a page that renders slowly. Well under the appliance
+# ceiling, and `settle` inside the tool accounts for most of it.
+wait_ms = 90000
+lifetime_ms = 90000
+max_output_bytes = 262144
+
+mutating = true
+critical = false
+
+needs = ["read", "write"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["action"]
+
+[tool.parameters.properties.action]
+type = "string"
+enum = ["search", "open", "read", "shot", "eval"]
+description = "What to do."
+
+[tool.parameters.properties.query]
+type = "string"
+description = "For `search`: what to search for."
+
+[tool.parameters.properties.url]
+type = "string"
+description = "For `open`, `read` and `shot`: the page to go to first. Omit on `read`/`shot` to use the page already open."
+
+[tool.parameters.properties.path]
+type = "string"
+description = "For `shot`: absolute path to write the PNG to. Must be inside your writable paths."
+
+[tool.parameters.properties.expression]
+type = "string"
+description = "For `eval`: JavaScript to run in the page."
+
+[tool.parameters.properties.limit]
+type = "integer"
+minimum = 1
+maximum = 200000
+description = "For `search`, the number of results; for `read`, the characters of text."
+
+[tool.parameters.properties.full_page]
+type = "boolean"
+description = "For `shot`: capture the whole page rather than the viewport."

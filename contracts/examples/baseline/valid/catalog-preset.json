@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "defaults": {},
+  "roles": {},
+  "users": [],
+  "providers": {
+    "deepseek": {"url": "https://api.deepseek.com/v1", "api_key_file": "/var/lib/neuman/state/secrets/deepseek.key", "preset": "deepseek"}
+  },
+  "models": {
+    "DeepSeek-V4.1-Flash-1017": {
+      "provider": "deepseek",
+      "preset": "deepseek-v4_1-flash-1017",
+      "provider_model": "deepseek-flash",
+      "context_tokens": 1048576,
+      "vision": true,
+      "max_tokens": 131072,
+      "reasoning": {"control": "budget", "levels": ["off", "low", "high", "max"], "default": "high"}
+    }
+  }
+}

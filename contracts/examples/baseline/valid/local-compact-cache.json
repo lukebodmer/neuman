@@ -1,0 +1,1 @@
+{"schema_version": 2, "defaults": {}, "roles": {}, "users": [], "models": {"qwen-here": {"provider_model": "qwen-here", "preset": "qwen3_8-27b", "context_tokens": 131072, "local": {"gpu_layers": 99, "speculation": "draft-mtp", "kv_cache": "q8_0", "residency": "on-demand", "idle_minutes": 15}}}}

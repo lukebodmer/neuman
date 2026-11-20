@@ -1,0 +1,1 @@
+{"providers": {}, "models": {"m": {"name": "M", "label": "M", "local": {"verified": "x", "facts": {"weights": {"repo": "org/repo", "revision": "main", "files": [{"name": "m.gguf", "size": 10, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "role": "model"}]}}}}}}

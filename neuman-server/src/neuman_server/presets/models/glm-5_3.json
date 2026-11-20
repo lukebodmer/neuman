@@ -1,0 +1,135 @@
+{
+  "name": "GLM-5.3",
+  "label": "GLM 5.3",
+  "logo": "glm",
+  "notes": "Z.ai's flagship, text only, with a 1M-token window. Reasons at max unless asked otherwise.",
+  "facts": {
+    "context_tokens": 1048576,
+    "reasoning": {
+      "control": "effort",
+      "levels": [
+        "low",
+        "high",
+        "max"
+      ]
+    }
+  },
+  "policy": {
+    "reasoning_default": "max"
+  },
+  "routes": {
+    "openrouter": {
+      "verified": "2026-11-13, GET https://openrouter.ai/api/v1/models and its endpoints for z-ai/glm-5.3, and the chat template at zai-org/GLM-5.3; no turn spent yet",
+      "notes": "Prices are the listed rate; its hosts range from $0.07 to $0.19 input, and some cap output at 131,072.",
+      "facts": {
+        "provider_model": "z-ai/glm-5.3"
+      },
+      "policy": {
+        "max_tokens": 131072,
+        "input_cost_per_m": 0.084,
+        "cached_input_cost_per_m": 0.079,
+        "output_cost_per_m": 3.6
+      }
+    }
+  },
+  "local": {
+    "name": "GLM-5.3-Q4",
+    "verified": "2026-11-13, GET https://huggingface.co/api/models/unsloth/GLM-5.3-GGUF/revision/main?blobs=true; no turn spent and no vram measured",
+    "notes": "467 GB of weights in eleven shards and no projector: a machine with that much GPU or unified memory, not a single card.",
+    "facts": {
+      "weights": {
+        "repo": "unsloth/GLM-5.3-GGUF",
+        "revision": "346b3591c7f28d1a23716f97a065ecf12ec14771",
+        "files": [
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00001-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00001-of-00011.gguf",
+            "size": 9428677,
+            "sha256": "02a3e367e8b5f5ee3341d556211faa2cc956c3e77ad0e298c6805323bfaeb02d",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00002-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00002-of-00011.gguf",
+            "size": 49433942336,
+            "sha256": "374daff9e093b362a12ca89904fd0511df38b2a9794029e272c8639587a13402",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00003-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00003-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "9a13948a0c7747e374766ab32272e8bf5ee2ac260ed581419cc980c00df1bb9c",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00004-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00004-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "1fee29db6ab247f97e42cc7dd4132ce35f15f41fb42ba9110b73c25471171f9b",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00005-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00005-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "7d38557e09934a3f6cf4eb7aa7ea8c04929bf2d40db8ba8494529d51be04bb4e",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00006-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00006-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "3f6c47e4e32f7b1f9b844124622cc8d506facdb58e3304b9b4429b6c3af4f53d",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00007-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00007-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "03114618ca505e4dbd63e0c8fb478cb54db86ff32ddd3681160589d8a958db8e",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00008-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00008-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "e202e8679571572ae5ab490d021e3f0d0ada4794521464e6735e62516bedff96",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00009-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00009-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "05d81908bc8ffd1e2ff6bb6a4e7a347c455ce87d7d6c473415d37f1749f0a337",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00010-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00010-of-00011.gguf",
+            "size": 48566415136,
+            "sha256": "252eac782187e63ffdbf0650eb79538a53626991f7dfd06106cfbbd5eb1a0bb3",
+            "role": "model"
+          },
+          {
+            "name": "GLM-5.3-UD-Q4_K_XL-00011-of-00011.gguf",
+            "path": "UD-Q4_K_XL/GLM-5.3-UD-Q4_K_XL-00011-of-00011.gguf",
+            "size": 29314424736,
+            "sha256": "d69bc418b2a08103d1b42340e803e1a98582d3766e4593c4a490475ac5bb811b",
+            "role": "model"
+          }
+        ]
+      },
+      "model_flags": [
+        "--jinja"
+      ]
+    },
+    "policy": {
+      "context_size": 65536,
+      "max_tokens": 16384,
+      "gpu_layers": 99,
+      "residency": "on-demand",
+      "idle_minutes": 15
+    }
+  }
+}

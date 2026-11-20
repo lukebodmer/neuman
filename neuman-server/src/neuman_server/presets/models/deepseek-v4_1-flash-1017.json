@@ -1,0 +1,161 @@
+{
+  "name": "DeepSeek-V4.1-Flash-1017",
+  "label": "DeepSeek V4.1 Flash 1017",
+  "logo": "deepseek",
+  "notes": "The October 17 snapshot of V4.1 Flash: a 1M-token window and image input. Direct is for long replies, OpenRouter for cheap prompts.",
+  "facts": {
+    "context_tokens": 1048576,
+    "vision": true
+  },
+  "policy": {
+    "reasoning_default": "high"
+  },
+  "routes": {
+    "deepseek": {
+      "verified": "2026-10-20, DeepSeek's thinking-mode guide and pricing page; that `deepseek-flash` serves the 1017 snapshot, OpenRouter's model description on 2026-11-13",
+      "notes": "Up to 384,000 output tokens. Off-peak prices; peak is double.",
+      "facts": {
+        "provider_model": "deepseek-flash",
+        "reasoning": {
+          "control": "budget",
+          "levels": [
+            "off",
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      },
+      "policy": {
+        "max_tokens": 131072,
+        "input_cost_per_m": 0.15,
+        "cached_input_cost_per_m": 0.003,
+        "output_cost_per_m": 0.6
+      }
+    },
+    "openrouter": {
+      "verified": "2026-11-13, GET https://openrouter.ai/api/v1/models and its endpoints for deepseek/deepseek-v4.1-flash-1017",
+      "notes": "A quarter of the direct input price. Its hosts cap output between 131,072 and 943,718 tokens.",
+      "facts": {
+        "provider_model": "deepseek/deepseek-v4.1-flash-1017",
+        "reasoning": {
+          "control": "budget",
+          "levels": [
+            "off",
+            "low",
+            "high",
+            "max"
+          ]
+        }
+      },
+      "policy": {
+        "max_tokens": 131072,
+        "input_cost_per_m": 0.038,
+        "cached_input_cost_per_m": 0.01,
+        "output_cost_per_m": 0.5
+      }
+    }
+  },
+  "local": {
+    "name": "DeepSeek-V4.1-Flash-1017-Q4",
+    "verified": "2026-11-13, GET https://huggingface.co/api/models/unsloth/DeepSeek-V4.1-Flash-1017-GGUF/revision/main?blobs=true, and the chat template at deepseek-ai/DeepSeek-V4.1-Flash-1017; no turn spent and no vram measured",
+    "notes": "502 GB of weights in nine shards and a 1 GB vision projector: a machine with that much GPU or unified memory, not a single card.",
+    "facts": {
+      "weights": {
+        "repo": "unsloth/DeepSeek-V4.1-Flash-1017-GGUF",
+        "revision": "2688c0c3c2c3b052ec4f6d10a8417b0ef7ee4eba",
+        "files": [
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00001-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00001-of-00009.gguf",
+            "size": 5780589,
+            "sha256": "cc15d470afcb030558bbc4d8e2ccd840182e2e95de1a95198138efe63a5fd99f",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00002-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00002-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "17df217d8fc26a39f21ea40805dc6ab788c7ce8623a59a95c431051df7eafc94",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00003-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00003-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "0c8065f620a049cb437024c54ff12c314c94603a1cc683f5191be4689d6d6d3b",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00004-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00004-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "3bd8b2ebf8f51d8708a73ae0895f8d4acc7e4c983ba4e89d038492b203cc89ac",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00005-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00005-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "929054a6bbf3701765779b58c37988b6c6284a3b8413901858b59c0e95f37cc3",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00006-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00006-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "49d3de04bd6a09de786c9ef7db900eae02ee9fd391573f91a923013d7d5b24d3",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00007-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00007-of-00009.gguf",
+            "size": 48129640000,
+            "sha256": "f18feae5878dd680f1ea87ecd1d84f4fb098480298b25a3162dcbdab8dc2ca5b",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00008-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00008-of-00009.gguf",
+            "size": 202758032592,
+            "sha256": "12df293355efbd104b088a77e13ee22410fb1ec3f7ab3863947f09896e64bec7",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00009-of-00009.gguf",
+            "path": "UD-Q4_K_XL/DeepSeek-V4.1-Flash-1017-UD-Q4_K_XL-00009-of-00009.gguf",
+            "size": 9165923392,
+            "sha256": "c21ad6105a780bc2f44eb7dd41f9b1a1efb4e8ec87618f60b733bc2652bd2ffe",
+            "role": "model"
+          },
+          {
+            "name": "DeepSeek-V4.1-Flash-1017-mmproj-F16.gguf",
+            "path": "mmproj-F16.gguf",
+            "size": 971004064,
+            "sha256": "dad8ad13f1d9a25757e121592d7b4f8ca83620d1172048004998b7c0b964b18e",
+            "role": "mmproj"
+          }
+        ]
+      },
+      "model_flags": [
+        "--jinja"
+      ],
+      "reasoning": {
+        "control": "effort",
+        "levels": [
+          "none",
+          "low",
+          "high",
+          "max"
+        ]
+      }
+    },
+    "policy": {
+      "context_size": 65536,
+      "max_tokens": 16384,
+      "gpu_layers": 99,
+      "residency": "on-demand",
+      "idle_minutes": 15
+    }
+  }
+}

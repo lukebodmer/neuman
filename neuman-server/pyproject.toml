@@ -1,0 +1,66 @@
+[project]
+name = "neuman-server"
+version = "0.1.0"
+description = "Neuman's decision core"
+requires-python = ">=3.12"
+# Runtime dependencies for a non-Nix install. The appliance's flake supplies
+# the same set; keeping this list honest is what lets the server run from a
+# wheel or an image without the module.
+dependencies = [
+  "argon2-cffi>=23",
+  "jsonschema>=4",
+  "psycopg[binary,pool]>=3",
+  "starlette>=0.37",
+  "uvicorn>=0.30",
+  "websockets>=12",
+]
+
+# The unit names a command, not an incantation. `python -m neuman_server`
+# works too and is what the dev shell uses, but a systemd ExecStart pointing
+# at an interpreter plus a module is a place for the PYTHONPATH to be wrong.
+[project.scripts]
+neuman-server = "neuman_server.__main__:main"
+# The two units beside it (D78, D79): standard library only, from this package
+# so they read the presets the server ships.
+neuman-runtime = "neuman_server.runtime.host:main"
+neuman-fetch = "neuman_server.runtime.fetch:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+neuman_server = [
+  "foundation/db/migrations/*.sql",
+  # The presets the administration page offers (D76). Data, not code, and
+  # read at startup from beside the package.
+  "presets/providers/*.json",
+  "presets/models/*.json",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 96
+
+[tool.ruff.lint]
+# BLE is on so that every broad `except Exception` has to justify itself with a
+# `# noqa: BLE001` and a reason. There are a handful, and each one is a place
+# where failing closed beats propagating: one bad tool must not end a turn, a
+# failed mirror write must not fail an audit append, a crashed background job
+# must not take the server down.
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF", "BLE"]
+# The docstrings are prose and use en dashes deliberately. RUF002 exists to
+# catch look-alike characters in identifiers, which this is not.
+ignore = ["RUF002"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+# The layering (docs/decisions.md D7) is enforced by tests/test_layering.py, which is a
+# short AST walk rather than a third-party linter: `import-linter` is not in
+# nixpkgs, and the rules are specific enough that the check is shorter than its
+# configuration would be. Same reasoning as our own schema codegen.

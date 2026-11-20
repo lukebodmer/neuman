@@ -1,0 +1,1 @@
+{"tool": {"name": "fs_read", "kind": "client", "description": "Read a file.", "exec": "fs_read", "wait_ms": 5000, "lifetime_ms": 5000, "max_output_bytes": 262144, "mutating": false, "critical": false, "needs": ["execute"], "parameters": {}}}

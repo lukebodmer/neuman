@@ -1,0 +1,59 @@
+# Look at a background job: how it is doing, and the output not yet seen.
+#
+# A command that outlives its wait becomes a job (D98), and this is how the
+# model follows it. Answered by the client daemon itself, not a program: the
+# jobs live in the daemon and a subprocess could not see them, so there is no
+# `exec` and `daemon = true` says why (tool-manifest.schema.json).
+#
+# The output is shaped for the context it lands in. A look returns only what the
+# model has not been shown — the dispatch's preview counts as shown — and only
+# the end of that: a few lines while the job runs, more once it has ended, and
+# the spill file's path only when something was left out. Every byte here is
+# re-sent with every later request of the session, and a long build looked at
+# ten times must not cost ten copies of its log (`neuman_client/jobs.py`).
+#
+# It waits by default, for the same reason: one look that returns when the job
+# ends is one result, and a model polling every few seconds pays a step per poll.
+#
+# `needs = []` and not mutating: reading the account's own job output reaches
+# nothing the dispatch that started it did not, and asks nobody. The session
+# fence is the daemon's — a look finds only the asking session's jobs.
+
+[tool]
+name = "job_output"
+kind = "client"
+daemon = true
+summary = "Follow a background job"
+description = """
+Look at a background job — a command that was still running at its wait and \
+kept going. Waits up to `wait_s` seconds (default 300) for the job to end, then \
+says whether it is running or how it ended, followed by the output you have not \
+seen yet: the last lines only, with the path of the full output when some was \
+left out. Pass `wait_s: 0` to check without waiting. Omit `job_id` to list this \
+session's jobs.
+"""
+
+# The longest a look may wait. The operator's NEUMAN_TOOL_WAIT_MS can only
+# shorten it; a look never outlives its wait, so the two are equal.
+wait_ms = 600000
+lifetime_ms = 600000
+max_output_bytes = 16384
+
+mutating = false
+critical = false
+
+needs = []
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+
+[tool.parameters.properties.job_id]
+type = "string"
+description = "The job's id, from the result that started it. Omit it to list this session's jobs."
+
+[tool.parameters.properties.wait_s]
+type = "integer"
+minimum = 0
+maximum = 600
+description = "Seconds to wait for the job to end before answering. Default 300; 0 answers at once."

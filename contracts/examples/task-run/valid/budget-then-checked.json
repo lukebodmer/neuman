@@ -1,0 +1,60 @@
+{
+  "id": "fedcba9876543210fedcba9876543210",
+  "task_id": "0123456789abcdef0123456789abcdef",
+  "account": "alice",
+  "trigger": "schedule",
+  "status": "budget",
+  "inputs": {
+    "kind": "sweep"
+  },
+  "run_dir": "/data/runs/2026-11-10-fedcba9876543210fedcba9876543210",
+  "steps": [
+    {
+      "name": "prepare",
+      "kind": "run",
+      "status": "succeeded",
+      "started_at": "2026-11-10T14:15:20Z",
+      "finished_at": "2026-11-10T14:17:05Z",
+      "exit_code": 0,
+      "error": null,
+      "dispatch_id": "d-01"
+    },
+    {
+      "name": "research",
+      "kind": "agent",
+      "status": "budget",
+      "started_at": "2026-11-10T14:17:06Z",
+      "finished_at": "2026-11-10T14:39:50Z",
+      "exit_code": null,
+      "error": "max_iterations",
+      "session_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "branch_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "iterations": 200,
+      "cost_usd": 0.31,
+      "tokens": 412800
+    },
+    {
+      "name": "check",
+      "kind": "run",
+      "status": "succeeded",
+      "started_at": "2026-11-10T14:39:51Z",
+      "finished_at": "2026-11-10T14:41:02Z",
+      "exit_code": 0,
+      "error": null,
+      "output": "claims.json valid (31 claims)\nreport.md links resolve (58)\n3 passed",
+      "dispatch_id": "d-02"
+    }
+  ],
+  "outputs_present": [
+    "claims.json",
+    "report.md",
+    "result.json"
+  ],
+  "due_at": "2026-11-10T14:15:00Z",
+  "started_at": "2026-11-10T14:15:20Z",
+  "finished_at": "2026-11-10T14:41:02Z",
+  "error": null,
+  "cost_usd": 0.31,
+  "tokens": 412800,
+  "created_at": "2026-11-10T14:15:00Z"
+}

@@ -1,0 +1,7 @@
+{
+  "label": "OpenRouter",
+  "logo": "openrouter",
+  "notes": "A router serving many vendors' models under one key. Often cheaper input; a route's output ceiling can be lower than the origin's.",
+  "url": "https://openrouter.ai/api/v1",
+  "key_url": "https://openrouter.ai/settings/keys"
+}

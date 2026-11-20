@@ -1,0 +1,6 @@
+{
+  "schema_version": 2,
+  "defaults": {"files_read": ["$HOME"], "files_write": ["$HOME"], "auto_accept": "safe"},
+  "roles": {},
+  "users": [{"name": "alice"}]
+}

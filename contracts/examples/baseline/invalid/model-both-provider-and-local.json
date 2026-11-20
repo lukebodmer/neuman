@@ -1,0 +1,1 @@
+{"schema_version": 2, "defaults": {}, "roles": {}, "users": [], "providers": {"p": {"url": "https://p.test/v1"}}, "models": {"m": {"provider": "p", "provider_model": "m", "local": {}}}}

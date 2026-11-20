@@ -1,0 +1,90 @@
+# Run Python in the working directory's own environment.
+#
+# The environment is a lookup, not a privilege. `nix-direnv` has already
+# realised the project's flake and left the result on disk as declarative text,
+# so resolving it needs no evaluator, no network and no store write: the tool
+# parses the cache, carries six variables, and execs the interpreter the
+# directory means. It never sources the rc — sourcing would execute text found
+# inside a repository Neuman was merely pointed at, which inverts D23: injected
+# text may propose work, never widen reach.
+#
+# `mutating = true` for `shell`'s reason and with `shell`'s known limitation:
+# the flag describes the tool and a *call* is what mutates. `print(1 + 1)`
+# changes nothing and `open(p, "w")` does. Declaring it false to avoid the
+# prompting would skip approval for every destructive script, so it errs closed.
+# This tool sharpens the case for per-call classification rather than resolving
+# it — a model reaches for Python to do arithmetic far more often than it
+# reaches for a shell.
+#
+# `critical = false`: `yolo` runs scripts without asking, which on this machine
+# means they can delete. The operator who wants a prompt does not run `yolo`.
+#
+# A script runs as the user, with the user's environment and network. What
+# stands between a script and the filesystem is the approval verdict, and that is
+# the whole control: there is no sandbox to try to escape.
+
+[tool]
+name = "python"
+kind = "client"
+# `neuman-python`, not `python`. `exec` is resolved by joining the tool
+# directory with this name, so any name works — and the package is an ordinary
+# one that may end up on a PATH, where a file called `python` would shadow the
+# interpreter for everything that searches it. The obvious name stays free
+# deliberately: nothing that runs inside the dispatch needs this file.
+exec = "neuman-python"
+summary = "Run Python in the project's own environment"
+description = """
+Run Python in the working directory's own development environment, with that \
+project's packages available. The environment comes from the directory's \
+`.direnv` cache, so it is the same interpreter and the same packages the user \
+gets in their own shell there — if the project has numpy, so do you. \
+A directory with no development environment is fine: you get the standard \
+library, which is all most work needs. Only a project that *declares* an \
+environment it has not built is refused — report what that says, because the \
+fix is the user entering the directory, not a different script. \
+`os.remove` and `os.rename` work here: the script runs as the user, on their \
+own machine. There is no trash behind them and no undo. \
+Use `action="describe"` to see which interpreter resolves here and which \
+packages it can import, before running anything that depends on one. \
+When two readings of the data would give different answers, prefer a short \
+script that tells them apart over a long one that assumes one of them. \
+A script still running after five minutes keeps running as a background job \
+when you have `job_output`, and is killed otherwise; the result says which.
+"""
+
+# A script doing real work — loading a dataframe, running a simulation step —
+# against a cold import of a large package. A longer wait than `shell`'s two
+# minutes because that is a command and this is a program; past it the script
+# becomes a background job, as a long command does (D98), and the hour is the
+# hard cap. D15's separate `started` deadline still catches a client that never
+# begins.
+wait_ms = 300000
+lifetime_ms = 3600000
+max_output_bytes = 1048576
+
+mutating = true
+critical = false
+
+# Both, because a script can do either and the gate needs the account to hold
+# the reach. Read alone would be a lie: the obvious use of this tool writes a
+# file.
+needs = ["read", "write"]
+
+[tool.parameters]
+type = "object"
+additionalProperties = false
+required = ["action"]
+
+[tool.parameters.properties.action]
+type = "string"
+enum = ["run", "describe"]
+description = "`run` executes `code`; `describe` reports the resolved interpreter and import path without running anything."
+
+[tool.parameters.properties.code]
+type = "string"
+minLength = 1
+description = "For `run`: the Python source to execute. Runs as a program, not a REPL — print what you want to see."
+
+[tool.parameters.properties.cwd]
+type = "string"
+description = "Absolute path of a *different* project whose environment to use. Omit this: the dispatch already starts in the session's working directory, so the environment there is found without being named."

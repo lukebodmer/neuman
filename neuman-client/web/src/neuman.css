@@ -1,0 +1,2495 @@
+  /* ===========================================================================
+     THE CHAT WINDOW
+
+     The palette is `palette.css`, which `index.html` loads first; everything
+     below is this document's layout. It never leaves this document: the
+     administration page has its own `admin.css` for that, and no stylesheet is
+     shared except the palette. Every colour here comes through a token, because
+     a literal in a rule is a colour one palette gets right and the others get
+     wrong (N158).
+
+     Three numbers live here rather than in the palette. They are measurements
+     of this window — the rail's width, the strip it leaves at the edge, the
+     stage's fixed height — and a palette file has no rail and no stage. They
+     were once declared among the palette's colours, where a rewrite of one
+     theme could have taken a layout width with it.
+     ======================================================================== */
+  :root {
+    /* The strip the rail leaves at the edge of a window too narrow to hold it.
+       Derived rather than chosen, because two controls are pinned to that edge:
+       the grip is a 28px circle centred *on* the edge, so it needs 14px of
+       overhang to be grabbable, and the account circle is 36px wide at
+       `right: 16px`, so it starts 52px in. Declared here so the rail's width
+       and the width the drag handler restores are one number (N121). */
+    --rail-strip: 52px;
+
+    /* The height of the work stage — the one card that holds the current
+       step's detail. **Fixed, not a maximum.** A card that is content-sized
+       below a cap still changes the transcript's height every time one step
+       replaces another, and that is the jerk this number removes: the stage is
+       the same box for a thought and for a call, so advancing the run adds a
+       row and moves nothing else (D62). `40vh` keeps it a fraction of the
+       window on a small screen; `420px` is where the old thinking body and
+       every output box already stopped. */
+    --step-h: min(40vh, 420px);
+
+    /* The rail's width. A variable because the grip that rides its edge must
+       agree with the box it straddles, and a second copy of the number is how a
+       handle and its divider come apart (N121).
+
+       **16rem, with the window as a ceiling rather than a scale.** The width is
+       a reading measure — how much of a session title is worth showing — so it
+       is not the viewport's business, and a `22vw` middle term made the same
+       rail a different width in two browsers whose windows were not the same
+       size, and *narrower* than this constant on every window under 1164px
+       (N136). `min()` keeps the readable width where there is room and lets the
+       window overrule it only where there is not. `vw` is safe here because the
+       document never scrolls sideways — `html` is `overflow-x: clip` and takes
+       its height from `100%` (N132) — so the unit and the visible area agree. */
+    --sessions-width: min(16rem, calc(100vw - var(--rail-strip)));
+  }
+  /* The document never scrolls sideways, and its height follows the viewport
+     rather than `100vh`. Two faults came from missing this: a wide row in the
+     transcript pushed a page-wide horizontal scrollbar, and that scrollbar made
+     `height: 100vh` a hair taller than the visible area, so a vertical scrollbar
+     appeared and clipped the fixed controls on the right edge — the account
+     circle and the rail grip. `clip` rather than `hidden` so no scroll
+     container is created and nothing can scroll the page sideways, not even
+     `scrollIntoView`; `height: 100%` so the body tracks the area the scrollbars
+     actually leave. */
+  html { height: 100%; overflow-x: clip; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    height: 100%;
+    /* One column: the transcript, with the composer beneath it. There is no
+       second pane. A step's detail is mounted inline under its row, so the
+       reading measure is the only column and the box you write into shares it.
+       The rail is *not* a track either — it is a fixed overlay, so opening it
+       never squeezes the transcript (see `#sessions`). */
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 1fr auto;
+    grid-template-areas:
+      "log"
+      "composer";
+  }
+  /* The login page predates the grid and is a single centred card: it has no
+     sidebar and no composer, so it opts out rather than leaving three empty
+     grid areas behind it. */
+  body:has(#login:not(.hidden)) { display: flex; flex-direction: column; }
+  /* The account: a round avatar in the window's top-right corner. It is the one
+     control with no region to belong to — nothing in the transcript, the rail or
+     the composer owns "who am I" — so it is pinned to the corner, where a circle
+     carrying the signed-in initials is the shape a reader already reads as "your
+     account". A square reads as a button among buttons; a circle reads as an
+     identity. The name is not on the face because the face has to stay the same
+     size for every account; `title` and `aria-label` carry it instead. */
+  #account-toggle {
+    position: fixed;
+    top: 12px;
+    right: 16px;
+    z-index: 25;
+    width: 36px; height: 36px; padding: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: ui-monospace, monospace;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.03em;
+    color: var(--hue);
+    /* Flat, like every other surface here. It had a 155° gradient, a border
+       mixed 55% toward the hue, and a glow ring on hover — the only gradient in
+       the stylesheet and the only glow, which made the one piece of chrome with
+       no region to belong to also the one that did not look like the appliance.
+       A flat fill on the same `--hover` the buttons use, the ordinary `--line`
+       edge, and the hue left where it was already doing the work: the initials.
+       The colour still maps the control to what it opens; the chrome no longer
+       announces itself. */
+    background: var(--hover);
+    border: 1px solid var(--line);
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+  }
+  /* A border-colour change, which is what `button:hover` does everywhere else —
+     the hue rather than `--accent`, so the control keeps saying which surface it
+     belongs to. Nothing grows: a ring that expands on hover is the futuristic
+     tell this control had and nothing else here does. */
+  #account-toggle:hover, #account-toggle[aria-expanded="true"] {
+    border-color: var(--hue);
+  }
+  #account-initials { line-height: 1; transform: translateY(0.5px); }
+
+  button {
+    font: inherit;
+    padding: 6px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: var(--hover);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--ink-on-accent); font-weight: 600; }
+  /* A filled button needs a hover of its own: `button:hover` only moves the
+     border, and this one's border is already the accent, so the login button
+     read as dead under the pointer. Mixed toward `--lift` — the direction every
+     surface in this file moves on hover — so the light palette darkens rather
+     than glowing. */
+  button.primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 86%, var(--lift));
+    border-color: color-mix(in srgb, var(--accent) 86%, var(--lift));
+  }
+  button.danger { border-color: var(--bad); color: var(--bad); }
+  input, select, textarea {
+    font: inherit;
+    background: var(--surface-inset);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+
+  #log {
+    grid-area: log;
+    flex: 1;
+    /* Without this the transcript cannot scroll at all, and the symptom is not
+       "the log overflows" — it is that the *page* overflows and the composer and
+       any Approve button are pushed off the bottom of the viewport.
+
+       `flex: 1` sets `flex-basis: 0%`, but a flex item's `min-height` defaults to
+       `auto`, which in a column flexbox means "never shrink below your content".
+       So `overflow-y: auto` had nothing to scroll: the element was always exactly
+       as tall as its contents. `min-height: 0` lets it be shorter than what it
+       holds, which is the precondition for scrolling.
+
+       `min-width: 0` is the same declaration for the other axis: a grid item's
+       `min-width` defaults to `auto`, so the column refused to shrink below its
+       content and the transcript painted over whatever was beside it. */
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    /* The transcript owns its own follow state. Browser scroll anchoring fights
+       an in-place open near the bottom by moving the viewport, which is the
+       one thing a history press must not do (D64). */
+    overflow-anchor: none;
+    /* The transcript never widens the page. Wide content (code, diffs, files)
+       scrolls inside its own card; the column itself clips, so a stray wide line
+       cannot raise a page-wide scrollbar. */
+    overflow-x: hidden;
+    /* The top padding clears the account circle, which is fixed in the corner the
+       transcript now reaches — there is no pane on the right to keep it off. */
+    padding: 52px 16px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  /* Nothing in the transcript shrinks to fit the window.
+     `#log` is a flex column, and a flex item's `flex-shrink` defaults to 1 — so when
+     the content exceeded the viewport the browser did not create a scroll range, it
+     *compressed every child proportionally*. Measured: four tool cards at 76px each
+     with `scrollHeight == clientHeight`, so there was literally nothing to scroll to.
+     A message has the height its content needs; the log is what scrolls (N77). */
+  #log > * { flex-shrink: 0; }
+  /* A conversation shorter than the window sits at the foot of the transcript,
+     beside the composer, rather than floating at the top of an empty page: the
+     message just sent belongs next to the box it was sent from. The auto margin
+     takes the free space while the log is short; once it overflows the margin
+     resolves to zero and the scroll range is the content's own. This is also
+     what keeps the work stage at the bottom in a new conversation (D62). */
+  #log > :first-child { margin-top: auto; }
+  /* The blank a folding stage holds at the tail. A zero-height element at the
+     end of the transcript; the negative margin cancels the column gap, so its
+     height is exactly the space being held. It is the last child, and every
+     append goes in front of it. */
+  #log > .tail-reserve { height: 0; margin-top: -10px; flex: none; }
+  /* A measure, not a monitor.
+     Full-bleed text on a wide screen is unreadable — the eye loses the line it
+     is returning to. The column is centred and the margins are empty on purpose:
+     a transcript is prose and reads like prose.
+
+     The *measure* is the padding, not the element. Bounding `#log` to 88ch made
+     the scrollable box 88ch wide too, so the wheel did nothing over the empty
+     margins — you had to put the pointer in the middle third of the window to
+     scroll, which is the kind of thing that feels broken without being
+     explicable. The element now fills the area and holds its contents in by
+     padding, so every pixel of the region scrolls the thing under it. */
+  #log { padding-inline: max(16px, calc((100% - 78ch) / 2)); }
+
+  /* The draft, before anything has been said.
+
+     The heading and the message box read as one object here, the way they do in
+     ChatGPT and Claude: an invitation and the thing you answer it with. A box
+     pinned to the bottom of an empty window reads as neither — it is furniture
+     waiting for a conversation that has not started.
+
+     So in the draft the box lifts off the floor of the window and the heading
+     sits above it. Nothing about the composer's own styling changes, so there
+     is one card in one measure in both states — it moves, it does not become a
+     different thing. How it is centred is below. */
+  .hero { text-align: center; padding: 0 16px 20px; }
+  .hero h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+
+  /* **The message box is what gets centred**, with the heading above it.
+
+     Earlier versions centred the *pair* by balancing the two rows — the log row
+     bottom-aligned its hero, the composer row took a `34vh` bottom margin — so
+     the heading landed near the middle and the box sat below it. The thing you
+     came to use should be the thing at the centre, so the box is now centred and
+     the invitation sits above it.
+
+     Done by collapsing the log row to nothing and giving the composer the whole
+     window to centre in. The heading then hangs *above* the box out of the
+     flow, which is the part that has to be deliberate: while the hero occupied
+     a real row, it pushed the flexible track down by its own height and the box
+     settled half that distance below the true centre — about 27px, enough to
+     look like a mistake rather than a choice.
+
+     `align-self: center` rather than a `vh` margin so the box stays centred as
+     the field grows: a margin fixes the *bottom* edge, so every new line of
+     typing pushes the box upward instead of expanding it around its middle.
+
+     `min-height: 0` because a grid item defaults to `auto`, which refuses to
+     shrink below its content and would re-introduce the overflow `#log` already
+     guards against.
+
+     Hero text is centred; the composer's is not. Centring the box's contents
+     would move the caret away from where typing starts. */
+  body.drafting {
+    grid-template-rows: 0 minmax(0, 1fr);
+  }
+  body.drafting #log {
+    flex: none;
+    min-height: 0;
+    /* The transcript scrolls; a hero has nothing to scroll, and a scrollbar
+       over an empty page is noise. */
+    overflow-y: hidden;
+  }
+  /* Out of the flow and sitting on the box's top edge, so it does not shift the
+     centring it is captioning. `bottom: 100%` on a relative `#context` is the
+     same anchor the two choosers use, so the heading tracks the box when the
+     field grows rather than needing a second measurement. */
+  body.drafting .hero {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+  }
+  body.drafting #context {
+    align-self: center;
+    margin-bottom: 0;
+  }
+  /* The login surface has no panes at all, and the grip is fixed, so it must not
+     float over it. */
+  body:has(#login:not(.hidden)) #sessions-grip { display: none; }
+  body:has(#login:not(.hidden)) #account-toggle { display: none; }
+
+  .turn { max-width: 78ch; padding: 10px 13px; border-radius: 9px; white-space: pre-wrap; word-wrap: break-word; }
+  .turn.user { align-self: flex-end; background: var(--tint-accent);
+    scroll-margin-top: 12px; }
+  /* The user message the arrow cursor is on (`promptCursor`). A ring, not a
+     fill: the bubble already carries the user tint, and a second background
+     would read as a pressed button. Set only while a review is in progress. */
+  .turn.user.current { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* The agent's reply is the page, not a card on it: no background, no border,
+     no box padding — nothing but the words, in the measure the transcript already
+     centers. The user's is a bubble because it is one voice interrupting another
+     and has to be findable on the way back up; the answer is what the reader came
+     for. Only the outer box goes: fenced code, inline code and every other
+     markdown surface keep their own. */
+  .turn.agent { align-self: flex-start; padding: 0; }
+  /* The reply written into a folded card's blank is flush with its run: the
+     10px column gap is a height change the reserve has not funded yet when the
+     empty bubble arrives. */
+  .turn.agent.flush { margin-top: -10px; }
+  @keyframes pulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+  .turn.note { align-self: center; color: var(--dim); font-size: 13px; background: none; }
+  .turn.error { color: var(--bad); border: 1px solid var(--bad); background: none; }
+
+  /* -- the timeline rows -----------------------------------------------------
+     A tool call and a reasoning block are one line each here, and the one-line
+     row is the index you scan and navigate. Both are focusable — click or Enter
+     toggles the detail beneath them — and both mark themselves while open, so a
+     row and its detail read as one thing.
+
+     The row is a three-column grid — verb, subject, outcome — and the columns
+     belong to the *run*, not the row: every subject starts at one x and every
+     outcome ends at one x, so the list reads down a column instead of across a
+     ragged line (D44). `subgrid` inherits the run's tracks; the plain template
+     before it is the fallback for a browser without subgrid, which loses the
+     alignment and keeps the layout. */
+  .work-run { position: relative; display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    column-gap: 8px; row-gap: 2px; padding-left: 16px;
+    /* The run is a column inside the reading measure — the trace, set in from
+       the prose that it belongs to rather than run to the same ragged edge. */
+    margin-inline: 20px; }
+  /* The rail spans the run, with a node on it at every step. A filled node is an
+     act; a hollow one is a thought. It is drawn at x=4 of the run because that
+     is where the nodes' centres are: the row starts at the run's 16px padding
+     and the node is 8px at `left: -16px`, so its middle is 4px in. A 2px bar at
+     `left: 4px` centred on 5 and every dot sat a pixel to the left of it. */
+  .work-run::before { content: ""; position: absolute; left: 3px; top: 10px;
+    bottom: 10px; width: 2px; background: var(--line); border-radius: 2px; }
+  .work-run > .tool-row, .work-run > .think-row {
+    grid-column: 1 / -1; display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) max-content;
+    grid-template-columns: subgrid;
+    align-items: baseline; padding: 4px 8px; border-radius: 6px;
+    font-size: 12.5px; cursor: pointer; min-width: 0; position: relative; }
+  .work-run > .tool-row::before, .work-run > .think-row::before {
+    content: ""; position: absolute; left: -16px; top: 9px; width: 8px;
+    height: 8px; border-radius: 50%; background: var(--node, var(--accent));
+    box-shadow: 0 0 0 2px var(--bg); }
+  /* The node is the status rail. A finished call recedes toward the spine, a live
+     one is accent, and the two a reader must not miss — blocked on a human, and
+     failed — are the only loud colours on it. Each is repeated as a word on the
+     card, so the colour is never the only carrier. */
+  .work-run > .tool-row.outcome-done {
+    --node: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  .work-run > .tool-row.outcome-waiting { --node: var(--warn); }
+  .work-run > .tool-row.outcome-failed { --node: var(--bad); }
+  .work-run > .tool-row.outcome-refused { --node: var(--dim); }
+  .work-run > .think-row::before { background: var(--bg);
+    box-shadow: 0 0 0 2px var(--line); }
+  .tool-row:hover, .think-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  .tool-row.focused, .think-row.focused {
+    background: color-mix(in srgb, var(--accent) 13%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent); }
+  /* The verb wears the accent, so a call reads as a call at a glance: it is the
+     one coloured word in the row, against a thinking row's dim `thinking` label.
+     The subject stays `--work`, so the row has one accent and one trace ink. */
+  .tool-row .verb { color: var(--accent); font-weight: 600; }
+  .tool-row .subject, .think-row .preview { min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  /* The trace's own ink, so a scan of the transcript separates the agent's prose
+     (full `--text`, full size) from the machine's work at a glance. The opened
+     card keeps `--text`: there it is the content, not a trace. */
+  .tool-row .subject { color: var(--work); }
+  .tool-row .state { color: var(--dim); font-size: 11.5px; }
+  .think-row { color: var(--dim); font-style: italic; }
+  /* The label, in the verb gutter: the word is what says a thought rather than
+     a call, and it sits in the same column the verbs do. */
+  .think-row .label { font-style: normal; font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: 0.04em; color: var(--dim); }
+  .think-row .preview { opacity: 0.85; }
+
+  /* The chain of thought, in either home: the live stage or a history row's
+     disclosure. The box that owns the chrome is the stage or `.step-detail`. */
+  .reason-detail { display: flex; min-height: 0; overflow: hidden; }
+  /* Padding lives on the scroller, not the card. The thought renders the same
+     markdown as a reply, so it is no longer slanted as a whole: emphasis inside
+     a block that is already italic has nothing left to say. The trace's dim ink
+     is what keeps it a step behind the answer. */
+  .reasoning-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px;
+    word-wrap: break-word; color: var(--dim); font-size: 13.5px; }
+
+  /* The thought's reading design (D66).
+
+     **A measure for moving text.** The card is as wide as the transcript, which
+     is a long return sweep to make while the text is sliding; 60ch is a short
+     one. It is padding rather than a `max-width` on the element, for the reason
+     the transcript gives: a bounded element is a bounded scrollport, and the
+     empty margins would not scroll.
+
+     **A band that marks where a line is readable.** In a card that follows its
+     tail the middle is the only place a line is both complete (not still being
+     typed at the bottom) and current (not yet scrolled away at the top). Paint
+     only, so selection and clicks are untouched, and only when the body actually
+     scrolls — a short thought is not faded for nothing. */
+  .reasoning-body { padding-inline: max(12px, calc((100% - 60ch) / 2)); }
+  .reasoning-body.scrolls {
+    mask-image: linear-gradient(to bottom, transparent 0, var(--mask-opaque) 30px,
+      var(--mask-opaque) calc(100% - 30px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0, var(--mask-opaque) 30px,
+      var(--mask-opaque) calc(100% - 30px), transparent 100%);
+  }
+  /* The paragraph being written is the one in full ink; the rest of the trace
+     recedes. It marks the live edge without anything moving. */
+  .reasoning-body p.live { color: var(--text); }
+  /* A chunk blooms instead of appearing. Opacity only: the text takes its place
+     the moment it is appended, so the fade is ink arriving, not layout. */
+  @keyframes thought-in { from { opacity: 0; } to { opacity: 1; } }
+  .reasoning-body .md-chunk { animation: thought-in 260ms ease-out both; }
+
+  /* The tool card, in either home: the live stage or a history row's
+     disclosure. The box that owns the border, background and radius is the
+     stage or `.step-detail`; the card is the content. */
+  .tool { width: 100%; display: flex; flex-direction: column; min-height: 0;
+    overflow: hidden; }
+  /* The one scrollport. Every output shape flows through it; the boxes inside
+     no longer carry `max-height` of their own, so a long result cannot create a
+     scrollbar inside a scrollbar. */
+  .tool .tool-body { flex: 1; min-height: 0; overflow: auto; }
+
+  /* -- the two homes of a step detail ---------------------------------------
+     A history row's detail is a disclosure under its own row: one fixed-height
+     card, opened by the reader, with the same chrome as the live stage (D64). */
+  .work-run > .step-detail {
+    grid-column: 1 / -1;
+    height: var(--step-h);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    overflow: hidden;
+    transition: height 160ms ease, opacity 140ms ease;
+  }
+  .work-run > .step-detail.collapsed {
+    height: 0;
+    opacity: 0;
+    border-width: 0;
+  }
+
+  /* The live stage: one fixed box at the foot of the run. The box never changes
+     as steps advance: rows are inserted above it and the incoming detail fades
+     over the outgoing one, so the transcript's height changes by a row and the
+     card itself stays put (D62). It folds into the reserved blank when prose
+     starts, which is the one height change that is not a step. */
+  .work-run > .step-stage {
+    grid-column: 1 / -1;
+    position: relative;
+    height: var(--step-h);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--panel);
+    overflow: hidden;
+    transition: height 160ms ease, opacity 140ms ease;
+  }
+  .work-run > .step-stage.collapsed {
+    height: 0;
+    opacity: 0;
+    border-width: 0;
+  }
+  .work-run > .step-stage > .step-detail {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    transition: opacity 140ms ease;
+  }
+  .work-run > .step-stage > .step-detail.entering { opacity: 0; }
+  .work-run > .step-stage > .step-detail.leaving { opacity: 0; }
+
+  /* A new row grows out of the top of the stage. Its height is added at once —
+     the rows are the chain and have to be clickable — but it arrives with a
+     short fade so the eye reads it as emerging rather than appearing. */
+  .work-run > .tool-row.arrive,
+  .work-run > .think-row.arrive { animation: row-in 180ms ease-out; }
+  @keyframes row-in {
+    from { opacity: 0; transform: translateY(5px); }
+    to { opacity: 1; transform: none; }
+  }
+  .tool .head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; flex: none; }
+  .tool .verb { color: var(--accent); font-weight: 600; }
+  /* The audit name stays, dim, beside the verb: `Read` is what a person calls
+     the act, `fs_read` is what the audit chain, the manifest and the policy all
+     say, so the card has to carry both. */
+  .tool .name { font-family: ui-monospace, monospace; color: var(--accent); opacity: 0.5; }
+  /* The one piece of key information: the file, the query, the command. It
+     truncates rather than pushing the state off the card. */
+  .tool .subject { min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--text); }
+  /* A subject that is a URL (`web_fetch`, `browse`) is the link a reader reaches
+     for; it keeps the subject's plain look and takes the accent under the
+     pointer. The timeline row's subject stays a span — the row is itself the
+     disclosure, and a link inside a button is two things to click. */
+  .tool a.subject { text-decoration: none; }
+  .tool a.subject:hover { color: var(--accent); text-decoration: underline; }
+  .tool .state { margin-left: auto; color: var(--dim); font-size: 12px; flex: 0 0 auto; }
+  /* The word `failed`, coloured like the error body it summarises. The row is
+     never given this state, so the colour has nowhere to leak into the timeline. */
+  .tool .state.bad { color: var(--bad); }
+
+  /* The arguments, as named values. A definition list rather than a JSON blob:
+     the key in a dim gutter and the value beside it, so `path` and the path it
+     names line up down the card. */
+  .tool .fields { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+    gap: 2px 12px; margin: 0; padding: 9px 12px; font-size: 12.5px; }
+  .tool .fields dt { color: var(--dim); font-family: ui-monospace, monospace; }
+  .tool .fields dd { margin: 0; overflow-wrap: anywhere; font-family: ui-monospace, monospace;
+    color: var(--text); }
+  /* A URL argument is followed far more often than it is read, so it is a link;
+     every other value stays the monospace fact it is. */
+  .tool .fields dd a { color: var(--accent); text-decoration: none; }
+  .tool .fields dd a:hover { text-decoration: underline; }
+
+  /* The result, under its own rule so input and output read as two halves. An
+     empty one takes no rule and no space. */
+  .tool .tool-output { border-top: 1px solid var(--line); }
+  .tool .tool-output:empty { border-top: 0; }
+  .tool .muted { padding: 6px 12px; color: var(--dim); font-size: 12px; }
+
+  /* A directory listing: a kind badge and a name. The card's body is the only
+     scrollport, so a thousand entries scroll with the rest of the card instead
+     of opening a box inside a box. */
+  .tool .listing { list-style: none; margin: 0; padding: 6px 0;
+    font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .tool .listing li { display: flex; align-items: baseline; gap: 10px; padding: 1px 12px; }
+  .tool .listing li:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .tool .listing .kind { flex: 0 0 3.5ch; text-align: right; color: var(--dim); font-size: 11px; }
+  .tool .listing li.dir .kind { color: var(--accent); }
+  .tool .listing .entry { min-width: 0; overflow-wrap: anywhere; }
+
+  /* Search hits, grouped by the file they are in: the path once, then the line
+     number and the text, so a run of matches in one file reads as one block. */
+  .tool .results { padding: 4px 0;
+    font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .tool .result-group { padding: 4px 0; }
+  .tool .result-path { padding: 2px 12px; color: var(--accent); overflow-wrap: anywhere; }
+  .tool .result-row { display: flex; gap: 10px; padding: 0 12px; }
+  .tool .result-row:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .tool .result-line { flex: 0 0 4ch; text-align: right; color: var(--dim); opacity: 0.6;
+    user-select: none; }
+  .tool .result-text { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere;
+    color: var(--text); }
+
+  /* A `browse search` result: one numbered hit per block, the title and the URL
+     both links. Proportional text, not the monospace of the file view — this is
+     a list of sites, not a file — in the card's body, which bounds it rather
+     than letting it run the length of the transcript. */
+  .tool .hits { list-style: none; margin: 0; padding: 6px 0; }
+  .tool .hit { display: grid; grid-template-columns: max-content minmax(0, 1fr);
+    gap: 1px 10px; padding: 6px 12px; }
+  .tool .hit:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .tool .hit .n { color: var(--dim); font-size: 12px; text-align: right; }
+  .tool .hit-title { display: block; color: var(--text); font-weight: 600;
+    text-decoration: none; overflow-wrap: anywhere; }
+  .tool .hit-title:hover { color: var(--accent); text-decoration: underline; }
+  .tool .hit-url { display: block; color: var(--dim); font-size: 12px;
+    text-decoration: none; overflow-wrap: anywhere; }
+  .tool .hit-url:hover { color: var(--accent); text-decoration: underline; }
+  .tool .hit-snippet { color: var(--dim); font-size: 12.5px; margin-top: 2px; }
+
+  /* A `browse read` result: the page as text. A heading and the URL, then the
+     extraction as paragraphs — proportional, no line numbers, which is what a
+     web page was getting. `pre-wrap` keeps the single line breaks `innerText`
+     leaves inside a block, so list items do not run together. */
+  .tool .read-head { padding: 10px 12px 9px; border-bottom: 1px solid var(--line); }
+  .tool .read-title { display: block; color: var(--text); font-weight: 600;
+    text-decoration: none; overflow-wrap: anywhere; }
+  .tool .read-title:hover { color: var(--accent); text-decoration: underline; }
+  .tool .read-url { display: block; margin-top: 2px; color: var(--dim);
+    font-size: 12px; text-decoration: none; overflow-wrap: anywhere; }
+  .tool .read-url:hover { color: var(--accent); text-decoration: underline; }
+  .tool .read-body { padding: 11px 12px; line-height: 1.55; }
+  .tool .read-body p { margin: 0 0 0.7em; white-space: pre-wrap;
+    overflow-wrap: anywhere; }
+  .tool .read-body p:last-child { margin-bottom: 0; }
+  /* `web_fetch` reuses the read body: a heading and a list item get the one
+     style each that tells them from a paragraph, and a `<pre>` keeps its own
+     whitespace instead of collapsing to a run-on line. */
+  .tool .read-body .read-h { font-weight: 600; color: var(--text); }
+  .tool .read-body .read-li { padding-left: 1.15em; text-indent: -1.15em; }
+  .tool .read-body .read-li::before { content: "• "; color: var(--dim); }
+  .tool .read-body .read-pre { white-space: pre;
+    font-family: ui-monospace, monospace; font-size: 12.5px; }
+  /* The full response behind a disclosure: the page view above it is a bounded
+     reading; this is the artifact it came from. One `<pre>`, so a megabyte is a
+     single text node rather than a node per line under a closed tab — and the
+     native `<summary>` marker is left alone rather than replaced with a typed
+     glyph. */
+  .tool .raw { border-top: 1px solid var(--line); }
+  .tool .raw > summary { padding: 7px 12px; color: var(--dim); font-size: 12px;
+    cursor: pointer; }
+  .tool .raw > summary:hover { color: var(--accent); }
+
+  /* A picture from a tool whose result is an image (`fs_image`,
+     `blender_view`), fetched from the session's image route.
+
+     **Sized to the card, not to a pixel cap.** The card is one fixed box (D62,
+     D64), and a picture that needs a scroll to see the whole of is a result the
+     card failed to show. The body becomes a column: the arguments keep their
+     height, the caption keeps its line, and the frame takes what is left; the
+     picture is contained in that frame. The cost is scale — a large screenshot
+     is shown smaller than its pixels and a tall one is small — which is what
+     the fixed height costs a picture. It can never widen the transcript: the
+     frame's width bounds it, and the image only shrinks. */
+  .tool .tool-body.shot-body { display: flex; flex-direction: column; }
+  .tool .tool-body.shot-body > .args { flex: none; }
+  .tool .tool-body.shot-body > .tool-output { flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column; }
+  .tool .tool-body.shot-body > .tool-output > .muted { flex: none; }
+  .tool .shot-frame { flex: 1 1 auto; min-height: 0; display: flex;
+    align-items: center; justify-content: center; padding: 8px 12px; }
+  .tool .shot { max-width: 100%; max-height: 100%; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--surface-inset); }
+  /* Bounded by the card's body, complete if you scroll inside it. Nothing is
+     discarded and nothing here carries a second scrollbar: `white-space: pre`
+     keeps a result's lines, and the body scrolls in both directions while the
+     head stays put. */
+  .tool pre { margin: 0; padding: 10px 12px; font-family: ui-monospace, monospace;
+    font-size: 12.5px; color: var(--dim); }
+  /* Rendered markdown, in the agent's prose and in a thinking card.
+     `.turn` sets `white-space: pre-wrap` so a plain reply keeps its newlines;
+     once the text is parsed into blocks the element supplies its own spacing and
+     pre-wrap would double every gap. Paragraphs keep pre-wrap individually,
+     because a single newline inside one is still meant. */
+  .turn.md { white-space: normal; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md .md-p { margin: 0 0 0.65em; white-space: pre-wrap; }
+  .md .md-h { margin: 0.9em 0 0.4em; font-size: 1em; font-weight: 600; color: var(--text); }
+  .md .md-list { margin: 0 0 0.65em; padding-left: 1.4em; }
+  .md .md-list li { margin: 0.15em 0; }
+  .md .md-quote { margin: 0 0 0.65em; padding-left: 0.8em;
+    border-left: 2px solid var(--line); color: var(--dim); white-space: pre-wrap; }
+  .md code { font-family: ui-monospace, monospace; font-size: 0.9em;
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    padding: 0.1em 0.35em; border-radius: 4px; }
+  .md strong { font-weight: 650; color: var(--ink-emphatic); }
+  .md em { font-style: italic; }
+  .md a { color: var(--accent); }
+  /* A fenced block is a block: its own box, scrolling rather than wrapping, so
+     code keeps the line breaks it was written with. */
+  .md .md-code { margin: 0 0 0.65em; padding: 9px 11px; border-radius: 7px;
+    background: var(--surface-inset); border: 1px solid var(--line); overflow-x: auto;
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.5;
+    white-space: pre; color: var(--text); }
+  .md .md-code::before { content: attr(data-lang); display: block;
+    font-family: ui-sans-serif, system-ui; font-size: 11px; color: var(--dim);
+    margin-bottom: 6px; }
+  .md .md-code:not([data-lang])::before { display: none; }
+  /* The same four token classes a file view uses. A fence whose language this
+     client does not know is left uncoloured — see `HIGHLIGHT_LANGS`. */
+  .md .md-code .c { color: var(--dim); font-style: italic; }
+  .md .md-code .s { color: var(--ok); }
+  .md .md-code .n { color: var(--warn); }
+  .md .md-code .k { color: var(--accent); }
+  /* A table is a block of its own, scrolling sideways inside its wrapper rather
+     than widening the reply or the thinking card. Alignment comes from the
+     delimiter row as a class, because the CSP permits no inline style. */
+  .md .md-table-wrap { margin: 0 0 0.65em; max-width: 100%; overflow-x: auto; }
+  .md .md-table { border-collapse: collapse; font-size: 0.95em; line-height: 1.45; }
+  .md .md-table th, .md .md-table td { padding: 4px 9px; vertical-align: top;
+    border: 1px solid var(--line); text-align: left; }
+  .md .md-table th { background: var(--surface-inset); color: var(--text); font-weight: 600; }
+  .md .md-table th.md-center, .md .md-table td.md-center { text-align: center; }
+  .md .md-table th.md-right, .md .md-table td.md-right { text-align: right; }
+
+  /* A file in a card: numbered and coloured. The card body is the scrollport in
+     both directions, so a long line widens the same box the file scrolls in. */
+  .tool .file { padding: 8px 0;
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.55; }
+  .tool .fl { display: flex; white-space: pre; min-width: max-content; }
+  .tool .fl .ln { flex: 0 0 auto; min-width: 3.5ch; text-align: right; padding: 0 1.25ch 0 1ch;
+    color: var(--dim); opacity: 0.5; user-select: none; }
+  .tool .fl .tx { padding-right: 14px; }
+  .tool .fl:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  /* Four token classes, no more. Comments recede, strings and numbers warm,
+     keywords the accent — enough structure to read by, not a theme. */
+  .tool .file .c { color: var(--dim); font-style: italic; }
+  .tool .file .s { color: var(--ok); }
+  .tool .file .n { color: var(--warn); }
+  .tool .file .k { color: var(--accent); }
+  /* Where the gutter stops on very long output. The notice is dim and the tail
+     is plain text in the same monospace, so it reads as a continuation of the
+     same block rather than a separate thing. */
+  .tool .file-more { padding: 8px 12px 2px; color: var(--dim); font-size: 12px; }
+  /* Not its own scrollbox. The tail scrolls with the file because the card's
+     body is the one scrollport; a second one inside `pre` would only be
+     reachable by first scrolling the inner box to its end. */
+  .tool .file-tail { margin: 0; padding: 0 12px 2px; white-space: pre;
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.55;
+    color: inherit; }
+
+  /* The call's arguments, under the head. */
+  .tool .args { border-top: 1px solid var(--line); }
+
+  /* A shell call, drawn as the terminal it is. The prompt and the output share
+     one inset surface — the command line is not an argument list to be read
+     apart from what came back — and the card's body still owns the scrollport.
+     The prompt is accent for the user and host, text for the path, and dim for
+     the punctuation, which is the one reading a terminal prompt has had for
+     decades. */
+  .tool .shell-args { border-top: 0; }
+  /* The whole body is the terminal's well, not only the command line: the space
+     below a short command is where its output will land, and it should already
+     look like the surface that will receive it. */
+  .tool[data-tool="shell"] .tool-body { background: var(--surface-inset); }
+  .tool .shell { padding: 9px 12px 3px; background: var(--surface-inset);
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.55; }
+  .tool .shell-line { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tool .ps1 { user-select: none; }
+  .tool .ps1-user, .tool .ps1-host { color: var(--accent); font-weight: 600; }
+  .tool .ps1-at, .tool .ps1-sep { color: var(--dim); }
+  .tool .ps1-path { color: var(--text); }
+  .tool .ps1-mark, .tool .ps1-cont { color: var(--dim); }
+  .tool .ps1-mark { padding: 0 0.5ch; }
+  .tool .ps1-cont { padding-right: 0.5ch; }
+  .tool .shell-cmd { color: var(--text); }
+  /* The wait, as a terminal draws it: a block caret on the line where output
+     will land. Nothing else moves, and `renderResult` removes it as soon as
+     there is a result. */
+  .tool .shell-pending { min-height: 1.55em; }
+  .tool .shell-caret { display: inline-block; width: 0.55em; height: 1em;
+    vertical-align: text-bottom; background: var(--dim);
+    animation: shell-blink 1.1s steps(1, end) infinite; }
+  @keyframes shell-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  .tool .shell-output { border-top: 0; }
+  .tool .shell-out { margin: 0; padding: 1px 12px 10px; background: var(--surface-inset);
+    font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.55;
+    color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .tool .shell-out.failed { color: var(--bad); }
+
+  /* A write's diff, shown in place of its arguments while a verdict is pending.
+     Line numbers in a fixed gutter so the eye can scan one column, and the whole
+     body scrolls sideways rather than wrapping — a wrapped diff line reads as
+     two changes. */
+  .tool .diff { border-top: 1px solid var(--line); }
+  .tool .diff-head { display: flex; gap: 10px; align-items: baseline; padding: 8px 12px;
+    border-bottom: 1px solid var(--line); font-size: 12px; }
+  .tool .diff-path { font-family: ui-monospace, monospace; color: var(--dim);
+    overflow-wrap: anywhere; }
+  .tool .diff-meta { margin-left: auto; color: var(--dim); white-space: nowrap; }
+  .tool .diff-note { padding: 10px 12px; font-size: 13px; color: var(--dim); }
+  .tool .diff-raw { margin: 0; padding: 10px 12px; }
+  .tool .diff-body { padding: 6px 0; font-family: ui-monospace, monospace;
+    font-size: 12.5px; line-height: 1.55; }
+  .tool .dl { display: flex; white-space: pre; min-width: max-content; }
+  .tool .dl .ln { flex: 0 0 3.5ch; text-align: right; padding-right: 1ch; color: var(--dim);
+    opacity: 0.65; user-select: none; }
+  .tool .dl .mk { flex: 0 0 2ch; text-align: center; user-select: none; }
+  .tool .dl .tx { padding-right: 12px; }
+  /* Tinted backgrounds as well as coloured text: colour alone is not a signal
+     everyone can read, and the +/- marker stays in the gutter for the same
+     reason. */
+  .tool .dl.add { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .tool .dl.add .mk, .tool .dl.add .tx { color: var(--ok); }
+  .tool .dl.remove { background: color-mix(in srgb, var(--bad) 12%, transparent); }
+  .tool .dl.remove .mk, .tool .dl.remove .tx { color: var(--bad); }
+  /* A gap between hunks, drawn rather than spelled out. */
+  .tool .dl.gap { height: 10px; border-top: 1px dashed var(--line); margin: 5px 0; }
+  .tool .dl.hunk { background: var(--bg); }
+  .tool .dl.hunk .tx, .tool .dl.hunk .mk { color: var(--accent); opacity: 0.8; }
+  .tool .dl.context .tx { color: var(--text); opacity: 0.75; }
+  .tool .ask { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); align-items: center; flex: none; }
+  .tool .ask span { font-size: 13px; color: var(--warn); margin-right: auto; }
+
+  /* The rail: the session list as an overlay, at every width.
+     It was a grid column for a while, which meant that opening a glance beside
+     the transcript squeezed the transcript — and dragging the width squeezed it
+     harder. It is `position: fixed` with a shadow again, so the list goes *over*
+     what you are reading and leaves the transcript and the composer exactly where
+     they were. Its width is the rail's own business. */
+  #sessions {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 30;
+    width: var(--sessions-width);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    font-size: 13px;
+    box-shadow: 2px 0 16px rgb(var(--shadow) / 0.45);
+  }
+  /* Folded is gone, not zero-width: an overlay has no track to keep open, and a
+     rail hidden behind the transcript must not stay in the tab order. */
+  body.rail-collapsed #sessions { display: none; }
+
+  /* The brand and the controls that act on the list. */
+  #sessions-head { display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  #sessions-brand { font-size: 15px; font-weight: 600; letter-spacing: 0.02em; }
+  /* The rail's primary act, and not a filled one. The accent fill made it the
+     loudest thing in the panel — every other control here is a hairline and
+     that was a slab — so it is a tinted surface with accent ink: still a box,
+     still the one control in the head that says "start", spending one hue
+     rather than a block of it. `--tint-accent` and an accent edge are the
+     palette's own vocabulary for a quiet semantic surface, and `--accent` on
+     `--tint-accent` clears 4.5:1 in every palette, which the contrast test now
+     checks because this rule renders it.
+
+     Hover deepens the tint by `--tint-hover`, which is a palette value rather
+     than one fixed step: how far a hue can deepen before its own ink loses
+     contrast is a property of the palette. The pair is in the contrast table;
+     11% on gruvbox dark measures 4.62:1, and 12% would measure 4.47. The plus
+     is a drawn path sized beside the word — a typed "+" renders at a different
+     weight and baseline in every font. */
+  #sessions-head #new { width: 100%; display: flex; align-items: center;
+    justify-content: center; gap: 6px;
+    background: var(--tint-accent); color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); }
+  #sessions-head #new:hover {
+    background: var(--tint-accent-hover);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+  #sessions-head #new svg { width: 14px; height: 14px; flex: none; }
+  /* The search and the sort share one row, because both decide what the list
+     shows and in what order, and the list's first heading is directly beneath.
+     The menu is absolute against this row, so it drops from the row's right edge
+     at the row's width rather than the button's. */
+  #sessions-find { position: relative; display: flex; gap: 6px; align-items: stretch; }
+  /* The type-ahead. It reuses `.chooser-filter`'s typography but not its
+     full-bleed-menu geometry: this field is on the panel, so it keeps the box
+     the choosers drop. */
+  #sessions-filter { flex: 1; min-width: 0; margin: 0; padding: 6px 9px;
+    border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+  /* Three lines losing length: the shape a list being arranged reads as, drawn
+     rather than typed. Quiet until hovered, like every other control here, and
+     accented while its menu is open, so open and closed differ by more than the
+     menu's presence. */
+  #sessions-sort { flex: none; display: flex; align-items: center;
+    justify-content: center; width: 30px; padding: 0;
+    background: var(--bg); color: var(--dim); }
+  #sessions-sort svg { width: 15px; height: 15px; }
+  #sessions-sort:hover, #sessions-sort[aria-expanded="true"] { color: var(--accent); }
+  /* The two dates the list can be ordered by. `absolute` against the row, not
+     `fixed` like the row menu: it opens over the list it belongs to and never
+     has to escape the panel, so it needs no rect arithmetic and no parenting to
+     `body`. */
+  #sessions-sort-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 2;
+    min-width: 100%; padding: 4px;
+    display: flex; flex-direction: column;
+    border: 1px solid var(--line); border-radius: 8px;
+    box-shadow: 0 6px 18px rgb(var(--shadow) / 0.45);
+  }
+  #sessions-sort-menu button { display: flex; align-items: center; gap: 8px; }
+  /* The chosen order carries a filled dot, and a dot is a shape rather than a
+     colour alone: the menu says which of two is in force to a reader who cannot
+     see the accent, and `aria-checked` says the same thing to a screen reader. */
+  #sessions-sort-menu button::before {
+    content: ""; width: 6px; height: 6px; border-radius: 50%;
+    border: 1px solid var(--dim); flex: none;
+  }
+  #sessions-sort-menu button[aria-checked="true"]::before {
+    background: var(--accent); border-color: var(--accent);
+  }
+  /* The rows scroll; the head does not. */
+  #sessions-list { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 0; }
+
+  /* An administrator's way out to the appliance (D91). Dim until hovered, as
+     Back to chat is at the other end of the trip: it is a door, not an act on
+     the list, and it should not compete with the rows above it. */
+  #sessions-foot { padding: 6px 8px; border-top: 1px solid var(--line); }
+  #admin-link, #tasks-link { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    border-radius: 6px; color: var(--dim); text-decoration: none; }
+  #admin-link:hover, #tasks-link:hover { background: var(--hover); color: var(--text); }
+  #admin-link:focus-visible, #tasks-link:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px;
+    color: var(--text); }
+  #admin-link svg, #tasks-link svg { width: 14px; height: 14px; flex: none; }
+
+  /* The fold grip: a fixed circle on the rail's edge. Its `left` is the rail's
+     width less half the button, so folding the rail carries the edge — and the
+     grip — to the window. It drags to set the width and folds on a click that
+     does not move.
+
+     **Above the rail**, because it straddles the rail's edge: half the circle
+     overlaps the panel. At a lower `z-index` than `#sessions` the panel painted
+     over that half, so an open rail showed a semicircle that read as a button
+     clipped by a bug rather than a handle sitting on an edge. It stayed
+     invisible while the rail was collapsed, because the panel is `display: none`
+     then and there was nothing to paint over it. Below `.row-menu` (40), which
+     floats over everything in the rail including this. */
+  #sessions-grip {
+    position: fixed;
+    top: 50%;
+    left: calc(var(--sessions-width) - 14px);
+    transform: translateY(-50%);
+    z-index: 32;
+    width: 28px; height: 28px; padding: 0; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--dim); background: var(--panel);
+    border: 1px solid var(--line); cursor: col-resize;
+    transition: left 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+  }
+  #sessions-grip:hover, #sessions-grip.dragging {
+    color: var(--accent); border-color: var(--accent); }
+  #sessions-grip svg { width: 15px; height: 15px; fill: currentColor;
+    transition: transform 0.16s ease; }
+  /* The count a folded rail has to carry. It sits on the grip's corner rather
+     than beside it because the grip is the only control left on that edge, and
+     it is a shape as well as a colour: an approval adds the exclamation, so the
+     state does not depend on seeing amber (D63). */
+  #sessions-grip-badge {
+    position: absolute; top: -5px; right: -5px;
+    min-width: 15px; height: 15px; padding: 0 4px;
+    border-radius: 999px;
+    background: var(--accent); color: var(--ink-on-accent);
+    font: 600 9.5px/15px ui-sans-serif, system-ui, sans-serif;
+    text-align: center; letter-spacing: 0;
+  }
+  body.rail-collapsed #sessions-grip { left: 4px; }
+  body.rail-collapsed #sessions-grip svg { transform: rotate(180deg); }
+
+  /* The rail's right edge, full height, as a second drag handle. The grip is a
+     28px circle in the vertical middle, and "drag the edge" is what a hand
+     reaches for — a circle is a button, not an edge. This one resizes and has no
+     fold, so a press that does not move does nothing; the grip keeps the fold,
+     and paints above this so its click still lands (z-index 32 against 31).
+
+     It straddles the edge like the grip but is thin, so it takes only 3px of the
+     rail's scrollbar; the line under the pointer is the affordance, because a
+     transparent strip is otherwise invisible. */
+  #sessions-resize {
+    position: fixed;
+    top: 0; bottom: 0;
+    left: calc(var(--sessions-width) - 3px);
+    width: 6px;
+    z-index: 31;
+    cursor: col-resize;
+  }
+  #sessions-resize::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 3px;
+    width: 1px;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.16s ease;
+  }
+  #sessions-resize:hover::after,
+  body.resizing #sessions-resize::after { opacity: 1; }
+  body.rail-collapsed #sessions-resize { display: none; }
+  body:has(#login:not(.hidden)) #sessions-resize { display: none; }
+  /* While dragging, nothing else should take the pointer or start selecting
+     text — a resize that highlights the transcript as it goes feels broken. */
+  body.resizing { cursor: col-resize; user-select: none; }
+
+  /* A dated group of sessions, so a fifty-row wall reads as a few short lists. */
+  #sessions .group { padding: 10px 14px 3px; color: var(--dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.08em; }
+  #sessions .group:first-child { padding-top: 2px; }
+  /* The two headings that are not dates wear the accent, so a section says
+     what it is in colour as well as in word: the working set, and the pins. */
+  #sessions .group.pinned, #sessions .group.active { color: var(--accent); }
+  /* Three columns: the title, the meta, and a fixed actions column at the row's
+     end, so the ⋮ stops drifting with the width of the text beside it. */
+  #sessions .row { display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    align-items: baseline; gap: 8px; padding: 6px 14px; cursor: pointer;
+    border-left: 2px solid transparent; }
+  #sessions .row:hover { background: var(--hover); }
+  /* The selected session. A 2px edge at the far left of a 16rem column is a
+     border more than a state: it was the only thing saying which row the
+     transcript belongs to, and that is the one fact the rail exists to answer.
+     So the row now wears the palette's quiet semantic surface — the tint the
+     New-session button wears — keeps the edge, and says it in ink as well: the
+     title goes accent-coloured.
+
+     The pointer does not move it. `--hover` is a neutral lift and would
+     repaint the row as an ordinary one, and `--tint-accent-hover` costs the
+     date beside the title its contrast — measured, `--dim` on it falls to
+     4.16:1 in nord and 4.30 in gruvbox dark, under the floor the resting pair
+     just clears. What a hovered row offers the pointer is the ⋮, and this row
+     offers it too.
+
+     A surface a whole lift step above the panel was tried first and the
+     contrast test refused it: over `--track`, `--accent` measures 3.42:1 in
+     dark and 3.80 in gruvbox dark, `--dim` 3.48. A palette can carry a hue
+     behind ink at `--tint`; it cannot also carry it up out of the panel's
+     lightness. The cost is that gruvbox dark's desaturated accent makes the
+     tint faint there, where the accent title and the edge are what mark the
+     row. */
+  #sessions .row.current {
+    background: var(--tint-accent); border-left-color: var(--accent);
+    /* Inherited, not set on `.title`, so the two rules that give the title a
+       colour of its own keep winning: an untitled row's dim italic has one
+       class and the editing ink while it is renamed has one and an attribute,
+       and either would lose to a colour named here on the title itself. */
+    color: var(--accent); }
+  #sessions .row.current:hover { background: var(--tint-accent); }
+  #sessions .title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #sessions .title.untitled { color: var(--dim); font-style: italic; }
+  /* The matched fragment, on its own line under the title.
+     `grid-column: 1 / -1` because the row is three columns (title, meta, the
+     actions button) and a fourth child would otherwise land in the meta column
+     and squeeze the date onto the end of a sentence. Only present in a filtered
+     list, so an ordinary listing keeps its one-line rows.
+     Clipped to one line: the snippet says *why* this row matched, and a
+     paragraph of conversation in a sidebar is a different feature. */
+  #sessions .snippet { grid-column: 1 / -1; grid-row: 2;
+    color: var(--dim); font-size: 11.5px; line-height: 1.35;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The terms themselves. A tint rather than the browser's yellow block, which
+     is the one default in this stylesheet that would read as a different
+     application. */
+  #sessions .snippet mark { background: none; color: var(--accent); font-weight: 600; }
+  #sessions .meta { display: flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+  /* `visibility` rather than `display`, so the button occupies its space even
+     when hidden — otherwise the title reflows the moment a row is hovered. */
+  #sessions .more {
+    visibility: hidden; padding: 0 4px; border: none; background: none;
+    color: var(--dim); font-size: 16px; line-height: 1; cursor: pointer;
+  }
+  #sessions .row:hover .more { visibility: visible; }
+  #sessions .more:hover { color: var(--accent); }
+  /* Keyboard users never hover, so focus has to reveal it too. */
+  #sessions .more:focus-visible { visibility: visible; outline: 1px solid var(--accent); }
+  /* Stays visible while its own menu is open: the pointer has left the row to
+     reach the menu, so the hover rule above would hide the thing the menu is
+     anchored to. */
+  #sessions .row.menu-open .more { visibility: visible; color: var(--accent); }
+
+  /* The per-row action menu. `fixed` because `#sessions-list` scrolls and clips
+     — a menu parented to a row near the bottom would be cut off by the panel
+     edge instead of overlapping it. Positioned from script, which is why there
+     is no `top`/`left` here. */
+  .row-menu {
+    position: fixed; z-index: 40; min-width: 164px; padding: 4px;
+    display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; box-shadow: 0 6px 18px rgb(var(--shadow) / 0.45);
+  }
+  .row-menu button, #sessions-sort-menu button {
+    padding: 7px 10px; border: none; background: none; color: var(--text);
+    font: inherit; font-size: 13px; text-align: left; white-space: nowrap;
+    border-radius: 5px; cursor: pointer;
+  }
+  .row-menu button:hover, .row-menu button:focus-visible,
+  #sessions-sort-menu button:hover, #sessions-sort-menu button:focus-visible {
+    background: var(--hover); color: var(--accent); outline: none;
+  }
+  /* Removal reads as the weightier item even though it is reversible: it is the
+     one where a mis-click costs something. Amber rather than red, because the
+     palette's `--warn` is what every other "careful" affordance here uses, and
+     it is honest about this being hide-not-delete. */
+  .row-menu button.danger { color: var(--warn); }
+  .row-menu button.danger:hover, .row-menu button.danger:focus-visible {
+    background: var(--tint-warn); color: var(--warn);
+  }
+
+  #sessions .title[contenteditable="plaintext-only"] {
+    outline: none; border-bottom: 1px solid var(--accent); font-style: normal;
+    color: var(--text); cursor: text;
+  }
+  #sessions .when { color: var(--dim); font-size: 11px; white-space: nowrap; opacity: 0.7; }
+  #sessions .closed { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  #sessions .empty { padding: 8px 16px; color: var(--dim); }
+
+  /* -- the Active section ---------------------------------------------------
+     The working set comes before Pinned: these are the sessions this window
+     holds — open, running, or used inside the window Settings › Sessions sets —
+     not an arrangement of history. A row here is two lines:
+     the title keeps the rail's full width and the state sits underneath it,
+     where it does not compete with the title for the one scarce axis in a
+     16rem column. The dot is the glance; the word is the same fact for anyone
+     who cannot see the colour. No clock: nothing here changes second to second. */
+  #sessions .group .group-note {
+    margin-left: auto; color: var(--dim);
+    text-transform: none; letter-spacing: 0;
+    font-size: 10.5px; opacity: 0.9;
+  }
+  #sessions .group .group-note.warn { color: var(--warn); opacity: 1; }
+  #sessions .row.active {
+    row-gap: 1px; padding-top: 7px; padding-bottom: 8px;
+  }
+  #sessions .row.active .title { font-weight: 500; }
+  #sessions .row.active .more { grid-column: 3; grid-row: 1; }
+  #sessions .state-line {
+    grid-column: 1 / -1; grid-row: 2;
+    display: flex; align-items: center; gap: 6px;
+    min-width: 0;
+    color: var(--dim);
+    font-size: 11.5px; line-height: 1.35;
+  }
+  #sessions .live-dot {
+    width: 6px; height: 6px; border-radius: 50%; flex: none;
+    background: var(--inert);
+  }
+  #sessions .state-word { color: var(--work); white-space: nowrap; }
+  #sessions .state-detail {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: var(--dim); opacity: 0.78;
+  }
+  #sessions .row.state-thinking .live-dot,
+  #sessions .row.state-tool .live-dot {
+    background: var(--accent); animation: pulse 1.7s ease-in-out infinite;
+  }
+  #sessions .row.state-approval .live-dot {
+    background: var(--warn); animation: pulse 2.4s ease-in-out infinite;
+  }
+  #sessions .row.state-done .live-dot { background: var(--ok); }
+  #sessions .row.state-open .live-dot {
+    background: transparent; border: 1px solid var(--inert);
+  }
+  /* The one row in the list that is asking for a person. A tint rather than a
+     heavier weight: it has to out-rank the running rows without looking like a
+     different kind of object, and the word `needs you` carries the state for
+     anyone the colour does not reach. */
+  #sessions .row.state-approval { background: var(--tint-warn); }
+  #sessions .row.state-approval:hover {
+    background: color-mix(in srgb, var(--warn) 16%, var(--panel));
+  }
+  #sessions .row.state-approval .state-word {
+    color: var(--warn); font-weight: 600;
+  }
+
+
+  /* Both selectors live at the bottom of the window, so their menus open
+     *upward*: rendered in flow they would push the composer off-screen, and
+     positioned downward they would be below the viewport.
+     A card detached from the context panel rather than a strip across the
+     window — same measure, same radius and shadow, because a chooser and the
+     box it configures are the same kind of object. `bottom: 100%` puts it on the
+     panel's top edge and the margin is the gap that makes it read as separate;
+     being absolute, opening one no longer moves the message box under the
+     cursor. It scrolls within a bounded height so a deep directory cannot grow
+     the card past the transcript. */
+  #cwd-menu, #attach-menu {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    margin-bottom: 8px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35);
+    /* No padding of its own: the field and the footer carry theirs, so the
+       strip of panels can run to the card's edges and be clipped by its radius. */
+    padding: 0;
+    /* **A fixed height, not a maximum.** The card used to grow and shrink with
+       whichever panel had the most rows in it, so a two-row folder followed by a
+       preview of a ten-row one dragged the whole box — and the path you were
+       reading — up and down under the pointer. The height is now the same at
+       every level and every selection, and each panel scrolls its own rows
+       inside it. */
+    height: min(340px, 38vh, var(--headroom-cap));
+    /* The *rows* scroll, not the menu. The filter field is the first child and
+       scrolling the menu would carry it off the top — a field that disappears
+       as you look down the list it filters. */
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* Above the transcript it floats over, and above the card's own shadow. */
+    z-index: 20;
+  }
+  .chooser-rows { flex: 1; overflow-y: auto; min-height: 0; }
+  /* The list takes focus when the arrows start moving the selection, and a ring
+     around the whole panel would say "this box is focused" about a surface whose
+     real indicator is the highlighted row. */
+  .chooser-rows:focus { outline: none; }
+
+  /* Three panels, one per level, separated by the hairline the strip's own
+     background draws through a 1px gap. Each panel scrolls its own rows: the
+     heads and the crumb bar stay put, so the path you are choosing is always on
+     screen while the list under it moves. */
+  .chooser-strip { flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 1fr 1fr 1fr; gap: 1px; background: var(--line);
+    border-top: 1px solid var(--line); }
+  .chooser-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column;
+    background: var(--panel); }
+  /* The sides recede by scale and opacity, not by blur or by rotation. A
+     `backdrop-filter` over a live transcript costs a re-blur on every frame of
+     the glide, and a `rotateY` foreshortens the column you are stepping back
+     into by about a tenth — which truncates the names at exactly the moment you
+     need to read them. */
+  .chooser-panel.left { opacity: .7; transform: scale(.94); transform-origin: right center; }
+  .chooser-panel.right { opacity: .7; transform: scale(.94); transform-origin: left center; }
+  /* A side panel with nothing in it: the column stays, so the centre does not
+     jump sideways, but it is the strip's own ground — what shows around a
+     receded panel — rather than a panel. The head goes with it, and being
+     `visibility: hidden` it takes no press either. */
+  .chooser-panel.empty { background: transparent; }
+  .chooser-panel.empty .chooser-head { visibility: hidden; }
+  /* The side heads take you into their panel. */
+  .chooser-panel.left .chooser-head,
+  .chooser-panel.right .chooser-head { cursor: pointer; }
+  .chooser-panel.left .chooser-head:hover,
+  .chooser-panel.right .chooser-head:hover { color: var(--text); }
+  .chooser-head { flex: none; padding: 5px 10px 4px; font-size: 10px;
+    letter-spacing: .05em; text-transform: uppercase; color: var(--dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-bottom: 1px solid color-mix(in srgb, var(--line) 45%, transparent); }
+  /* The arrival, and the whole of this surface's animation budget: one composited
+     transform on the centre panel for 140ms. It says which way you moved — into a
+     folder from the right, out of one from the left — without moving the layout
+     or repainting anything. */
+  @keyframes chooser-arrive-right { from { transform: translateX(12px); opacity: .35; } }
+  @keyframes chooser-arrive-left { from { transform: translateX(-12px); opacity: .35; } }
+  .chooser-panel.arrive-right { animation: chooser-arrive-right 140ms ease-out; }
+  .chooser-panel.arrive-left { animation: chooser-arrive-left 140ms ease-out; }
+
+  /* The type-ahead, as an object *in* the card rather than the card's own top
+     edge. It used to be a full-bleed band whose only edge was a hairline, which
+     made it read as a different kind of thing from the panels under it; the
+     field is now the same surface, radius and hairline as a panel, sitting on
+     the menu's own ground. */
+  .chooser-filter {
+    flex: none;
+    margin: 8px 8px 7px;
+    padding: 6px 10px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+  }
+  .chooser-filter::placeholder { color: var(--dim); font-family: inherit; }
+  .chooser-filter:focus {
+    outline: none;
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  }
+  /* A row opens on a press, and the small chip on its right takes it. Three
+     columns: icon, name, actions — the action column is `max-content` so the
+     chip lands in the same place on every row whatever the name's length, since
+     a control that moves with the text is hard to aim at. */
+  #cwd-menu .path, #attach-menu .path { display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) max-content; align-items: center;
+    gap: 8px; padding: 5px 6px 5px 12px; font-family: ui-monospace, monospace;
+    font-size: 12.5px; }
+  #cwd-menu .path.pickable, #attach-menu .path.pickable { cursor: pointer; }
+  #cwd-menu .path:hover, #attach-menu .path:hover { background: var(--hover); }
+  /* The row the button would take. A fill rather than an outline: it has to read
+     at a glance across a 250px column, and it is also what the pointer leaves
+     behind as it looks, so it has to be quiet. */
+  #cwd-menu .path.selected, #attach-menu .path.selected { background: var(--track); }
+  #cwd-menu .path.current, #attach-menu .path.current { color: var(--accent); }
+  #cwd-menu .path-icon, #attach-menu .path-icon { text-align: center;
+    font-size: 14px; opacity: 0.7; }
+  #cwd-menu .path-name, #attach-menu .path-name { overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  /* The check says "this is the one in effect"; the chip says "take this". One
+     right-hand column so the two never compete for the same pixels. */
+  #cwd-menu .path-actions, #attach-menu .path-actions { display: flex;
+    align-items: center; gap: 6px; align-self: stretch; }
+  #cwd-menu .path-check, #attach-menu .path-check { color: var(--accent); }
+  #cwd-menu .path-pick, #attach-menu .path-pick { border: 1px solid var(--line);
+    background: transparent; color: var(--dim); border-radius: 4px; font: inherit;
+    font-size: 10px; letter-spacing: .04em; text-transform: uppercase;
+    line-height: 1; padding: 0 7px; cursor: pointer; align-self: stretch;
+    min-width: 46px; justify-content: center;
+    display: flex; align-items: center;
+    /* Shown for the row you are on, hidden everywhere else. A `use` chip on
+       every line competes with the press that already opens the folder; but
+       hiding it with `display` would reflow the name beside it every time the
+       pointer crossed a row, so the space stays and only the visibility
+       changes — the same trade as the sessions list's rename control (N53). */
+    visibility: hidden; }
+  #cwd-menu .path:hover .path-pick, #attach-menu .path:hover .path-pick,
+  #cwd-menu .path.selected .path-pick, #attach-menu .path.selected .path-pick {
+    visibility: visible; }
+  /* A centre row with nothing to take — a folder in the attachment menu — still
+     reserves the chip's width, so a listing of both kinds keeps one right edge
+     instead of two. */
+  #cwd-menu .path-pick-slot, #attach-menu .path-pick-slot { min-width: 46px; }
+  #cwd-menu .path-pick:hover, #attach-menu .path-pick:hover {
+    color: var(--accent); border-color: var(--accent); }
+  #cwd-menu .crumbs, #attach-menu .crumbs { display: flex; align-items: center;
+    gap: 2px; padding: 0 8px 6px; margin-bottom: 0; font-size: 12px;
+    color: var(--dim); }
+  /* Three ways back — the history pair and the step out — drawn as buttons so
+     they are aimed at rather than guessed at. They sit where the eye looks for
+     them, at the start of the path they act on. */
+  #cwd-menu .crumb-nav, #attach-menu .crumb-nav,
+  #cwd-menu .crumb-up, #attach-menu .crumb-up { border: 0; background: transparent;
+    color: var(--dim); cursor: pointer; font: inherit; font-size: 14px;
+    line-height: 1; padding: 4px 8px; border-radius: 4px; }
+  #cwd-menu .crumb-nav:hover:not(:disabled),
+  #attach-menu .crumb-nav:hover:not(:disabled),
+  #cwd-menu .crumb-up:hover, #attach-menu .crumb-up:hover {
+    color: var(--text); background: var(--hover); }
+  #cwd-menu .crumb-nav:disabled, #attach-menu .crumb-nav:disabled {
+    opacity: .3; cursor: default; }
+  #cwd-menu .crumb-path, #attach-menu .crumb-path { flex: 1; min-width: 0;
+    margin-left: 4px; font-family: ui-monospace, monospace; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  /* The button names what it will take — the directory in the crumb, or the row
+     highlighted beside it — and is clipped rather than wrapped when a name is
+     long. It wears the accent because it is the one *action* on this surface;
+     the hue that used to be here was amber, which made a file picker look like a
+     warning. */
+  #cwd-menu .crumb-use, #attach-menu .crumb-use {
+    border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    color: var(--text); border-radius: 5px; font: inherit; font-size: 11px;
+    padding: 3px 9px; cursor: pointer; white-space: nowrap; max-width: 26ch;
+    overflow: hidden; text-overflow: ellipsis; }
+  #cwd-menu .crumb-use:hover, #attach-menu .crumb-use:hover {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  #cwd-menu .none, #attach-menu .none { padding: 6px 10px 6px 14px;
+    color: var(--dim); font-size: 12px; }
+
+  /* The model chip. Just the name and its level — the memory bar and the GB
+     readout moved out, because the panel this opens states both again and a
+     number repeated two clicks apart is one to reconcile rather than trust.
+     The bar's rules went with them; the panel has its own in `.panel-gpu`. */
+  #gpu-toggle { display: flex; align-items: center; gap: 7px; padding: 4px 9px;
+    font-size: 12px; }
+
+  /* The Models window. A floating card, the same family as the chooser menus:
+     something opened to change a setting and dismissed, not a strip welded to the
+     top of the conversation. It opens *upward* from the model control on the
+     status line — the control it belongs to — and click-away/Escape close it (see
+     the document handlers in neuman.js). */
+  #models { position: absolute; bottom: 100%; right: 0; margin-bottom: 8px;
+    width: min(560px, calc(100vw - 32px));
+    max-height: min(72vh, 760px, var(--headroom-cap));
+    overflow-y: auto; z-index: 20; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 12px 40px rgb(var(--shadow) / 0.45); font-size: 13px; }
+  /* Sticky, so the capacity figure stays in view while a long inventory scrolls
+     under it — "will this fit" is asked about the rows below. */
+  #models .panel-head { position: sticky; top: 0; z-index: 1; display: flex;
+    align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
+    border-radius: 10px 10px 0 0; }
+  #models h2 { font-size: 13px; margin: 0; color: var(--accent); font-weight: 600; }
+  #models .panel-gpu { display: flex; align-items: center; gap: 8px; margin-left: auto;
+    color: var(--dim); font-size: 12px; }
+  #models .panel-gpu .dev { max-width: 24ch; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  #models .panel-gpu .bar { display: inline-block; width: 56px; height: 6px;
+    border-radius: 3px; background: var(--track); overflow: hidden; }
+  #models .panel-gpu .fill { display: block; height: 100%; width: 0;
+    background: var(--accent); transition: width 0.4s ease; }
+  #models .panel-gpu .fill.full { background: var(--bad); }
+  #models .panel-gpu .gb { font-family: ui-monospace, monospace; }
+  #models .panel-body { padding: 8px 14px 14px; }
+  #models .none { color: var(--dim); padding: 3px 0; }
+  #models .also { color: var(--dim); font-size: 12px; font-style: italic; padding: 6px 0 0; }
+  /* Name flexes; badge, detail and actions sit at the right edge in the same
+     place on every row, so rows compare down the list. */
+  #models .model { display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) max-content max-content max-content;
+    align-items: center; gap: 8px; padding: 6px 0; }
+  #models .model + .model { border-top: 1px solid var(--line); }
+  #models .model-name { font-family: ui-monospace, monospace; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  #models .badge { font-size: 11px; padding: 0 6px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--dim); }
+  #models .badge.cloud { color: var(--warn); border-color: var(--edge-warn); }
+  #models .model-meta, #models .model-note { color: var(--dim); font-size: 12px; }
+  #models .model-actions { display: flex; align-items: center; gap: 6px; }
+  #models .model-actions button { padding: 2px 9px; font-size: 11px; }
+  #models .model-actions .in-use { color: var(--accent); }
+  #models .dot { width: 8px; height: 8px; border-radius: 50%; }
+  /* The dot marks the *choice*; whether a local model is loaded is its button. */
+  #models .dot.picked { background: var(--accent); }
+  #models .dot.idle { background: var(--inert); }
+  /* The selected model, marked so the choice is visible without reading the buttons. */
+  #models .chat-model.chosen .model-name { color: var(--accent); }
+  #gpu-model { font-family: ui-monospace, monospace; color: var(--text); }
+
+  /* Settings: a centered modal over a scrim.
+     It was a 360px card pinned under the account chip, which was right while it
+     held one read-only policy list. Four sections need two axes — a column of
+     tabs and a body wide enough for a reading — and a 640px dialog anchored to a
+     corner control would hang off the edge of a narrow window. Centered instead,
+     which is also what "the thing you are looking at" looks like.
+
+     Sized to the content and *not* to the window: the transcript stays visible
+     around it, because this is opened mid-conversation and a full-screen
+     takeover loses the place you were reading. */
+  #scrim { position: fixed; inset: 0; z-index: 45;
+    background: var(--scrim); }
+  #settings {
+    position: fixed;
+    /* Centred without a transform, so a focused control inside cannot be
+       blurred by a fractional-pixel offset the way `translate(-50%)` does. */
+    inset: 0;
+    margin: auto;
+    z-index: 46;
+    width: min(640px, calc(100vw - 32px));
+    height: min(460px, calc(100vh - 64px));
+    display: grid;
+    grid-template-columns: 172px 1fr;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--panel); font-size: 13px;
+    box-shadow: 0 24px 64px rgb(var(--shadow) / 0.5);
+    overflow: hidden;
+  }
+
+  /* The sidebar: who you are, the four sections, and the way out. A column
+     rather than a row of tabs across the top — the names read faster stacked,
+     and stacking leaves room for the name above and Sign out below, so this one
+     strip is the whole account surface. */
+  #settings-nav { display: flex; flex-direction: column; gap: 2px;
+    padding: 12px 10px; border-right: 1px solid var(--line);
+    background: var(--surface-inset); }
+  #settings-who { padding: 2px 8px 10px; overflow: hidden; }
+  #settings-name { display: block; font-size: 12px; color: var(--text);
+    font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  #settings-nav [role="tab"] { padding: 7px 9px; border: none; background: none;
+    color: var(--dim); font: inherit; font-size: 13px; text-align: left;
+    border-radius: 6px; cursor: pointer; }
+  #settings-nav [role="tab"]:hover { background: var(--hover); color: var(--text); }
+  /* The selected tab, marked by fill *and* colour. A filled button normally
+     reads as "press me", which is why the approval picker avoids it — but in a
+     tablist the fill is the standard signal for where you are, and the pane
+     beside it is the confirmation. */
+  #settings-nav [role="tab"][aria-selected="true"] { background: var(--surface-raised);
+    color: var(--accent); }
+  #settings-nav [role="tab"]:focus-visible { outline: 1px solid var(--accent);
+    outline-offset: -1px; }
+  /* Pushed to the bottom: not a section you visit, but the way out. */
+  #logout { margin-top: auto; padding: 7px 9px; border: none; background: none;
+    color: var(--dim); font: inherit; font-size: 13px; text-align: left;
+    border-radius: 6px; cursor: pointer; }
+  #logout:hover, #logout:focus-visible { background: var(--hover); color: var(--bad);
+    outline: none; }
+
+  #settings-main { display: flex; flex-direction: column; min-width: 0; }
+  #settings-head { display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  #settings-head h2 { margin: 0; font-size: 13px; font-weight: 600;
+    color: var(--text); }
+  #settings-close { margin-left: auto; width: 24px; height: 24px; padding: 0;
+    border: none; background: none; color: var(--dim); font-size: 13px;
+    border-radius: 5px; cursor: pointer; }
+  #settings-close:hover { background: var(--hover); color: var(--text); }
+  /* The body scrolls; the head and the sidebar do not. */
+  #settings-body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+  #settings h3 { font-size: 11px; margin: 0 0 8px; color: var(--dim);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  #settings section + section { margin-top: 18px; }
+  #settings .none { margin: 0; color: var(--dim); }
+
+  /* One preference: a checkbox, its name, and what it actually does. The whole
+     row is the label, so the explanation is part of the hit area. */
+  .pref { display: flex; align-items: flex-start; gap: 10px; padding: 2px;
+    cursor: pointer; }
+  .pref input { margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  .pref-name { display: block; color: var(--text); }
+  .pref-what { display: block; margin-top: 2px; color: var(--dim);
+    font-size: 12px; }
+
+  /* The theme picker: a row of swatch buttons, each previewing the scheme it
+     selects.
+
+     A `.pref` whose children stack rather than sit side by side — the label and
+     the control are two rows here because the swatches do not fit beside a
+     description. Not a `<label>` either: it wraps buttons rather than one
+     input, and a label pointing at a group is a label that does nothing on
+     click. */
+  .pref-block { flex-direction: column; gap: 8px; cursor: default; }
+  /* The password form is a stack of labelled fields, not a checkbox row. */
+  .pw-form { display: flex; flex-direction: column; gap: 8px; max-width: 340px; }
+  .pw-form input { width: 100%; box-sizing: border-box; }
+  #pw-note { min-height: 16px; }
+  #pref-palette { display: flex; gap: 8px; flex-wrap: wrap; }
+  #pref-palette button { display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 11px; font-size: 12px; }
+  /* The theme in force is marked by border and colour rather than a fill,
+     which reads as "press me" — the same rule the approval and reasoning
+     pickers follow. */
+  #pref-palette button[aria-pressed="true"] { border-color: var(--accent);
+    color: var(--accent); }
+
+  /* The sample. It paints from the tokens of the theme it *names*, not the one
+     in force: each theme's token block above also matches
+     `.swatch[data-palette="…"]`, so a swatch is a 24px window into that scheme
+     and a theme whose colours are edited updates its own sample. That is the
+     whole reason to do it this way rather than with three hand-picked
+     gradients — a sample that has to be maintained alongside the thing it
+     samples eventually lies about it.
+
+     Three bands, because three is what distinguishes these themes at a
+     glance: the window, a card on it, and the accent that marks action. */
+  .swatch { display: flex; width: 24px; height: 14px; border-radius: 3px;
+    flex: none; border: 1px solid var(--line); overflow: hidden; }
+  /* Three bands as three elements rather than one gradient. Not a stylistic
+     preference: this theme has no gradients anywhere, and the rule is asserted
+     over the whole stylesheet (`test_the_account_is_a_circle...`) precisely so a
+     new one cannot arrive through a side door. A flex row of flat fills is the
+     same picture and keeps the rule true. */
+  .swatch i { display: block; height: 100%; }
+  .swatch .sw-bg { flex: 0 0 40%; background: var(--bg); }
+  .swatch .sw-panel { flex: 0 0 32%; background: var(--panel); }
+  .swatch .sw-accent { flex: 1 1 auto; background: var(--accent); }
+
+  /* The instructions box: the one preference here that is prose rather than a
+     control. Full width and resizable vertically, because how much room a
+     preference needs is the writer's judgement; the markup's `maxlength` is the
+     same 2,000 the route refuses beyond. */
+  #pane-assistant textarea { width: 100%; min-height: 132px; resize: vertical;
+    font-size: 12px; line-height: 1.5; }
+  /* The counter and the Save button share a row, with the counter taking the
+     slack so the button stays where the eye expects it. The Sessions pane uses
+     the same row for a number and its unit, so the rule is not scoped to the
+     instructions box. */
+  .pref-row { display: flex; align-items: center; gap: 12px; }
+  .pref-row .pref-what { flex: 1; margin-top: 0; }
+  /* A number of minutes is short; a field that filled the row would read as a
+     text box and invite prose. */
+  #pref-active-minutes { width: 88px; flex: none; }
+
+  /* Permissions and usage: label on the left, value on the right, one row each.
+     A grid rather than a table — there is no second data column, and `dl` says
+     what this is. */
+  .reading { margin: 0; display: grid; grid-template-columns: max-content 1fr;
+    gap: 6px 16px; }
+  .reading dt { color: var(--dim); }
+  .reading dd { margin: 0; overflow-wrap: anywhere; }
+  /* Paths and hosts, one per line: a comma-joined list of four absolute paths is
+     unreadable, and these are the answer to "where exactly". */
+  .reading .paths { display: flex; flex-direction: column; gap: 2px;
+    font-family: ui-monospace, monospace; font-size: 12px; }
+  .reading .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+  /* The layer a value came from. Dim and parenthesised: provenance answers "why
+     can I do this", which is a follow-up question, not the value. */
+  .reading .src { color: var(--dim); font-size: 11px; }
+
+  /* Usage today. The bar is the glance and the figures are the answer, so both
+     are present — a bar alone cannot say 12,480, and a number alone does not
+     show how close the cap is. */
+  #pane-usage .meter { height: 6px; border-radius: 3px; background: var(--track);
+    overflow: hidden; margin: 8px 0 10px; }
+  #pane-usage .meter span { display: block; height: 100%; width: 0;
+    background: var(--accent); }
+  #pane-usage .meter.warn span { background: var(--warn); }
+  #pane-usage .meter.bad  span { background: var(--bad); }
+  #pane-usage .big { font-size: 20px; font-family: ui-monospace, monospace;
+    color: var(--text); }
+  #pane-usage .of { color: var(--dim); font-size: 13px; }
+
+  /* The approval picker: three coloured chips, each carrying the mode's own
+     name. The name is not decoration — red/amber/green is exactly the palette a
+     colour-blind reader cannot separate, and `never`/`safe`/`yolo` is what the
+     audit chain, `neuman-admin` and the policy view all say. A select would
+     hide the two choices you are not on, which is the comparison being offered. */
+  #approval-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+  #approval-choices button { display: flex; align-items: center; gap: 7px;
+    padding: 6px 11px; font-size: 12px; text-align: left; }
+  /* The dot carries the colour; the label carries the name at full contrast — a
+     red or amber *label* on this background reads far worse than white text
+     beside a red dot, and this control is read at a glance. */
+  #approval-choices .dot { width: 9px; height: 9px; border-radius: 50%;
+    flex: none; background: var(--dim); }
+  #approval-choices .never .dot { background: var(--bad); }
+  #approval-choices .safe  .dot { background: var(--warn); }
+  #approval-choices .yolo  .dot { background: var(--ok); }
+  /* The current mode, marked by border rather than fill: a filled button reads
+     as "press me", which is wrong for the one you are already on. */
+  #approval-choices button[aria-pressed="true"] { border-color: var(--accent);
+    color: var(--text); }
+  /* Above the ceiling. Drawn disabled rather than hidden, so the limit is
+     visible — a missing third option looks like a client that forgot it. */
+  #approval-choices button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #approval-choices button:disabled .dot { background: var(--line); }
+  #settings .hint { margin: 8px 0 0; color: var(--dim); font-size: 12px; }
+  #settings .hint:empty { display: none; }
+
+  /* Everything below the transcript: attachments, working directory, composer.
+     One panel, one rule above it — the border is on the container, so it does not
+     depend on which of the optional bars happen to be visible. Three children
+     each carrying their own `border-top` drew three hairlines through what reads
+     as a single block. */
+  /* A card, not a bar across the bottom of the window.
+     The full-width strip read as furniture belonging to the browser; the same
+     box floated in the measure reads as part of the conversation, which is what
+     it is. Same radius as a tool card and a message bubble, because they are
+     the same kind of object. */
+  #context {
+    grid-area: composer;
+    max-width: 88ch;
+    width: calc(100% - 32px);
+    margin: 0 auto 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35);
+    /* The anchor for the two choosers, which position off this box's top edge. */
+    position: relative;
+  }
+  /* No `overflow: hidden`. It was here to keep the rounded corners tidy, and it
+     also clipped anything leaving the box — which is exactly what a chooser
+     opening upward does, so the menus were invisible until it came off. Nothing
+     is left to clip: every child paints the same `--panel` as the card, so the
+     corners stay clean without it. */
+  #context > * { max-width: none; margin-inline: 0; }
+
+  /* The way back to the tail. Positioned off the composer card's top edge so it
+     floats over the transcript, centred — the same place the eye already is
+     after scrolling up, and clear of the folder and attach buttons inside the
+     card. It never joins `#log`'s flow, where it would add height to the thing
+     it scrolls. Hidden while following; `paintJumpLive` owns the class. */
+  #jump-live {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    width: 34px; height: 34px; padding: 0;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--panel);
+    color: var(--dim);
+    box-shadow: 0 4px 14px rgb(var(--shadow) / 0.35);
+  }
+  #jump-live:hover { border-color: var(--accent); color: var(--text); }
+  #jump-live svg {
+    width: 18px; height: 18px; display: block;
+    fill: none; stroke: currentColor; stroke-width: 1.75;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* The outer border is the card's. The status line had an internal rule above
+     it too, which divided the card into two boxes over a reading that is one
+     thing: a token count is a footnote to the message you are composing, not a
+     separate region. Spacing separates them now. */
+  #context #composer { padding: 8px; }
+
+  footer {
+    background: var(--panel);
+    padding: 10px 16px;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    border-top: 1px solid var(--line);
+  }
+  /* The composer sits under the measure it writes into, and lines up with it by
+     the same arithmetic rather than by a number that happens to agree. */
+  footer { max-width: 88ch; margin-inline: auto; width: 100%; background: none;
+    border: 0; padding: 0; }
+
+  /* The status line. Reserves its height whether or not it has text, so the
+     composer does not shift up and down as turns complete — a message box that
+     moves under the cursor is worse than a blank line. */
+  /* Two ends of one line: what is standing on the left — approval, working
+     directory — and what the last turn cost on the right. `justify-content` is
+     gone; the right-hand group takes an auto margin instead, so the left group
+     keeps its natural order and everything after it is pushed to the far edge.
+     One rule rather than two groups with a spacer between them. */
+  /* No background of its own: it sits on the card, and painting `--panel` here
+     over the card's own `--panel` was invisible until the composer's darker
+     field landed between them — then the two equal panels read as a separate
+     band below the box rather than as the bottom of one card. */
+  #status { padding: 2px 10px 1px; min-height: 15px;
+    font-size: 11px; color: var(--dim);
+    font-family: ui-monospace, monospace;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  /* The far end of the line: the last turn's numbers and the tools chip, in one
+     group so the auto margin below belongs to something that is always there.
+     The chip is hidden for an account granted fewer than two tools — not just
+     until the registry loads, but permanently — so a margin on the chip would
+     leave the count unpinned for that whole account and end the footer in empty
+     space. Held here, the group is pinned whatever the chip is doing.
+
+     `gap: 10px` matches `#status`, because these two are the same row of marks
+     as the chips at the other end and should breathe by the same amount. */
+  #status-end { margin-left: auto; display: flex; align-items: center;
+    gap: 10px; }
+  /* The numbers, stacked: the turn's tokens over the context bar they are about.
+     A column rather than a row because the count is the bar's caption, not a
+     second gauge beside it — side by side the two read as equal readings, and
+     three dim characters competed with the chips for the same glance.
+
+     `center`, not `flex-end`, is what puts the caption over the gauge it
+     captions: the block is as wide as its widest child, which is the 80px bar,
+     so centring the text in the block centres it on the bar. Right-aligned, a
+     42px caption lined up with the bar's right end and read as a label hanging
+     off its corner. The consequence, for the day a caption is wider than the
+     bar, is that the pair widens to the text and the bar shifts half the excess
+     — a caption that cannot fit is a bigger problem than a gauge two pixels
+     from where it was. */
+  #status-numbers { display: flex; flex-direction: column;
+    align-items: center; gap: 2px; }
+
+  /* The model control, in the two shapes `applyAdmin` swaps: an operator's chip
+     that opens the models card, and everyone else's plain dropdown. The chip is
+     borderless at rest like the approval and reasoning chips beside it — the
+     violet hue lives on the model name — so the status line stays a row of quiet
+     marks rather than a row of boxes. */
+  #gpu-toggle { display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid transparent; background: none; color: var(--hue);
+    font: inherit; font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 1px 6px; border-radius: 999px; cursor: pointer; }
+  #gpu-toggle:hover, #gpu-toggle[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--line) 45%, var(--hue) 55%);
+    color: var(--text); background: var(--hover); }
+  #model { border: 1px solid transparent; background: none; color: var(--dim);
+    font: inherit; font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 1px 4px; border-radius: 999px; cursor: pointer; }
+  #model:hover { border-color: var(--line); color: var(--text); background: var(--hover); }
+  #model:focus { border-color: var(--accent); }
+
+  /* The three per-turn chips: approval mode, how hard the model thinks, and
+     which tools are in play. Quiet enough to live on a status line — no border
+     until hovered, so at rest each is a small mark and a word rather than a
+     button competing with the message box above it. */
+  #approval-chip, #reasoning-chip, #tools-chip { display: inline-flex;
+    align-items: center;
+    gap: 6px; border: 1px solid transparent; background: none; color: var(--dim);
+    font: inherit; font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 1px 6px; border-radius: 999px; cursor: pointer; }
+  #approval-chip:hover, #approval-chip[aria-expanded="true"],
+  #reasoning-chip:hover, #reasoning-chip[aria-expanded="true"],
+  #tools-chip:hover, #tools-chip[aria-expanded="true"] {
+    border-color: var(--line); color: var(--text); background: var(--hover); }
+  /* Drawn as a path rather than typed: no dependable wrench glyph in the
+     fallback fonts. */
+  #tools-chip .wrench { width: 10px; height: 10px; fill: currentColor;
+    flex: none; opacity: 0.85; }
+  /* The count only appears when the set is narrowed (`paintTools` leaves it
+     empty otherwise), so at rest the chip is the mark alone — the default is
+     every tool, and a status line should not spend characters saying nothing
+     has changed. Accented when narrowed, because that *is* a state worth
+     seeing: it explains why the model did not reach for something. */
+  #tools-chip .narrowed { color: var(--accent); }
+  #tools-chip span:empty { display: none; }
+  #approval-chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: none;
+    background: var(--dim); }
+  /* The reasoning mark: a depth meter, one bar per live level, filled to the
+     one in force.
+
+     It replaces a sparkle that never changed. The word beside it still carries
+     the level exactly — a meter cannot say "3 of 4" in words — but the word
+     alone is a bare adjective on a line that also names a model, and the meter
+     is what says "this is how hard it is thinking" at a glance and without
+     reading.
+
+     Monochrome, and filled by count rather than tinted by hue. The approval
+     dot's three colours are a risk ramp — `never` stops everything, `yolo`
+     stops nothing — which is why they are worth a glance there and would be a
+     lie here: no level is the dangerous one. Bars also stay correct in both
+     palettes and for a reader who cannot separate red from green, and the
+     contrast between filled and hollow is a second channel the word does not
+     need to repeat.
+
+     Ascending heights rather than equal ones, so it reads as depth rather than
+     as a count of something. The scale is per slot because the meter is drawn
+     from the declaration and its width is not known to CSS, so the base height
+     is the tallest and each slot up to the fifth overrides it downwards. A model
+     declaring more live levels than that gets flat bars above the fifth rather
+     than a zero-height one — visible, wrong by a pixel, and the word is still
+     exact. */
+  .depth { display: inline-flex; align-items: flex-end; gap: 1.5px;
+    height: 9px; flex: none; }
+  .depth i { display: block; width: 2px; height: 9px; background: currentColor;
+    opacity: 0.22; }
+  /* Filled bars at the same weight the sparkle carried, so the chip's ink is
+     unchanged and the mark is no louder than the word beside it. */
+  .depth i.on { opacity: 0.85; }
+  .depth i:nth-child(1) { height: 4px; }
+  .depth i:nth-child(2) { height: 6.5px; }
+  .depth i:nth-child(3) { height: 9px; }
+  .depth i:nth-child(4) { height: 9px; }
+  .depth i:nth-child(5) { height: 9px; }
+  /* The same mapping the menu's dots use, and it reads as "how much runs
+     without asking" rather than as good/bad: `never` stops everything, `yolo`
+     stops almost nothing. */
+  #approval-chip.never .dot { background: var(--bad); }
+  #approval-chip.safe  .dot { background: var(--warn); }
+  #approval-chip.yolo  .dot { background: var(--ok); }
+
+  /* The working directory, on the same line and shaped like the chips beside
+     it: quiet at rest, a bordered tag on hover, and a press opens the chooser.
+     The path is shortened from the left by `shortPath` before it is ever drawn
+     — the tail is the part that says where you are — so `min-width: 0` and the
+     ellipsis here are the backstop for a window narrower than that cap, where
+     the tail does go and the title has to carry the rest. */
+  #cwd-bar { display: inline-flex; align-items: center; min-width: 0; }
+  #cwd-current { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    min-width: 0; border: 1px solid transparent; background: none;
+    color: var(--dim); font: inherit; font-family: ui-monospace, monospace;
+    font-size: 11px; padding: 1px 6px; border-radius: 999px; cursor: pointer; }
+  #cwd-current:hover, #cwd-current[aria-expanded="true"] {
+    border-color: var(--line); color: var(--text); background: var(--hover); }
+  /* The working directory's development environment, as a border on the chip.
+     No sixth hue: `--ok` is success, `--warn` is "careful, and reversible", and
+     `--bad` is failure — which is exactly the three answers here. An active
+     environment is a success, the four rebuild states are all reversible by
+     re-entering the directory, and a cache nix did not write is a refusal.
+
+     The *border*, not the text: the path has to stay readable as a path, and
+     recolouring eleven-pixel monospace to carry a status is how a path becomes
+     hard to read at the one size where it already is. A directory with no
+     environment gets nothing at all — most directories are not projects, and an
+     outline on every one of them would mean nothing by being everywhere.
+
+     Colour is never the only carrier: `paintEnvironment` writes the same fact
+     into the title and the accessible name. */
+  #cwd-bar.env-ready    #cwd-current { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); }
+  #cwd-bar.env-warn     #cwd-current { border-color: var(--edge-warn); }
+  #cwd-bar.env-untrusted #cwd-current { border-color: color-mix(in srgb, var(--bad) 55%, var(--line)); }
+  /* Hover still wins on the hue it owns — `--line` would undo the state — so
+     the state border is kept and only the fill and ink change. */
+  #cwd-bar.env-ready #cwd-current:hover, #cwd-bar.env-ready #cwd-current[aria-expanded="true"],
+  #cwd-bar.env-warn #cwd-current:hover, #cwd-bar.env-warn #cwd-current[aria-expanded="true"],
+  #cwd-bar.env-untrusted #cwd-current:hover,
+  #cwd-bar.env-untrusted #cwd-current[aria-expanded="true"] {
+    color: var(--text); background: var(--hover); }
+  /* Clearing the directory, at the foot of the chooser rather than beside the
+     path. Full-bleed under the rows and separated by the same hairline as the
+     filter, so it reads as the menu's footer and not as another directory.
+     Quiet at rest and ink on hover, not the accent: the accent on the chip
+     already means "a directory is set", and this is the act of unsetting it. */
+  /* Clearing is the menu's only act that is not a choice of directory, so it is
+     a quiet line at the foot of the card rather than a bar across it: small, at
+     the end of the row it belongs to, and out of the way of the panels. */
+  #cwd-menu .chooser-clear { flex: none; align-self: flex-end; margin: 2px 8px 6px;
+    border: 0; background: none; color: var(--dim); font: inherit; font-size: 11px;
+    padding: 3px 6px; border-radius: 4px; cursor: pointer; }
+  #cwd-menu .chooser-clear:hover,
+  #cwd-menu .chooser-clear:focus-visible {
+    color: var(--text); background: var(--hover); }
+
+  /* **Every upward popover is bounded by the room above the composer**, which is
+     not a fraction of the window.
+
+     Each of these opened off `#context`'s top edge with a `vh` cap — 38vh for the
+     choosers, 60vh for the tools panel, 72vh for the models card — which assumed
+     the composer sits on the floor of the window. In the draft it does not: the
+     box is centred (`body.drafting`), so the space above it is about half the
+     window, and a panel allowed 60vh of it grew past the top edge. The overflow
+     was unreachable rather than merely ugly — the card is `overflow-y: auto`, so
+     its scrollbar begins at a top that is off-screen and the first rows could not
+     be scrolled to or clicked.
+
+     `--headroom` is the measured distance from the top of the viewport to the top
+     of `#context`, published by a `ResizeObserver` (see `neuman.js`). It is a
+     measurement, not a position: the geometry stays here, in CSS, and the panels
+     stay plain show/hide with no layout code on open.
+
+     The subtrahend is the 8px gap each popover leaves below itself plus 56px of
+     clearance, and the 56 is the account circle rather than a round number for
+     taste: it is fixed at `top: 12px` and 36px tall, so anything reaching above
+     56px passes behind it. Two of these panels are right-anchored under exactly
+     that corner, and the circle's higher `z-index` means the collision shows as
+     a panel's first row painted over rather than as a panel merely too tall.
+     The same clearance is what keeps the left-anchored menus off the window's
+     top edge instead of butting against it.
+
+     The fallback matters: `--headroom` is unset until the observer first fires,
+     and a popover opened in that frame must still be bounded. 100vh is the right
+     fallback precisely *because* each rule still carries its own cap — the `min()`
+     falls back to the old behaviour rather than to no limit at all.
+
+     Floored at 120px, because a `max-height` cannot go below zero and a panel
+     clamped to nothing is worse than one that overflows: on a window too short
+     to hold the composer and a chooser both, the panel should still open and
+     scroll a few rows rather than vanish and make its chip look broken. */
+  #cwd-menu, #attach-menu, #approval-menu, #reasoning-menu, #branch-menu, #tools-menu, #models {
+    --headroom-cap: max(120px, var(--headroom, 100vh) - 64px);
+  }
+
+  /* The approval menu, opening *upward* from the chip: the chip is at the bottom
+     of the card, so a menu below it would be off the bottom of the window. Same
+     reason the path choosers open upward, and the same geometry — anchored to
+     `#context`, which is the positioned ancestor.
+
+     It has no cap of its own: three fixed rows and two hints are short at every
+     window size, so the headroom bound is the only one it needs — and it needs
+     that one, because a 400px-tall window has less room than the menu wants. */
+  #approval-menu {
+    position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
+    min-width: 260px; max-width: 360px;
+    max-height: var(--headroom-cap); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35); padding: 10px 12px; z-index: 20;
+  }
+  #approval-menu .hint { margin: 8px 0 0; color: var(--dim); font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; }
+  #approval-menu .hint:empty { display: none; }
+
+  /* The reasoning picker: the same upward popover as approval, anchored to the
+     same `#context`. The two chips sit a few pixels apart on the status line, so
+     the shared left edge reads as deliberate rather than as a misplaced menu. */
+  #reasoning-menu {
+    position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
+    min-width: 180px;
+    max-height: var(--headroom-cap); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35); padding: 10px 12px; z-index: 20;
+  }
+  #reasoning-menu .hint { margin: 8px 0 0; color: var(--dim); font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; }
+  /* One button per declared level, each carrying its own place on the meter.
+     The one in force is marked by border and colour rather than a fill, which
+     reads as "press me" — the same rule the approval picker follows. The bars
+     beside each name are what make the order visible: the list is otherwise
+     four or five bare words, and a menu is where the ramp should be legible.
+     Still no coloured dots — a level is a depth, not a coloured state. */
+  #reasoning-choices { display: flex; gap: 6px; flex-wrap: wrap; }
+  #reasoning-choices button { display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; font-size: 12px; }
+  #reasoning-choices button[aria-pressed="true"] { border-color: var(--accent);
+    color: var(--accent); }
+
+  /* The tool chooser. Right-anchored, unlike the approval and reasoning menus:
+     its chip sits at the far end of the status line next to the context bar, and
+     a left-anchored panel would hang off the composer's edge. Scrolls, because
+     the list is as long as the registry and an appliance can install more. */
+  #tools-menu {
+    position: absolute; bottom: 100%; right: 0; margin-bottom: 8px;
+    width: min(420px, calc(100vw - 32px));
+    max-height: min(60vh, 520px, var(--headroom-cap));
+    overflow-y: auto; z-index: 20;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35); padding: 10px 12px; font-size: 13px;
+  }
+  #tools-menu .tools-head { display: flex; align-items: baseline; gap: 10px;
+    margin-bottom: 8px; }
+  #tools-menu .tools-head strong { font-size: 12px; color: var(--accent);
+    font-weight: 600; }
+  #tools-all { margin-left: auto; padding: 2px 9px; font-size: 11px; }
+  #tools-menu .hint { margin: 8px 0 0; color: var(--dim); font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; }
+  #tools-menu .hint:empty { display: none; }
+
+  /* One row per tool: a checkbox, the name, and what it does. The whole row is
+     the label so the description is part of the hit area — a 13px checkbox is a
+     small target for a list someone works through. */
+  .tool-row { display: flex; align-items: flex-start; gap: 9px;
+    padding: 5px 6px; border-radius: 6px; cursor: pointer; }
+  .tool-row:hover { background: var(--hover); }
+  .tool-row input { margin: 2px 0 0; flex: none; accent-color: var(--accent); }
+  .tool-row .tool-name { font-family: ui-monospace, monospace; font-size: 12px;
+    color: var(--text); }
+  /* One line, clipped. `toolBlurb` already shortens the text; this is the
+     backstop that keeps a row one line high whatever reaches it, because the
+     panel is a list to scan and a row that wraps to four lines stops being
+     scannable. The full text is in the row's `title`. */
+  .tool-row .tool-what { display: block; color: var(--dim); font-size: 11.5px;
+    font-family: ui-sans-serif, system-ui, sans-serif; margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* A mutating tool is marked, because switching one off is the main reason to
+     open this panel at all. Not a warning colour: these are ordinary tools and
+     the mark is a fact about them, not a danger. */
+  .tool-row .tool-tag { font-size: 10px; font-family: ui-monospace, monospace;
+    color: var(--warn); border: 1px solid currentColor; border-radius: 4px;
+    padding: 0 3px; margin-left: 5px; vertical-align: 1px; }
+  /* Dimmer than `writes`: this one says "not for real work", which is a
+     category rather than a hazard. */
+  .tool-row .tool-tag.diag { color: var(--dim); }
+  /* Ungranted: visible, unselectable, and the reason is in the description slot.
+     Shown rather than omitted so the panel is the whole surface — a tool that is
+     simply absent reads as a missing feature rather than an ungranted one. */
+  .tool-row.ungranted { cursor: default; }
+  .tool-row.ungranted:hover { background: none; }
+  .tool-row.ungranted .tool-name { color: var(--dim);
+    text-decoration: line-through; text-decoration-color: var(--line); }
+
+  /* How full the context is, under the session's spend (see `usageLine`).
+     Deliberately small and quiet: this is a gauge to notice out of the corner
+     of an eye, not a readout. The colour is the whole signal — the exact
+     numbers live in the title attribute, because anyone who wants them is
+     already hovering. */
+  /* The spend is a size down from the line's 11px, so the pair reads as one
+     reading with a big half and a small half rather than as two controls. */
+  #usage { font-size: 10px; line-height: 1.2; white-space: nowrap; }
+  /* Nothing to say costs no row. Without this the column's gap is still paid by
+     an empty span, and the bar sits two pixels lower than it should. This is
+     the ordinary state for a local model, which has no price to show — the bar
+     then stands alone rather than under a blank. */
+  #usage:empty { display: none; }
+  #context-bar { display: inline-block; width: 80px; height: 5px;
+    background: var(--line); border-radius: 3px; overflow: hidden;
+    flex: none; cursor: help; }
+  #context-fill { display: block; height: 100%; width: 0;
+    background: var(--dim); border-radius: 3px;
+    /* Eased, so a jump from a quarter to most-of-the-way reads as movement
+       rather than as a different bar having appeared. */
+    transition: width 200ms ease-out, background-color 200ms ease-out; }
+  /* Two thresholds rather than a gradient: "fine", "getting full" and "about to
+     fail" are the three states worth distinguishing, and a continuous ramp
+     makes none of them legible. */
+  #context-bar.warn #context-fill { background: var(--warn); }
+  #context-bar.bad  #context-fill { background: var(--bad); }
+  /* The composer *is* the input.
+     The border, the fill and the focus ring are drawn once, here, and everything
+     inside sits on that one field: the textarea loses its own box and the
+     buttons lose theirs. Three separately-bordered controls in a row was the
+     arrangement that read as a toolbar from another decade — what changed is not
+     the parts but that only the group is drawn. */
+  #composer {
+    background: var(--surface-inset);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 6px;
+    gap: 4px;
+    transition: border-color 120ms ease-out;
+    /* A column, because the attachment chips are a row of their own above the
+       controls. `footer` sets `align-items: flex-end`, which in a column means
+       "as narrow as the content" — the children have to stretch instead or the
+       field collapses to the width of its buttons. */
+    flex-direction: column;
+    align-items: stretch;
+  }
+  /* The controls: the icons, the text and Send, on one line. This was the
+     composer itself until the chips moved inside, and it keeps that geometry —
+     bottom-aligned so the buttons stay put as the textarea grows. */
+  #composer-row { display: flex; gap: 4px; align-items: flex-end; }
+  /* The ring follows focus into the box, because the thing being focused is the
+     field as far as anyone looking at it is concerned. `:focus-within` rather
+     than `:focus` for exactly that: the textarea has the focus, the box shows
+     it. */
+  #composer:focus-within { border-color: var(--accent); }
+  /* A file being dragged over the window (D102). The composer lights up rather
+     than the window, because the field is where the file ends up — as a chip in
+     it. Positioned only while dragging, so the label has a box to cover without
+     the composer becoming a containing block for the menus that open from it. */
+  #composer.dropping { position: relative; border: 1px dashed var(--accent); }
+  #composer.dropping::after {
+    content: "Drop to attach";
+    position: absolute; inset: 0; border-radius: inherit;
+    display: grid; place-items: center;
+    background: var(--tint-accent); color: var(--accent);
+    font-size: 13px; pointer-events: none;
+  }
+  /* While a bubble is editable the composer is still visible — it is where the
+     conversation continues once the edit is done — but it is not a second place
+     to send from. Stop stays at full strength: a running turn is still a thing
+     to stop, even while its earlier prompt is being corrected. */
+  #composer.editing #input,
+  #composer.editing #attach,
+  #composer.editing #cwd-pick,
+  #composer.editing #send {
+    opacity: 0.45;
+  }
+  #composer.editing #input { cursor: default; }
+  footer textarea {
+    flex: 1; resize: none; min-height: 30px; max-height: 40vh;
+    /* Transparent and unbordered: the box around it is the composer's. */
+    background: none; border: 0; border-radius: 0; padding: 7px 6px;
+  }
+  footer textarea:focus { border-color: transparent; }
+
+  /* The glyph buttons on that field: no box of their own, so the only drawn
+     edges in the composer are the field's and the send button's.
+     Aligned to the bottom with Send so they stay put as the textarea grows,
+     rather than riding up with the first line. */
+  #attach, #cwd-pick, #interrupt {
+    background: transparent; border: 1px solid transparent; border-radius: 7px;
+    color: var(--dim); line-height: 0; padding: 7px; cursor: pointer;
+  }
+  /* Hover is a lift of the surface, not a change of colour: each of these
+     carries a meaning in its colour already (attach wears its menu's hue, Stop
+     is red), and swapping that on hover would say the control had changed. */
+  #attach:hover, #cwd-pick:hover, #interrupt:hover:not(:disabled) {
+    background: var(--hover); border-color: transparent;
+  }
+  /* Set, so it says so: the folder wears its hue only once there is a directory
+     to wear it about. Unset it is a dim glyph like any other affordance, which
+     keeps the resting composer to one accent (Send) rather than two. */
+  #cwd-pick.set { color: var(--hue); }
+  #interrupt, #interrupt:hover:not(:disabled) { color: var(--bad); }
+  #interrupt:hover:not(:disabled) { background: var(--tint-bad); }
+  /* A little air before the primary action, so Stop and Send are not one block
+     of two adjacent targets — they do opposite things and sit a click apart. */
+  #interrupt { margin-right: 2px; }
+
+  /* One icon size for every control in the row, so the glyphs read as a set
+     rather than as four separate decisions. `currentColor` on the stroke is what
+     lets each button carry its own state colour — dim at rest, accent when
+     primary, red while stopping — with no second asset. */
+  #composer svg {
+    width: 18px; height: 18px; display: block;
+    fill: none; stroke: currentColor; stroke-width: 1.75;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* Send is the one control that keeps a filled shape, because it is the
+     primary action and the row needs one. Square-ish rather than pill: it sits
+     inside a rounded field and a second radius that disagreed with the first
+     read as a button dropped into a box. */
+  #send { padding: 7px; line-height: 0; border-radius: 7px; }
+  /* Dimmed rather than hidden while there is nothing to send: a primary button
+     that vanishes and reappears makes the row twitch on the first keystroke. */
+  #send:not(.ready) { opacity: 0.45; }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* The arrival is the one thing on this surface that moves. It says which way
+       you stepped, which is worth a press of the arrow without asking for motion
+       on every navigation. */
+    .chooser-panel { animation: none; }
+    /* A step still swaps, a history card still opens and the stage still folds;
+       they just do it at once. The script reads the duration back off the
+       element, so this is also what tells it there is no fold to wait for. */
+    .work-run > .step-stage,
+    .work-run > .step-stage > .step-detail,
+    .work-run > .step-detail { transition: none; }
+    /* A thought still arrives in chunks; the ink does not bloom. */
+    .reasoning-body .md-chunk { animation: none; }
+    .work-run > .tool-row.arrive,
+    .work-run > .think-row.arrive { animation: none; }
+    /* The state word still says what the row is doing; only the pulse goes. */
+    #sessions .live-dot { animation: none !important; }
+    /* The caret still marks where output will land; it just stops blinking. */
+    .tool .shell-caret { animation: none; }
+  }
+
+  /* Attached files, inside the field and above the text they qualify.
+     They were a bar of their own with the panel's background, which said the
+     files belonged to the window; a chip on the field says they belong to the
+     message. No background and no padding of its own — it sits on the composer's
+     surface and takes the composer's padding, so the chips line up with the
+     icons below them rather than with an edge nothing else shares. */
+  #attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 6px; }
+  #attachments .chip { display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px;
+    /* The panel colour, a shade up from the field it sits on, so a chip reads as
+       an object placed on the surface rather than a hole cut in it. */
+    background: var(--panel); font-size: 12px; max-width: 24ch; }
+  #attachments .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, monospace; }
+  #attachments .chip-x { border: 0; background: transparent; color: var(--dim);
+    cursor: pointer; font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 999px; }
+  #attachments .chip-x:hover { color: var(--accent); background: var(--hover); }
+
+  /* The commands still running on this machine (D98). The same chip as an
+     attachment, because it is the same shape of fact — a thing this field is
+     carrying — with the elapsed time in the dim slot the attachment uses for
+     nothing. The other difference is what the ✕ does: an attachment's drops it
+     from the list, a job's stops the process. That is why the button's tooltip
+     says which, rather than relying on the glyph to mean both. */
+  #jobs { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 2px 6px; }
+  #jobs .chip { display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px;
+    background: var(--panel); font-size: 12px; max-width: 32ch; }
+  #jobs .chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: ui-monospace, monospace; }
+  #jobs .job-time { color: var(--dim); font-variant-numeric: tabular-nums;
+    white-space: nowrap; }
+  #jobs .chip-x { border: 0; background: transparent; color: var(--dim);
+    cursor: pointer; font-size: 11px; line-height: 1; padding: 3px 5px; border-radius: 999px; }
+  #jobs .chip-x:hover { color: var(--accent); background: var(--hover); }
+
+  /* The rows and crumbs are shared with `#cwd-menu` above: the two choosers read
+     as one mechanism. Only the pick semantics differ — a file attaches, a
+     directory descends. */
+
+  /* -- window hues -----------------------------------------------------------
+     Each floating window carries a hue so it is identifiable at a glance:
+     sessions blue, the models card violet, settings green, and both path
+     choosers the same blue as the composer's own controls — they are opened from
+     the field they configure, and the amber they used to wear made a file picker
+     look like a warning. The wash is a whisper of the hue over `--panel`, so text
+     contrast is untouched; the border and the window's own caption carry more of
+     it, because 8% alone is nearly invisible. `color-mix` degrades to the flat
+     `--panel` on a browser without it rather than breaking. */
+  #sessions { --hue: var(--accent); }
+  #models { --hue: var(--violet); }
+  #settings { --hue: var(--ok); }
+  /* The choosers wear the accent, not amber. The amber said "a separate window"
+     about the two surfaces that are the composer's own and are opened from the
+     field they configure; beside the blue folder glyph that opens them it read as
+     a warning light. `--warn` keeps its job — the approval
+     "safe" dot, the context meter — where it means "careful, and reversible". */
+  #cwd-menu, #attach-menu { --hue: var(--accent); }
+  /* The row menu belongs to the sessions panel, so it carries the same hue even
+     though it is parented to `body` rather than nested inside it. */
+  .row-menu { --hue: var(--accent); }
+
+  #sessions, #models, #settings, #cwd-menu, #attach-menu, .row-menu,
+  #sessions-sort-menu {
+    background: color-mix(in srgb, var(--panel) calc(100% - var(--wash)), var(--hue) var(--wash));
+    border-color: color-mix(in srgb, var(--line) calc(100% - var(--edge)), var(--hue) var(--edge));
+  }
+  /* The models header is sticky over a scrolling body, so it has to stay opaque
+     and take the same wash rather than the flat panel. */
+  #models .panel-head {
+    background: color-mix(in srgb, var(--panel) calc(100% - var(--wash)), var(--hue) var(--wash));
+    border-bottom-color: color-mix(in srgb, var(--line) calc(100% - var(--edge)), var(--hue) var(--edge));
+  }
+  #settings-head, #sessions-head, #cwd-menu .crumbs, #attach-menu .crumbs {
+    border-bottom-color: color-mix(in srgb, var(--line) calc(100% - var(--edge)), var(--hue) var(--edge));
+  }
+  /* The caption wears the hue, so the identity is in the words too. The
+     settings heading rather than its whole head: the head also holds the close
+     button, and tinting that would make the ✕ read as part of the title. */
+  #models h2, #settings-title { color: var(--hue); }
+
+  /* The toggle wears its window's hue all the time, not only while that window
+     is open: the mapping is the point, and a button that shows its colour only
+     after the click that opened the panel is a colour you have to already know.
+     `--hue` is set on the toggles because they sit outside the panels they open.
+     (The ID selector outranks `button:hover`'s accent border, so the hue holds
+     under the pointer too.) */
+  #account-toggle { --hue: var(--ok); }
+  #gpu-toggle { --hue: var(--violet); }
+  #cwd-pick, #attach { --hue: var(--accent); }
+  /* The composer's two choosers wear their hue on the edge. The model chip does
+     not: it is one of the status line's quiet chips, so its hue lives on the
+     model name and the border appears on hover only.
+
+     The account chip follows the model chip's rule rather than these two. It is
+     36px of fixed chrome in the corner — the most prominent control in the
+     window — and a hue-tinted edge there read as a lit-up badge rather than as
+     an avatar, so its hue lives on the initials and its edge stays the ordinary
+     `--line` until hovered (see `#account-toggle`). */
+  #cwd-pick, #attach {
+    color: var(--hue);
+    border-color: color-mix(in srgb, var(--line) 45%, var(--hue) 55%);
+  }
+  /* Except inside the composer, where the field is the only drawn edge.
+     `#attach` keeps the hue — the mapping from control to the window it opens is
+     the point of this system, and the glyph still carries it — but a bordered
+     chip sitting inside the input is the boxed-widget look the composer is built
+     to avoid. Colour says which menu this opens; the border said "separate
+     control", which it no longer is. */
+  #composer #attach, #composer #cwd-pick { border-color: transparent; }
+  /* The hue is carried by `.set` on the folder (see the composer rules), not at
+     rest: an always-warm glyph on an empty field claimed a directory was chosen
+     when none was. */
+  #composer #cwd-pick:not(.set) { color: var(--dim); }
+  /* The GPU chip's own text is set to `--text`/`--dim`, so the button's colour
+     never reaches it; the model name is the chip's "glyph" and wears the hue. */
+  #gpu-model { color: var(--hue); }
+
+  #login { margin: auto; display: flex; flex-direction: column; gap: 10px; width: 300px; }
+  #login h1 { font-size: 17px; margin: 0 0 4px; }
+  #login .msg { color: var(--bad); font-size: 13px; min-height: 18px; }
+  .hidden { display: none !important; }
+
+  /* -- branches -------------------------------------------------------------
+     A fork is a branch of the same session, so it lives on the status line
+     beside approval and reasoning rather than in the rail. The chip is hidden
+     until a session actually has more than one branch: "main" on a conversation
+     that has never forked is a label with nothing to choose. */
+  #branch-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid transparent; background: none; color: var(--dim);
+    font: inherit; font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 1px 6px; border-radius: 999px; cursor: pointer;
+    max-width: 22ch; min-width: 0;
+  }
+  #branch-chip:hover, #branch-chip[aria-expanded="true"] {
+    border-color: var(--line); color: var(--text); background: var(--hover);
+  }
+  #branch-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #branch-chip .chev { font-size: 9px; opacity: 0.6; flex: none; }
+
+  #branch-menu {
+    position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
+    min-width: 220px; max-width: 340px;
+    max-height: var(--headroom-cap); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35); padding: 8px; z-index: 20;
+  }
+  #branch-menu .hint { margin: 8px 4px 2px; color: var(--dim); font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; }
+  #branch-choices { display: flex; flex-direction: column; gap: 2px; }
+  #branch-choices button {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 9px 7px calc(9px + var(--depth, 0) * 13px);
+    border: 1px solid transparent; border-radius: 6px;
+    background: none; color: var(--text); font: inherit; font-size: 13px;
+    text-align: left; cursor: pointer; overflow: hidden;
+  }
+  #branch-choices button:hover, #branch-choices button:focus-visible {
+    background: var(--hover); color: var(--accent); outline: none;
+  }
+  #branch-choices button.current { border-color: var(--accent); color: var(--accent); }
+  #branch-choices .branch-state {
+    margin-left: auto; color: var(--dim); font-size: 11px;
+    font-family: ui-monospace, monospace; white-space: nowrap;
+  }
+
+  /* The branch count on an Active row, and the fork glyph at a fork point. Both
+     are quiet: a branch is a way of reading a conversation, not a second
+     conversation asking for attention. */
+  .row .branch-count, .active .branch-count {
+    color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace;
+    white-space: nowrap; margin-left: auto;
+  }
+
+  /* -- editing a prompt -----------------------------------------------------
+     The pencil hangs off the bubble's corner rather than sitting inside it.
+     Inside, its reserve pushed the text sideways and left a hole where a word
+     had been; a corner control can overlap the edge it belongs to, so the
+     bubble's measured width is the text's width. It is also on the bubble's own
+     hover, which a gap between the two would not be: the button is a child, so
+     moving from the text onto the pencil never leaves the node that shows it. */
+  .turn.user, .turn.agent { position: relative; }
+  .edit-action {
+    position: absolute; top: -12px; right: -12px; z-index: 3;
+    display: grid; place-items: center;
+    width: 25px; height: 25px; padding: 0;
+    border: 1px solid var(--line); border-radius: 50%;
+    background: var(--panel); color: var(--dim);
+    box-shadow: 0 2px 8px rgb(var(--shadow) / 0.18);
+    cursor: pointer; opacity: 0; pointer-events: none;
+    transition: opacity 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .turn.user:hover > .edit-action, .turn.user:focus-within > .edit-action {
+    opacity: 1; pointer-events: auto;
+  }
+  .edit-action:hover, .edit-action:focus-visible {
+    color: var(--accent); border-color: var(--accent); outline: none;
+  }
+  .edit-action svg {
+    width: 13px; height: 13px; fill: none; stroke: currentColor;
+    stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round;
+  }
+  /* No hover to reveal it on a touch screen: the action is always there, a
+     little quieter than the text until it is pressed. */
+  @media (hover: none) {
+    .edit-action { opacity: 0.72; pointer-events: auto; }
+  }
+
+  /* The bubble is the editor. A separate overlay would have to sit exactly on
+     top of a node that grows as the text does — two measurements of the same
+     thing — and would leave the original visible underneath, which makes it
+     unclear which text Send will use. The tail fades because the branch below
+     still exists and is worth reading, but it is not what is being edited. */
+  .turn.user.editing {
+    min-width: min(300px, 88%);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .editor { display: flex; flex-direction: column; gap: 4px; white-space: normal; }
+  .editor textarea {
+    width: 100%; min-height: 1.5em; max-height: 40vh;
+    margin: 0; padding: 0; border: 0; outline: 0; resize: none;
+    overflow-y: auto; background: none; color: var(--text);
+    font: inherit; line-height: 1.5;
+  }
+  .edit-actions { display: flex; align-items: center; gap: 6px; }
+  .edit-cue {
+    display: inline-flex; align-items: center; gap: 4px;
+    margin-right: auto; color: var(--dim); white-space: nowrap;
+    font: 10px ui-monospace, monospace;
+  }
+  .edit-glyph { color: var(--accent); font-size: 11px; }
+  .edit-status { color: var(--bad); font-size: 10.5px; line-height: 1.4; }
+  .edit-status:empty { display: none; }
+  .edit-cancel, .edit-send {
+    border: 1px solid var(--line); border-radius: 5px; padding: 3px 8px;
+    background: none; color: var(--dim);
+    font: 10px ui-sans-serif, system-ui, sans-serif; cursor: pointer;
+  }
+  .edit-send { border-color: var(--accent); color: var(--accent); }
+  .edit-cancel:hover, .edit-cancel:focus-visible {
+    color: var(--text); border-color: var(--dim); outline: none;
+  }
+  .edit-send:hover, .edit-send:focus-visible {
+    background: var(--accent); color: var(--bg); outline: none;
+  }
+  .edit-send:disabled { opacity: 0.45; cursor: default; }
+  .turn.user.editing ~ * { opacity: 0.5; }
+
+  /* -- fork points -----------------------------------------------------------
+     A fork is drawn where it happened: a rail across the transcript with one
+     circular node at the centre. The node is the branch switcher; the label
+     under it names the lane the reader is now in. The rail is the same hairline
+     as a tool row and stops at the measure, so the branching structure reads as
+     part of the transcript rather than a second panel above it. */
+  .fork-marker { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+  .fork-line {
+    flex: 1; height: 1px;
+    background: color-mix(in srgb, var(--line) 88%, transparent);
+  }
+  .fork-node {
+    position: relative; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; padding: 0; border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--line) 85%, var(--accent) 15%);
+    background: var(--bg); color: var(--dim);
+    font: inherit; cursor: pointer;
+  }
+  .fork-node:hover, .fork-node:focus-visible, .fork-node[aria-expanded="true"] {
+    color: var(--accent); border-color: var(--accent);
+    background: var(--hover); outline: none;
+  }
+  .fork-node.origin {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  }
+  .fork-glyph { font-size: 14px; line-height: 1; }
+  .fork-count {
+    position: absolute; top: -6px; right: -6px;
+    min-width: 14px; height: 14px; padding: 0 3px;
+    border: 1px solid var(--line); border-radius: 999px;
+    background: var(--panel); color: var(--dim);
+    font: 9px/12px ui-monospace, monospace; text-align: center;
+  }
+  .fork-node.origin .fork-count {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  }
+
+  /* -- the branches at one fork point ---------------------------------------
+     The parent is the branch the fork came from; the children are the branches
+     that start here. The trunk drops from the parent row and one elbow reaches
+     each child, so "same point, different continuations" is the drawing rather
+     than a sentence. */
+  #fork-menu {
+    position: fixed; z-index: 24;
+    width: min(312px, calc(100vw - 24px));
+    max-height: min(60vh, 420px); overflow-y: auto;
+    padding: 10px;
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel);
+    box-shadow: 0 12px 40px rgb(var(--shadow) / 0.35);
+  }
+  .fork-menu-head {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 2px 4px 0;
+  }
+  .fork-menu-title {
+    color: var(--text); font: 11px ui-monospace, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fork-menu-count {
+    margin-left: auto; flex: none; padding: 1px 6px;
+    border: 1px solid var(--line); border-radius: 999px;
+    color: var(--dim); font: 9.5px ui-monospace, monospace;
+  }
+  .fork-tree { margin-top: 8px; }
+  .fork-row {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; gap: 9px; width: 100%;
+    padding: 8px 9px; border: 1px solid transparent; border-radius: 7px;
+    background: none; color: var(--text); font: inherit;
+    text-align: left; cursor: pointer;
+  }
+  .fork-row:hover, .fork-row:focus-visible {
+    background: var(--hover); color: var(--accent); outline: none;
+  }
+  .fork-row:hover .fork-dot, .fork-row:focus-visible .fork-dot {
+    background: var(--accent);
+  }
+  .fork-dot {
+    flex: none; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--dim); box-shadow: 0 0 0 2px var(--panel);
+  }
+  .fork-parent::before {
+    content: ""; position: absolute; left: 13.5px; top: 50%; bottom: -15px;
+    width: 1px; background: color-mix(in srgb, var(--line) 85%, transparent);
+  }
+  .fork-parent .fork-dot { width: 9px; height: 9px; background: var(--text); }
+  .fork-children {
+    position: relative; display: flex; flex-direction: column; gap: 2px;
+    margin-left: 9px; padding-left: 14px;
+  }
+  .fork-child::before {
+    content: ""; position: absolute; left: -9.5px; top: 50%;
+    width: 22px; height: 1px;
+    background: color-mix(in srgb, var(--line) 85%, transparent);
+  }
+  /* One vertical segment per child, so the rail reaches the last child's elbow.
+     A container-level segment can only stop at a fraction of the whole children
+     block, which is not where the last row's centre is (N177). */
+  .fork-child::after {
+    content: ""; position: absolute; left: -9.5px; top: 0;
+    width: 1px; height: 50%;
+    background: color-mix(in srgb, var(--line) 85%, transparent);
+  }
+  .fork-child:not(:last-child)::after {
+    height: auto; bottom: -2px;
+  }
+  .fork-child .fork-dot { width: 7px; height: 7px; background: var(--dim); }
+  .fork-name {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12.5px;
+  }
+  .fork-meta {
+    margin-left: auto; flex: none; color: var(--dim);
+    font: 9.5px ui-monospace, monospace; white-space: nowrap;
+  }
+  .fork-row.current {
+    border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+    background: color-mix(in srgb, var(--accent) 9%, transparent);
+    color: var(--accent);
+  }
+  .fork-row.current .fork-dot { background: var(--accent); }
+  .fork-row.current .fork-meta { color: var(--accent); }
+  .fork-row.path .fork-dot {
+    box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .edit-action { transition: none; }
+  }

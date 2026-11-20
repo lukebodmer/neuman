@@ -1,0 +1,39 @@
+# Blender: build and look at 3D models in a Blender the user watches (D100).
+#
+# A package rather than three built-in tools because it is useful to some
+# deployments and noise to the rest: a role editor listing `blender_view` to an
+# accounting firm is a row nobody should have to read past (D101).
+#
+# `requires`, not a download. Blender is a large program the user installs and
+# updates themselves, and the one on their machine is the one they already work
+# in; when it is missing the tools say so, by name, with where to get it.
+#
+# `host` is what makes it live: the client starts `neuman-blender-host` the
+# first time one of the tools is dispatched and nothing is answering, and the
+# Blender it opens stays open for the person to work in.
+
+[package]
+id = "blender"
+title = "Blender"
+summary = "Build and look at 3D models in a Blender the user watches and works in"
+description = """
+Lets the agent build 3D models from a description in the user's own Blender: \
+it runs Python inside Blender to make and change the scene, describes the scene \
+as text, and looks at it from any angle — while the user watches the window and \
+can work in it too. Every change is one step on Blender's undo stack.
+
+Each user needs Blender installed on their own machine; Neuman does not install \
+it, and a user without it is told so. Blender opens on its own the first time a \
+tool needs it. `blender` runs Python inside Blender as the user and asks for \
+approval under `safe`; looking does not. `blender_view` needs a model with vision.
+"""
+publisher = "neuman"
+tools = ["blender", "blender_scene", "blender_view"]
+
+[package.requires]
+program = "blender"
+name = "Blender"
+url = "https://www.blender.org/download/"
+
+[package.host]
+exec = "neuman-blender-host"

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "task-run",
+  "description": "One execution of a task: the input values it was given, the directory it worked in, and a record per step. A run step's status comes from its exit code and an agent step's from the harness's terminal reason, never from the model's own report (D94, D96). When the run ends the server writes this record to `neuman-run.json` in the run directory, through the owner's client, so whatever reads the run's outputs can read how it went without calling Neuman (D97).",
+  "$ref": "#/$defs/run",
+  "$defs": {
+    "status": {
+      "enum": [
+        "due", "waiting", "running", "succeeded",
+        "failed", "budget", "missed", "cancelled"
+      ]
+    },
+    "stepStatus": {
+      "enum": ["pending", "running", "succeeded", "failed", "budget", "skipped", "cancelled"],
+      "description": "`succeeded`: a run step exited 0, or an agent turn ended on the model's stop. `failed`: a non-zero exit, a timeout, or a model or dispatch error. `budget`: an agent turn hit its step or token cap. `skipped`: its `run_if` did not hold."
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "status"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,39}$"},
+        "kind": {"enum": ["run", "agent"]},
+        "status": {"$ref": "#/$defs/stepStatus"},
+        "started_at": {"type": ["string", "null"], "format": "date-time"},
+        "finished_at": {"type": ["string", "null"], "format": "date-time"},
+        "exit_code": {
+          "type": ["integer", "null"],
+          "description": "A run step's exit code; null for an agent step or a command that was killed."
+        },
+        "error": {
+          "type": ["string", "null"],
+          "maxLength": 2000,
+          "description": "The terminal reason, named from the structured result. Never the model's prose summary."
+        },
+        "output": {
+          "type": ["string", "null"],
+          "maxLength": 8000,
+          "description": "A run step's own words: the end of its standard output, then the end of its standard error. The task view shows it under the step; an agent step's words are its transcript instead (D99)."
+        },
+        "session_id": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{32}$",
+          "description": "An agent step's session: its transcript and audit chain."
+        },
+        "branch_id": {"type": ["string", "null"], "pattern": "^[0-9a-f]{32}$"},
+        "dispatch_id": {
+          "type": ["string", "null"],
+          "description": "A run step's dispatch, as the audit chain records it."
+        },
+        "iterations": {"type": ["integer", "null"], "minimum": 0},
+        "cost_usd": {"type": ["number", "null"], "minimum": 0},
+        "tokens": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "task_id", "account", "trigger", "status", "inputs", "steps", "created_at"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "task_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+        "account": {"type": "string", "minLength": 1},
+        "trigger": {
+          "enum": ["schedule", "manual"],
+          "description": "Why this run exists. A schedule trigger is a due clock; a manual trigger is a person pressing Run now, which does not move `next_run_at`."
+        },
+        "status": {
+          "$ref": "#/$defs/status",
+          "description": "`due` is created and ready; `waiting` has no connected client; `running` has a step in flight; `succeeded`: every step that ran succeeded and none was skipped; `failed`: a step failed; `budget`: no step failed and an agent step hit its cap; `missed` passed its catch-up window; `cancelled` was interrupted or the task was deleted."
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {"type": "string", "maxLength": 2000},
+          "description": "The values this run was given, defaults filled in."
+        },
+        "run_dir": {
+          "oneOf": [
+            {"$ref": "common.schema.json#/$defs/absPath"},
+            {"type": "null"}
+          ],
+          "description": "The run's own directory, null until the client has created it."
+        },
+        "steps": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/step"},
+          "description": "One record per task step, in order, written as each one starts and ends."
+        },
+        "outputs_present": {
+          "type": ["array", "null"],
+          "items": {"type": "string"},
+          "description": "Which of the task's declared outputs existed in the run directory when the run ended. Presence only; whether they are right is the reader's answer."
+        },
+        "due_at": {"type": ["string", "null"], "format": "date-time"},
+        "started_at": {"type": ["string", "null"], "format": "date-time"},
+        "finished_at": {"type": ["string", "null"], "format": "date-time"},
+        "error": {
+          "type": ["string", "null"],
+          "maxLength": 2000,
+          "description": "Why the run as a whole ended, when that is not one step's error: no client before the catch-up window, a workspace now outside reach."
+        },
+        "cost_usd": {"type": ["number", "null"], "minimum": 0},
+        "tokens": {"type": ["integer", "null"], "minimum": 0},
+        "created_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  }
+}

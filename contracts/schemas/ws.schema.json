@@ -1,0 +1,605 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ws",
+  "description": "The WebSocket message vocabulary between the chat UI and the decision core, on /ws/branches/{branch_id}. A socket is one branch of a session: the branch is the transcript a turn appends to, and two branches of one session may have turns running at once. Authored once the harness inbox (D12) and the client surface existed — designing it earlier would have been guessing. The socket is authenticated on the upgrade by the session cookie, and Origin is checked explicitly because browsers do not apply CORS to WebSockets; this schema describes message shape only and confers no authority. Inbound messages come from the untrusted network surface (D1) and must be validated before they reach an inbox. Outbound messages are a projection of the branch's event log, never a second source of truth: the log is authoritative and a client that missed a frame re-reads the branch's session rather than reconstructing from the stream.",
+  "type": "object",
+  "required": [
+    "type"
+  ],
+  "properties": {
+    "type": {
+      "enum": [
+        "message",
+        "approval",
+        "steer",
+        "interrupt",
+        "user_message",
+        "token",
+        "reasoning",
+        "tool_proposal",
+        "tool_approval_required",
+        "tool_decision",
+        "tool_result",
+        "usage",
+        "truncated",
+        "compacted",
+        "error",
+        "done",
+        "waiting"
+      ]
+    }
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/message"
+    },
+    {
+      "$ref": "#/$defs/approval"
+    },
+    {
+      "$ref": "#/$defs/steer"
+    },
+    {
+      "$ref": "#/$defs/interrupt"
+    },
+    {
+      "$ref": "#/$defs/userMessage"
+    },
+    {
+      "$ref": "#/$defs/token"
+    },
+    {
+      "$ref": "#/$defs/reasoning"
+    },
+    {
+      "$ref": "#/$defs/toolProposal"
+    },
+    {
+      "$ref": "#/$defs/toolApproval"
+    },
+    {
+      "$ref": "#/$defs/toolDecision"
+    },
+    {
+      "$ref": "#/$defs/toolResult"
+    },
+    {
+      "$ref": "#/$defs/usage"
+    },
+    {
+      "$ref": "#/$defs/truncated"
+    },
+    {
+      "$ref": "#/$defs/compacted"
+    },
+    {
+      "$ref": "#/$defs/error"
+    },
+    {
+      "$ref": "#/$defs/done"
+    },
+    {
+      "$ref": "#/$defs/waiting"
+    }
+  ],
+  "$defs": {
+    "toolCallId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "The model-assigned tool call id, or a server-generated hex id when the model omitted one. Correlates proposal → decision → result."
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "content",
+        "model"
+      ],
+      "description": "Inbound: start a turn. Rejected with error code turn_in_flight when one is already running — a second concurrent turn would race on the event log's sequence and on the token budget.",
+      "properties": {
+        "type": {
+          "const": "message"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A model catalog name; the core admits it only if the user's composed policy grants it."
+        },
+        "reasoning": {
+          "type": "string",
+          "minLength": 1,
+          "description": "How hard the model should think on this turn, as one of the levels its catalog entry declares. Per-turn and chosen by the user, like `auto_accept` and unlike the window or the costs -- the same question asked twice in one session can deserve different answers.\n\nOmitted means the model's declared default. A level the model does not declare is refused by name rather than forwarded: a provider's own error for an unknown effort string arrives mid-turn, after the tokens are spent."
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "tool_call_id",
+        "approved"
+      ],
+      "description": "Inbound: a verdict on one pending tool call (D12). A verdict that never arrives times out as a denial — a disconnected client must never become a grant.",
+      "properties": {
+        "type": {
+          "const": "approval"
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/toolCallId"
+        },
+        "approved": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 1024
+        }
+      }
+    },
+    "steer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "content"
+      ],
+      "description": "Inbound: extra user input folded into the conversation at the next safe point, without ending the turn.",
+      "properties": {
+        "type": {
+          "const": "steer"
+        },
+        "content": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "interrupt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "Inbound: stop now. Cancels any in-flight dispatch (the runner kills the cgroup, not the process group) and denies every pending approval.",
+      "properties": {
+        "type": {
+          "const": "interrupt"
+        }
+      }
+    },
+    "userMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "content",
+        "seq"
+      ],
+      "description": "Outbound: the turn's opening input, or a steering message, echoed as it entered the log. `seq` is its position in the branch's log; the opening message's seq is the `at_seq` a fork resolves `before` to retry it.",
+      "properties": {
+        "type": {
+          "const": "user_message"
+        },
+        "content": {
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "token": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "text"
+      ],
+      "description": "Outbound: one streamed piece of assistant content.",
+      "properties": {
+        "type": {
+          "const": "token"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "reasoning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "text"
+      ],
+      "description": "Outbound: streamed reasoning content, when the model produces it.",
+      "properties": {
+        "type": {
+          "const": "reasoning"
+        },
+        "text": {
+          "type": "string"
+        }
+      }
+    },
+    "toolProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "tool_call_id",
+        "name",
+        "arguments"
+      ],
+      "description": "Outbound: the model proposed a tool call. Emitted before the capability gate runs, so a proposal is not a decision and must never be rendered as one.",
+      "properties": {
+        "type": {
+          "const": "tool_proposal"
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/toolCallId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "arguments": {
+          "type": "object"
+        }
+      }
+    },
+    "toolDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "tool_call_id",
+        "accepted",
+        "consent"
+      ],
+      "description": "Outbound: the verdict on a proposal. consent=true means a human was asked; false means the gate decided alone.",
+      "properties": {
+        "type": {
+          "const": "tool_decision"
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/toolCallId"
+        },
+        "accepted": {
+          "type": "boolean"
+        },
+        "consent": {
+          "type": "boolean"
+        }
+      }
+    },
+    "toolResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "tool_call_id",
+        "name",
+        "content",
+        "exit_code",
+        "wall_ms",
+        "timed_out",
+        "cancelled"
+      ],
+      "description": "Outbound: what running one tool produced. content is untrusted output wrapped in the harness's delimiters and must be rendered as data, never interpreted as markup or instructions (D23).",
+      "properties": {
+        "type": {
+          "const": "tool_result"
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/toolCallId"
+        },
+        "name": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "exit_code": {
+          "type": "integer",
+          "description": "The tool's exit status, or -1 when it never ran (denied, malformed arguments, or an unreachable runner)."
+        },
+        "wall_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timed_out": {
+          "type": "boolean"
+        },
+        "cancelled": {
+          "type": "boolean"
+        },
+        "has_image": {
+          "type": "boolean",
+          "description": "The result carries a picture (fs_image), which is not in this frame. Present rather than sending megabytes of base64 over the socket: the client fetches the bytes from /api/branches/{id}/tools/{call_id}/image. Absent when there is no image."
+        },
+        "structured": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "Structured output from a runner-native operation (e.g. a trash destination)."
+        },
+        "persisted": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "stdout": {
+              "type": "string"
+            },
+            "stderr": {
+              "type": "string"
+            }
+          },
+          "description": "Paths in the dispatch scratch holding output too large for the preview, keyed by stream. The client titles a later fs_read/fs_search of such a path with the call that produced it; the model is handed the same path in a note. Absent when nothing was persisted."
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "usage"
+      ],
+      "description": "Outbound: token accounting for one model call, as the gateway reported it, with the window those tokens were spent against.",
+      "properties": {
+        "type": {
+          "const": "usage"
+        },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "prompt_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "completion_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "total_tokens": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "context_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The resolved model's context window, when the operator recorded one. Present so a client can show how full the context is: a token count without a denominator cannot be read, since 12,000 is comfortable on one model and fatal on another. Absent rather than zero when unknown, so a client draws nothing instead of a bar against a guessed ceiling — budgeting against an unrecorded window is what ended two sessions (N86)."
+        },
+        "compacts_above": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The history size, in tokens, above which this turn will summarize the oldest span and continue. This is what a capacity bar should measure against, not `context_tokens`: the window reserves room for the reply, a margin and the compaction reserve before the conversation gets any, so on a 65,536-token model compaction fires at 30,311 and a bar against the window sat a little under half full at the moment it happened — which reads as a defect rather than as the designed behaviour. `context_tokens` remains the fact models are compared on and belongs in the detail; this is the number being approached. Absent when the window is unknown, like `context_tokens`."
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "code"
+      ],
+      "description": "Outbound: something went wrong. A turn-ending error is always followed by a done frame carrying the matching reason.",
+      "properties": {
+        "type": {
+          "const": "error"
+        },
+        "code": {
+          "enum": [
+            "unknown_message",
+            "turn_in_flight",
+            "invalid_request",
+            "budget_exhausted",
+            "model_error",
+            "reasoning_error"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      }
+    },
+    "done": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "reason",
+        "seq"
+      ],
+      "description": "Outbound: the turn ended, for the stated reason. Exactly one done frame per turn; the client may send a new message after it. `seq` is the `turn_complete` event, the boundary a fork resolves `after` to.",
+      "properties": {
+        "type": {
+          "const": "done"
+        },
+        "reason": {
+          "enum": [
+            "stop",
+            "max_iterations",
+            "budget_exhausted",
+            "interrupted",
+            "model_error",
+            "reasoning_error"
+          ]
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "waiting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "on"
+      ],
+      "description": "Outbound: the turn has started and is waiting on something slow before any token can arrive. Advisory — a client that ignores it is correct, just less informative. Sent at most once per wait, never as a heartbeat.\n\nIt exists because a locally-hosted model may need to be loaded into VRAM on first use, which takes tens of seconds. Without a frame saying so the client shows nothing between send and the first token, which is indistinguishable from a hung appliance.",
+      "properties": {
+        "type": {
+          "const": "waiting"
+        },
+        "on": {
+          "enum": [
+            "model"
+          ],
+          "description": "What is being waited on. `model` means the endpoint is reachable but not yet ready to generate — typically loading weights."
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Human-readable, for display. Never parsed."
+        }
+      }
+    },
+    "toolApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "tool_call_id"
+      ],
+      "description": "Outbound: a human is being asked about this proposal, and the harness is now blocked waiting for a verdict. Separate from `tool_proposal`, which is emitted before the gate runs and therefore cannot know — and separate from `tool_decision`, which reports the answer. A client shows its approve/deny controls on this frame and removes them on the decision; showing them on the proposal meant they appeared for calls nobody was asked about, and under `yolo` they never went away (N89).",
+      "properties": {
+        "type": {
+          "const": "tool_approval_required"
+        },
+        "tool_call_id": {
+          "$ref": "#/$defs/toolCallId"
+        },
+        "preview": {
+          "$ref": "#/$defs/writePreview"
+        }
+      }
+    },
+    "writePreview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "diff",
+        "created",
+        "old_bytes",
+        "new_bytes"
+      ],
+      "description": "What a mutating write would do, resolved by the tool itself before any verdict exists. Present on `tool_approval_required` for fs_write and fs_edit, and on a `tool_result`'s `structured` once the write has happened. Absent when the preview dispatch failed, which is not an error: an approval must still be askable when the diff is not, and a client without one falls back to rendering the call's arguments. Computed by the same code that performs the write, so it describes that write rather than offering a second opinion about it.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute path, as the tool resolved it."
+        },
+        "diff": {
+          "type": "string",
+          "description": "Unified diff, truncated for display; the whole patch is in the event log."
+        },
+        "rows": {
+          "type": "array",
+          "description": "The same diff as numbered rows, so a client renders line numbers without reimplementing the walk through hunk headers that carry them. Each row is {kind, old, new, text} where kind is context|add|remove|hunk and old/new are line numbers, null on the side where the line does not exist. The `diff` string stays authoritative: rows are for looking at, a patch is for applying.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "old",
+              "new",
+              "text"
+            ],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "context",
+                  "add",
+                  "remove",
+                  "hunk"
+                ]
+              },
+              "old": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "new": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "text": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "created": {
+          "type": "boolean",
+          "description": "True when the file does not exist yet, so there is nothing to diff against."
+        },
+        "old_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "new_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "compacted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "description": "Outbound: the oldest span of the conversation was replaced by a summary, so the capacity bar is about to fall by most of its width and the agent has lost detail it may be asked about. Advisory, like `truncated` — a client that ignores it is correct, just less informative. It exists because an unexplained drop reads as a defect: while an earlier version edited history without recording the edit the reported prompt size alternated between two histories and nothing on screen accounted for either (N119, N120). Compaction is the only move that changes what the next step projects, so it is the only thing that moves the bar downward, and the only one that needs to say so.",
+      "properties": {
+        "type": {
+          "const": "compacted"
+        },
+        "summarized_messages": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "How many messages the summary replaced. Zero is legitimate: a history short enough to need no summary produces no action at all, so a frame carrying zero means the span was empty rather than that nothing happened."
+        }
+      }
+    },
+    "truncated": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "step"
+      ],
+      "description": "Outbound: the reply hit the token cap mid-thought and the turn is continuing from it. Advisory, like `waiting` — a client that ignores it is correct, just less informative. It exists because the alternative looked identical to a finished answer: `finish_reason: \"length\"` was recorded in the event log and read by nothing, so a generation cut off at 4096 tokens ended the turn as a clean stop and the user saw reasoning followed by silence (N90).",
+      "properties": {
+        "type": {
+          "const": "truncated"
+        },
+        "step": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Which step of the turn was cut off."
+        }
+      }
+    }
+  }
+}

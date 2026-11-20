@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "log-record",
+  "description": "The canonical log record, emitted by the decision core (`foundation/logging.py`). The fields are named once here, with golden fixtures beside them, so a change to the record is a change to a contract rather than to a format string (D10).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["ts", "level", "target", "message"],
+  "properties": {
+    "ts": {"type": "string", "format": "date-time", "description": "RFC 3339 UTC timestamp."},
+    "level": {"enum": ["debug", "info", "warning", "error"]},
+    "target": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "description": "Dotted component name, e.g. neuman.server, neuman.runner."},
+    "message": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 8, "maxLength": 64, "description": "Correlates every record emitted while handling one request."},
+    "fields": {
+      "type": "object",
+      "description": "Structured context; scalar values only — nested structure belongs in the audit chain, not the log.",
+      "additionalProperties": {"type": ["string", "number", "boolean", "null"]}
+    }
+  }
+}

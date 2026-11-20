@@ -1,0 +1,1 @@
+{"package": {"id": "blender", "title": "Blender", "summary": "s", "description": "d", "publisher": "neuman", "tools": ["blender"], "requires": {"program": "blender", "name": "Blender", "url": "http://www.blender.org/download/"}}}
