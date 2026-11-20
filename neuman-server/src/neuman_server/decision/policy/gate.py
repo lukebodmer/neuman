@@ -3,7 +3,7 @@
 This is a **dispatch decision**, not the enforcement boundary. Passing the gate
 means Neuman is willing to ask for the work; the kernel is what confines the
 process that does it, and the effect plane re-checks ``needs ⊆ reach``
-independently against the profile it was handed (docs/decisions.md D6). A bug here can deny
+independently against the profile it was handed. A bug here can deny
 service. It cannot widen capability.
 
 Every rule is derived from the manifest rather than a table in this file. v1

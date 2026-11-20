@@ -929,7 +929,7 @@ Final until explicitly reversed here, with a new entry.
   are built (`harness/prompt.py`), so it can only ever subtract — a name policy
   does not grant confers nothing by being listed, which is the same property
   that makes a working directory outside reach narrow to nothing instead of
-  widening it (D6).
+  widening it.
 
   The alternative was to advertise everything and tell the model which tools it
   may use. Rejected on both counts: it spends window on schemas for tools that
@@ -2310,7 +2310,8 @@ Final until explicitly reversed here, with a new entry.
 
   The way back is one: Clear all overrides, which also drops the user's own
   `auto_accept`. A single field is put back by editing it to match. An overlay in
-  the removed form fails closed at parse, and no shim reads it (pre-release).
+  the removed form fails closed at parse, and no shim reads it: no released
+  version wrote it.
 
   **The account's tabs are what is in force, and overriding is a step from there.**
   Policy, Tools and Limits read "Effective policy", "Effective tools" and "Effective
@@ -2806,6 +2807,22 @@ Final until explicitly reversed here, with a new entry.
   larger is already a file on disk, and the chooser attaches it with no copy.
   The daemon refuses a larger body before reading any of it, because every body
   it proxies is held in memory whole.
+
+- **D103 — The schema froze at the first release.** `0001_initial.sql` is the
+  initial schema and is never edited; a change is the next numbered file in
+  `migrations/`, applied in name order, one transaction each, recorded with its
+  SHA-256 (D18). Before the release the file was rewritten in place, which was
+  affordable because no appliance had a schema to preserve — there was nothing
+  to upgrade from. The release ends that: two appliances on different versions
+  now both have to be describable, and a rewritten `0001` gives one version
+  number two schemas with no way to tell them apart. The cost is the
+  maintainer's, and it is real: a schema change now needs a migration file and
+  an upgrade path where it used to need an edit, an index for one query is a
+  migration rather than a line added in passing, and a mistake in an applied
+  file is corrected by a new migration (or a restore) rather than by editing
+  it. The rejected alternative was renumbering the initial file at each
+  release, which would leave every deployment holding a schema its own version
+  number does not identify.
 
 ## Platform ground truth
 

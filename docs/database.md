@@ -12,8 +12,9 @@ interfaces, which exist for testability, not to promise a second engine.
 The schema is SQL in `neuman-server/src/neuman_server/foundation/db/migrations/`,
 applied in name order, each file in one transaction and recorded with its
 SHA-256; editing an applied file is a hard error, and a downgrade is a restore
-from backup. Before the first release it is one file, `0001_initial.sql`, which
-carries the reasoning for every table; this page is the map.
+from backup. It froze at the first release (D103): `0001_initial.sql` is the
+initial schema and is never edited, and a change is the next numbered file. The
+initial file carries the reasoning for every table; this page is the map.
 
 ## Everything in it
 

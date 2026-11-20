@@ -448,10 +448,29 @@ actually resolves to: the endpoint, the provider's id, the window and whether it
 sees. An entry that resolves wrongly looks exactly like one that works until a
 turn spends tokens on it.
 
+## Upgrading
+
+A new version arrives the way the first one did: move the flake input and
+`nixos-rebuild switch`. The server applies whatever migrations the new version
+carries as it starts — in name order, one transaction each, each recorded with
+its SHA-256 (D103) — so a migration that fails leaves the schema exactly as it
+was, and the journal names the file that failed instead of the appliance coming
+up half-migrated.
+
+Take a backup first: `neuman-admin backup`, and the audit mirror beside it. A
+downgrade is a restore from that backup, because migrations are forward-only and
+there is no down-migration to run.
+
+An appliance that will not start and says `has changed since it was applied` is
+not an upgrade problem: a file that had already run was edited, so the schema in
+the database is not the one in the tree. Restore from backup, or start over.
+
 ## Starting over
 
-A fresh appliance is three things removed and one thing kept, and the one thing
-kept is the expensive one.
+Recovery, not the upgrade path: an appliance starts over when its database is
+worth less than the reason to replace it, not to reach a new version. A fresh
+appliance is three things removed and one thing kept, and the one thing kept is
+the expensive one.
 
 **Keep the weights.** `/var/lib/neuman/models` is tens of gigabytes, and a new
 database does not need them gone: after starting over, each tile shows **on disk
@@ -506,9 +525,10 @@ rather than a traceback.
 
 A login that says nothing is answering means the core is down, and a core that
 restarts until systemd gives up (`start-limit-hit`) has said why in the journal.
-`migration 0001_initial has changed since it was applied` means the appliance was
-updated to a rewritten schema, and until the first release the only way forward
-is [Starting over](#starting-over). `neuman-admin` cannot help here, because its
+`migration 0001_initial has changed since it was applied` means a migration file
+was edited after an appliance ran it, so the database's schema is not the one in
+the tree. Applied migrations are immutable (D103); the way forward is a restore
+from backup, or [Starting over](#starting-over). `neuman-admin` cannot help here, because its
 socket goes down with the server.
 
 For a local model, `journalctl -u neuman-runtime -f`, and `-u neuman-fetch` for a

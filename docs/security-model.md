@@ -52,8 +52,8 @@ For a dispatch made on behalf of account `A`:
    and the operating system enforces it. Within it, policy decides what the
    agent may actually use (claims 2, 3 and 5).
 2. **Every call is gated against live policy.** A tool `A`'s policy does not list
-   is not dispatched, whatever caused the model to ask for it. Policy is re-read
-   every step, so a revocation lands on the next call (D6).
+   is not dispatched, whatever caused the model to ask for it. Policy is composed
+   fresh for every step, so a revocation lands on the next call.
 3. **A consequential call needs a verdict.** Approval is the control that stands
    in front of the human's own reach. A mutating tool stops for a human under the
    default `auto_accept = "safe"`; a `critical` tool stops even under `yolo`. The

@@ -102,7 +102,7 @@ that ignores one will look like it works.
 - **Assert on values, with the value in the message.** A bare
   `assert x == y` gives `AssertionError` and nothing else across the VM
   boundary; `assert x == y, x` is the difference between a diagnosable failure
-  and a rerun (N11 was unreadable for exactly this reason).
+  and a rerun.
 
 ## Running one
 

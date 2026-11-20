@@ -154,8 +154,8 @@ is the record of both.
   that does not exist. The glob matched nothing, the loop body never ran, and
   `touch $out` succeeded.
 - **Why it is worth its own entry:** this is the second time in two days a
-  check has reported a property it never examined (**N7** was the first, where
-  a seccomp subtest could not fail). The shared shape is that *absence of
+  check has reported a property it never examined (the first was a seccomp
+  subtest that could not fail). The shared shape is that *absence of
   failure* is not evidence, and a check has to be shown failing before its
   passing means anything.
 - **Fix:** `shopt -s failglob`, count what was inspected, and refuse if the
@@ -361,9 +361,9 @@ is the record of both.
   "who is an operator". What moved is *when* it is guaranteed to run, not who
   decides.
 - **Worth keeping, and this is the third time:** N26 was "it refuses, so it
-  works" (it could never succeed). N28 was "it refuses, so it is correct" (it
-  refused for an accidental reason). N32 is "I fixed that class of bug" — and
-  the fix addressed the half the failing test happened to exercise. A fix
+  works" (it could never succeed); an earlier one was "it refuses, so it is
+  correct" (it refused for an accidental reason); N32 is "I fixed that class of
+  bug" — and the fix addressed the half the failing test happened to exercise. A fix
   aimed at a symptom closes the symptom. The way to find the rest is to ask
   what *other* combination of inputs the same structural flaw would admit, and
   then build an account that has it.
@@ -818,7 +818,7 @@ is the record of both.
     expands to `home_data_dirs`, which never includes `.local`, so `within_reach`
     is `False`. A file copied there uploads fine and is invisible to every tool.
   - **The server cannot write into a home directory at all.** `/home/<user>` is
-    `0700` and the server runs as `neuman`. Same wall as N55, but a write.
+    `0700` and the server runs as `neuman`.
   - **No tool can accept bytes.** `fs_write` takes `content` as a *string*, so a
     PDF or image is corrupted; it is also `mutating`, so dispatching it trips
     approval. Base64 through a dispatch caps out near 6 MiB against the 8 MiB
@@ -845,8 +845,8 @@ is the record of both.
   — a deliberately broken route — passed the first draft of
   `test_one_unreachable_path_rejects_the_whole_list`, because every case in it
   had the unreachable path in the final position. Fixed by asserting first,
-  last, and middle. Sixth instance of the fixture/fixture-shaped blind spot this
-  session (N35, N38, N47, N54, N56).
+  last, and middle. Another instance of the fixture-shaped blind spot this
+  session (N35, N38, N47).
 
 
 ### N58 — An approval the socket dropped still looked approved
@@ -902,7 +902,7 @@ is the record of both.
   and that the table distinguishes the two — the table test fails if the column
   is dropped, confirmed by dropping it.
 - **The shape,** and the inverse of the usual one: this project keeps finding
-  fields *written* by one layer and read by none (N43, N48, N54). This is a field
+  fields *written* by one layer and read by none (N43, N48). This is a field
   written and read correctly by the machinery, and invisible to the human who has
   to operate it. A `SELECT *` followed by an explicit projection is where it
   hides, because the query looks complete.
@@ -2886,7 +2886,7 @@ chips look dead.
 
 The shape is a constant standing in for a measurement: a cap chosen against the
 layout that existed when it was written, with nothing tying it to the layout
-added later. That is N132 and N133 again — a value set in one place and the
+added later. That is N132 again — a value set in one place and the
 geometry it depends on decided in another — differing only in that here the two
 places are a stylesheet rule and a state class rather than two stylesheet rules.
 
@@ -2900,7 +2900,7 @@ way across reloads while Firefox looked right.
 **The cause.** Two faults in one commit, in the same control.
 
 The width had been `16rem` — a constant, identical in every browser at every
-window size. b56c2b1 replaced it with `clamp(220px, 22vw, 380px)`: a reading
+window size. The change replaced it with `clamp(220px, 22vw, 380px)`: a reading
 measure decided by the *viewport*. Two browsers whose windows were not the same
 width therefore showed two different rails, which had not been possible before,
 and on any window under 1164px the new default was *narrower* than the constant
@@ -2952,7 +2952,7 @@ width is abandoned; there is nothing to migrate it from.
 The shape is a width read from one place — the viewport — while the thing it
 stands in for, a reading measure, was decided in another; plus a *measurement*
 taken from the wrong origin, since `clientX` is a position and not a size. Both
-are N121/N132/N133/N134 again, differing only in that the two places here are a
+are N121/N132/N134 again, differing only in that the two places here are a
 stylesheet token and a pointer event rather than two stylesheet rules.
 
 
@@ -3884,7 +3884,7 @@ where `socket_path` was a `PosixPath`, and `socket.bind` takes bytes or `str`:
 on `neuman-browse.sock`, so `browse` could not run, and the desktop entry —
 which starts that unit — did nothing when clicked.
 
-**Why the seam introduced it:** `a3632cb` replaced `os.path.expanduser(
+**Why the seam introduced it:** the socket change replaced `os.path.expanduser(
 args.socket)` (a `str`) with `Path(args.socket).expanduser()`, and the socket
 default with `browse_socket()`'s `Path`, while `serve`'s annotation still said
 `str`. The annotation was the only place the contract was written down, and

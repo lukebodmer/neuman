@@ -5,33 +5,42 @@ real filesystem and shell capability, confined so it can never reach further
 than the human it acts for. `README.md` is the front door; `docs/security-model.md`
 states the security model and what enforces it.
 
-## The rule that overrides tidiness: this is pre-release
+## The rule that overrides tidiness: this is released
 
-Neuman has not shipped a first version. Until it has:
+`0.1.0` is the first release. Behaviour that shipped is a promise, so the freedom
+that the pre-release rule gave — delete it and rewrite the callers — ends at the
+shipped surface:
 
-- **There is no backwards compatibility to preserve.** Do not add migration
-  shims, deprecation paths, compatibility branches, config aliases, or `# legacy`
-  comments. If an old way of doing something is wrong, delete it and rewrite the
-  callers. A half-removed feature is worse than either state, because the next
-  reader cannot tell which half is load-bearing.
-- **The tree must read as if it were written this way.** No comment may explain a
-  design that is no longer in the code. No dead field, no unused import, no
-  helper kept "just in case", no doc line describing a removed mechanism. When a
-  concept is removed, remove its name from the repository — the only place it may
-  survive is `docs/gotchas.md`, as the record of why it failed.
-- **A schema change is a rewrite, not a migration.** `contracts/` is generated;
-  edit the schema and regenerate (`contracts/codegen`). The database schema is
-  one file, `neuman-server/.../migrations/0001_initial.sql`: change it in place,
-  and an appliance that already applied it refuses to start (its SHA-256 is
-  recorded) until it is started over (`docs/setup.md`). At the first release the
-  file freezes, and from then on a change is a new migration and an applied one
-  is immutable.
+- **The schema is frozen (D103).** `0001_initial.sql` is the initial schema and
+  is never edited. A change is the next numbered file in `migrations/`, applied
+  in name order, one transaction each, recorded with its SHA-256. An applied file
+  that changes describes a database whose schema is not the one in git, and the
+  way out is a restore from backup (`docs/setup.md`), never an edit. The cost: a
+  schema change now needs a migration and an upgrade path where it used to need
+  an edit, and a mistake in an applied file is no longer correctable in place.
+- **A published contract changes by version, not by edit.** `contracts/` is
+  generated from the schemas and both halves ship it, so a shape that shipped
+  keeps working or the contract gains a version — every dispatch frame already
+  carries `rpc_version` for exactly this. The cost: two shapes to carry while
+  one is deprecated.
+- **"Starting over" is recovery, not upgrade.** `docs/setup.md` keeps it,
+  because a wipe is sometimes the honest answer, but it is no longer how an
+  appliance reaches a new schema.
+- **The tree still reads as if it were written this way.** Dead code, an unused
+  import, a helper kept "just in case", a comment explaining a design that is no
+  longer in the code — wrong before the release, wrong after it. What changed is
+  that a *behaviour* someone can depend on is no longer free to break. A removed
+  mechanism may be named only in `docs/gotchas.md`, as the record of why it
+  failed.
 - **Tests are not exempt.** A test whose fixture describes a removed feature is
   cruft; rewrite it against the current design or delete it. Do not keep a test
   green by asserting the absence of something that no longer exists.
+- **A breaking change argues first.** Amend the decision it contradicts, or add
+  the one it makes (D-numbers), rather than quietly overturning it.
 
-The bar is: a maintainer reading the tree after the first release should find a
-coherent design with no archaeology except where the archaeology is the point.
+The bar is: a maintainer reading the tree finds a coherent design with no
+archaeology except where the archaeology is the point, and can tell which
+behaviour is promised from which is merely current.
 
 ## Documentation is part of the code
 
@@ -60,8 +69,8 @@ dropped.
 ## Conventions
 
 - **Python**: `ruff` lints and formats every part (line length 96). Generated
-  contract code is excluded. Decisions are lowercase-hyphenated filenames under
-  `docs/`; no other prose is normative.
+  contract code is excluded. Docs are lowercase-hyphenated filenames under
+  `docs/`; no prose outside them is normative.
 - **Nix**: `nixfmt`. The appliance is NixOS; there are no imperative installs.
 - **Contracts**: schemas are the source, `contracts/gen/` is output. Run
   `python3 -m codegen generate` after editing a schema, then
@@ -91,9 +100,13 @@ nix build .#neuman-server .#neuman-admin .#neuman-client .#neuman-tools .#neuman
 `nix flake check` runs the whole matrix including the VM tests; it is slow and
 worth it before a commit that touches policy, the harness, or the module.
 
+The environment is `nix develop`; this repository has no direnv. The CLI tools
+above come from it, so run them there rather than against whatever `python3` the
+shell happens to have.
+
 ## What this file is for
 
 This is the standing instruction set for anyone — human or agent — editing the
-repository. It exists so the pre-release cleanliness rule survives past the
-session that adopted it. Delete it at the first release, when the rule stops
-being true.
+repository, and it survives a release rather than expiring at one: at `0.1.0`
+the cleanliness rule became the compatibility rule, and every other section was
+already true of both.

@@ -82,8 +82,7 @@ class EffectivePolicy:
     def reach(self) -> frozenset[str]:
         """The capability kinds this policy actually confers.
 
-        A tool's ``needs`` must be a subset of this (docs/decisions.md D6, the capability
-        gate). Reach is derived from whether the user has *any* path or host,
+        A tool's ``needs`` must be a subset of this (D43, the capability gate). Reach is derived from whether the user has *any* path or host,
         not from a separate grant list: a user with no writable path has no
         write reach regardless of what a fragment claims.
         """

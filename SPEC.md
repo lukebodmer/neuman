@@ -1,10 +1,11 @@
 # Neuman — architecture
 
-Status: draft, pre-release. This is the alignment document for the client-executor
-rearchitecture. It is not yet published with the other docs; when the design settles,
-the parts that survive become `docs/architecture.md` and the amended `docs/security-model.md`.
+Status: working draft, published as it stands. This is the alignment document for the
+client-executor rearchitecture; §8 separates what is built from what is not. When the
+design settles, the parts that survive become `docs/architecture.md` and the amended
+`docs/security-model.md`.
 
-Markers: **AGREED** = we have decided this. **OPEN** = chosen direction, not yet settled.
+Markers: **AGREED** = we have decided this.
 
 ---
 
@@ -207,14 +208,14 @@ Largest single files, and the plan for each. **None of these is done** — they 
 refactors with no behaviour change, so each is worth doing when that file is
 being touched for another reason, not on its own.
 
-| File | Lines | Plan |
+| File | Lines at 0.1.0 | Plan |
 |---|---|---|
-| `neuman-client/web/src/neuman.js` | 9629 | Split into ES modules by concern: `transport`, `transcript`, `toolcards`, `diff`, `sessions`, `settings`, `theme`. No build step required (native modules). |
-| `neuman-server/tests/test_http_surface.py` | 4304 | Split by route group. |
-| `neuman-server/tests/test_harness.py` | 6298 | Split by loop concern (streaming, approval, compaction, tools). |
-| `decision/harness/loop.py` | 2774 | Extract model streaming, tool dispatch, and approval waiting into siblings. |
+| `neuman-client/web/src/neuman.js` | 9822 | Split into ES modules by concern: `transport`, `transcript`, `toolcards`, `diff`, `sessions`, `settings`, `theme`. No build step required (native modules). |
+| `neuman-server/tests/test_http_surface.py` | 4370 | Split by route group. |
+| `neuman-server/tests/test_harness.py` | 6390 | Split by loop concern (streaming, approval, compaction, tools). |
+| `decision/harness/loop.py` | 2771 | Extract model streaming, tool dispatch, and approval waiting into siblings. |
 | `decision/harness/context.py` | 924 | Keep; it is one algorithm. |
-| `docs/gotchas.md` | 4360 | Grouped by theme; every entry is a constraint someone would otherwise reintroduce. |
+| `docs/gotchas.md` | 4376 | Grouped by theme; every entry is a constraint someone would otherwise reintroduce. |
 
 ## 8. Where it stands
 

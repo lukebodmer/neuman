@@ -19,7 +19,7 @@ requires macOS.
 - Linux server unchanged. The client connects over HTTPS; there is no macOS
   server.
 - The server-side package/authority refactor is a separate track; it landed
-  first (`d03108d` … `b03376b`, then the install workflow), so Postgres decides
+  first, before the install workflow, so Postgres decides
   and the module carries no configuration.
 - Windows is explicitly out of scope.
 
@@ -188,7 +188,7 @@ Not blocking macOS, but required for the product model agreed separately:
   key could (UI, CLI, baseline, declared references and grants).
 - [x] A first-run setup flow for providers and models: the server ships the
   presets and the panel offers them as tiles, a provider added with its key
-  (D76, D77; `docs/plans/install-workflow.md`).
+  (D76, D77).
 - [x] Update `docs/setup.md`, `README.md` and `docs/security-model.md` for the
   server/client product boundary and the platform matrix.
 

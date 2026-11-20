@@ -686,10 +686,10 @@ class UsageStore:
         responses recorded before the model and cost were stored are counted
         under no model, with no cost.
 
-        No index serves the time filter, deliberately: the schema changes only
-        by starting over before release, and this is read when an operator
-        opens the overview, not per turn. Measured on a populated table before
-        relying on it.
+        No index serves the time filter, deliberately: this is read when an
+        operator opens the overview, not per turn, and an index for it would be a
+        migration of its own (D103). Measured on a populated table before relying
+        on it.
         """
 
         cursor = await self._conn.execute(

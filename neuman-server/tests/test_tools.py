@@ -146,7 +146,7 @@ def test_client_tools_declare_exec_and_server_native_do_not(registry):
 
 
 def test_server_native_tools_all_have_handlers(registry):
-    """A server-native manifest with no handler fails closed at dispatch (D4/D5).
+    """A server-native manifest with no handler fails closed at dispatch (D5).
 
     Both directions matter: an unhandled manifest is a tool the model is offered
     and cannot use, and an unreferenced handler is dead code that looks live.

@@ -748,7 +748,7 @@ async def _patch_branch(request: Request) -> Response:
                 # when ten remain is to store the ten. Dropping it is safe
                 # because this is a narrowing either way — the advertisement
                 # intersects with `grantable` and the gate re-checks every
-                # proposal (D6).
+                # proposal.
                 allowed = set(gate.grantable(policy, services.registry))
                 seen_tools: dict[str, None] = {}
                 for entry in selection:

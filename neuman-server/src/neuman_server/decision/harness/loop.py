@@ -2281,7 +2281,7 @@ class Harness:
         handler = self.server_native.get(manifest.name)
         if handler is None:
             # A manifest says server-native but nothing is registered: fail
-            # closed rather than falling through to a dispatch (docs/decisions.md D4/D5).
+            # closed rather than falling through to a dispatch (docs/decisions.md D5).
             await self._tool_result(
                 branch_id,
                 call_id,

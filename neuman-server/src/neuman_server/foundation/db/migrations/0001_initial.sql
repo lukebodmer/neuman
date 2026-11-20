@@ -1,15 +1,15 @@
--- 0001_initial.sql — the decision core's schema.
+-- 0001_initial.sql — the decision core's schema, frozen at the first release.
 --
 -- One database on the appliance (D18). Everything the core decides about lives
 -- here; what deliberately does not is the policy overlay (must survive a wiped
 -- database), the audit JSONL mirror (the integrity anchor) and provider keys
 -- (a secret must not be in a row every dump carries, D77).
 --
--- One file until the first release, squashed from the nineteen migrations that
--- grew it: before release a schema change edits this file and an appliance is
--- started over rather than upgraded, so the schema carries nothing that exists
--- only to bring an older one forward. At release it freezes, and from then on a
--- change is a new migration and an applied one is immutable.
+-- Squashed from the nineteen migrations that grew it before the first release,
+-- and frozen at it (D103): this file is never edited again, and a change is the
+-- next numbered file in this directory. It carries nothing that exists only to
+-- bring an older schema forward, because no appliance was ever upgraded across
+-- it — a pre-release appliance is started over instead.
 --
 -- Timestamps are `timestamptz`; `now()` in a transaction is the statement
 -- timestamp, which is what audit ordering wants. A state on a row is a nullable

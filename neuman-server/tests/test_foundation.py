@@ -178,7 +178,7 @@ def test_a_migration_checksum_is_stable():
 
 
 async def test_an_edited_applied_migration_is_a_hard_error():
-    """A database built from an older schema is refused, and told how to start over."""
+    """An applied migration is immutable: a changed file is refused (D103)."""
 
     class Conn:
         def __init__(self):
@@ -196,7 +196,8 @@ async def test_an_edited_applied_migration_is_a_hard_error():
             return {"version": latest_version()}
 
     with pytest.raises(
-        MigrationError, match=r"has changed since it was applied.*Starting over"
+        MigrationError,
+        match=r"has changed since it was applied.*Restore from backup, or start over",
     ):
         await migrate(Conn())
 

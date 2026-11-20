@@ -622,7 +622,7 @@ async def test_a_server_native_tool_is_answered_without_dispatch():
 
 
 async def test_a_server_native_tool_without_a_handler_fails_closed():
-    """It must not fall through to a dispatch (docs/decisions.md D4/D5)."""
+    """It must not fall through to a dispatch (docs/decisions.md D5)."""
 
     execution = FakeExecution()
     harness = _harness(

@@ -233,7 +233,9 @@ public URL.
 
 ## Status
 
-Pre-release, and in daily use on real hardware. Today the appliance:
+`0.1.0`, the first release, and in daily use on real hardware. The schema and the
+wire contracts are frozen from here: a change is a new migration (D103) or a new
+contract version. Today the appliance:
 
 - authenticates people against its own account store and governs each one's
   agent by role: tools, paths, models and how much it asks;

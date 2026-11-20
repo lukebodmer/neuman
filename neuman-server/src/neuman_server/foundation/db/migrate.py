@@ -8,8 +8,9 @@
   sends the script as-is inside an explicit transaction.
 * Every applied migration's SHA-256 is recorded. Editing an applied file is a
   hard error, never papered over: the schema on disk no longer matches the
-  schema in git. Before the first release ``0001_initial.sql`` is rewritten in
-  place, so the error names the way out, which is starting over.
+  schema in git, and two histories of one version number cannot be reconciled.
+  ``0001_initial.sql`` froze at the first release (D103); the error names the
+  way out, which is a restore from backup or starting over.
 * Forward-only. A downgrade is a restore from backup.
 
 Nothing outside this module runs DDL.
@@ -132,8 +133,8 @@ async def migrate(conn: Any) -> int:
         elif recorded != migration.checksum:
             raise MigrationError(
                 f"migration {migration.version:04d}_{migration.name} has changed since it "
-                "was applied, so this database was built from an older schema; there is "
-                "no upgrade path before the first release: see 'Starting over' in "
+                "was applied, so this database's schema is not the one in git; an applied "
+                "migration is immutable (D103). Restore from backup, or start over: see "
                 "docs/setup.md"
             )
 
