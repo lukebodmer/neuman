@@ -4374,3 +4374,38 @@ not read.
 **The lesson:** a bounded reader needs a story for the shape it cannot page.
 "Use another tool" is not a story when the caller's envelope decides which tools
 exist.
+
+### N182 — Freezing a migration by editing its header unfroze it, and the service would not start
+
+**What happened.** The commit that froze the schema at `0.1.0` also rewrote the
+header comment of `0001_initial.sql` — no DDL, only the reasoning above the
+`CREATE`s. That appliance had applied the previous bytes hours earlier. The next
+rebuild pinned the new commit, and the core exited 3 before serving:
+
+```
+MigrationError: migration 0001_initial has changed since it was applied, so this
+database's schema is not the one in git; an applied migration is immutable (D103)
+```
+
+systemd cycled five times into `start-limit-hit`, and every client said nothing
+was answering at `127.0.0.1:8443`.
+
+**Why.** The recorded checksum is `sha256` of the file's whole text, the header
+included, because "immutable" has to mean the bytes: a comparison that ignored
+comments and whitespace would have to parse SQL to know which `--` is a comment
+and which is inside a string literal, and a comparison that is loosened is one
+that will eventually call two schemas equal. So the edit was the violation — the
+same commit that declared the file frozen was the last one to change it. The
+documented remedies both miss this case: a backup carries the same recorded
+checksum, so restoring from it fails identically, and starting over throws away
+an appliance to change a comment.
+
+**Fix.** Restore the file to the bytes the appliance applied (`git show
+<commit>:<path> > <path>`), which is a revert and not another edit; put the
+reasoning in `docs/decisions.md` (D103) and `docs/setup.md`, where prose may
+change. `docs/setup.md` now names this case next to restore and start over.
+
+**The lesson:** a file that has run is frozen as text, not as intent. Polish the
+words into the docs; the words in the migration are part of the schema. The cost
+is permanent: `0001_initial.sql`'s header can never gain the citation or the
+wording it deserves.

@@ -324,6 +324,7 @@ Retention purges chain rows older than a configured window
 
 ## Bookkeeping
 
-**`schema_migrations`** — version, name, SHA-256 checksum, and applied-at for
-every migration. Created by the migrator's bootstrap; nothing outside
-`foundation/db/migrate.py` runs DDL.
+**`schema_migrations`** — version, name, SHA-256 of the file's bytes with its
+comments, and applied-at for every migration (N182: a cosmetic edit still
+changes the checksum, which is why an applied file is frozen as text). Created by
+the migrator's bootstrap; nothing outside `foundation/db/migrate.py` runs DDL.

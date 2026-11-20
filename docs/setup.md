@@ -463,7 +463,13 @@ there is no down-migration to run.
 
 An appliance that will not start and says `has changed since it was applied` is
 not an upgrade problem: a file that had already run was edited, so the schema in
-the database is not the one in the tree. Restore from backup, or start over.
+the database is not the one in the tree. Restore from backup, or start over —
+unless the edit changed no DDL, a comment or whitespace being the whole diff. The
+checksum covers the file's bytes (N182), so a cosmetic edit trips it while the
+schema is unchanged: the bytes the appliance ran are still the truth, and the
+fix is to restore the file from the commit that ran
+(`git show <commit>:<path> > <path>`), not to restore a database that agrees
+with the edit.
 
 ## Starting over
 
@@ -528,7 +534,9 @@ restarts until systemd gives up (`start-limit-hit`) has said why in the journal.
 `migration 0001_initial has changed since it was applied` means a migration file
 was edited after an appliance ran it, so the database's schema is not the one in
 the tree. Applied migrations are immutable (D103); the way forward is a restore
-from backup, or [Starting over](#starting-over). `neuman-admin` cannot help here, because its
+from backup, or [Starting over](#starting-over). If the edit was cosmetic — a
+comment, a header — the schema did not change and neither remedy is needed:
+restore the file's applied bytes from git (N182). `neuman-admin` cannot help here, because its
 socket goes down with the server.
 
 For a local model, `journalctl -u neuman-runtime -f`, and `-u neuman-fetch` for a
