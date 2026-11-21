@@ -2825,7 +2825,9 @@ Final until explicitly reversed here, with a new entry.
   number does not identify.
 
 - **D104 — The folders a `$HOME` grant expands to are runtime configuration,
-  and the module has no option for them.** `services.neuman.homeDataDirs` and
+  and the module has no option for them.** *Superseded in part by D105: the
+  folders are not a setting at all, and `$HOME` names the whole home.*
+  `services.neuman.homeDataDirs` and
   `NEUMAN_HOME_DATA_DIRS` are gone. The list is the `settings` row
   `home_data_dirs`, edited under **Files** in the administration page (or with
   `neuman-admin`), read by every expansion, and in force on the next turn. A
@@ -2871,6 +2873,48 @@ Final until explicitly reversed here, with a new entry.
   document rather than one field — the shape to build is the assertion the
   pin was trying to be: the deployment owns a value and the page says so,
   never a seed that is consumed once and then lies.
+
+- **D105 — `$HOME` names the home, whole.** The token resolves to the acting
+  account's home directory and to nothing else — dotfiles included. The
+  `home_data_dirs` row, `/admin/home-dirs`, `neuman-admin files` and the Files
+  page that D104 introduced are gone; a role that wants particular folders
+  names those folders, and an account on another machine names that machine's
+  paths in its own policy.
+
+  **Why the subset did not survive its first day.** A token named after the
+  home that means a list of folders is a lie, and it failed as one twice in a
+  day: a folder added after the list was written was invisible to every
+  `$HOME` role, and a rebuild that reset the list emptied their reach at once.
+  It also put the decision in the wrong place — whether a role needs the whole
+  home or two folders is a question about the role, and the list made it an
+  appliance setting they all shared.
+
+  **What the list was for, and why nothing replaces it.** It existed because
+  there was no way to say "the person's Documents" without naming a machine:
+  the schema allowed an absolute path or exactly `$HOME`, and nothing in
+  between. The answer could have been a compositional spelling
+  (`$HOME/Documents`). It is not, because a client on another machine is its
+  own configuration: its home is different, its files are different, and the
+  account that runs there names that machine's paths. Reaching files across
+  machines is a transport question — an ssh connection where the target's own
+  permissions decide — not a policy-vocabulary one.
+
+  **The cost.** A role granting `$HOME` now includes `~/.ssh`, `~/.gnupg`,
+  `~/.aws`, browser profiles and everything else the home holds. A
+  prompt-injected model with `fs_read` and `web_fetch` in the same role can
+  exfiltrate a private key with one file read that looks like any other, where
+  the old rule refused it. It is a guardrail, not a boundary — `shell` reaches
+  all of it anyway (D57) — but it is now opted into per role rather than on by
+  default. The setup walkthrough and the tool tour name folders instead of the
+  token, and the policy response carries what a grant expands to, so an
+  operator who grants the home sees the home.
+
+  **Rejected: `$HOME` meaning the home minus dotfiles.** It keeps the
+  guardrail without the lie, but it is another invisible subset with an
+  arbitrary edge (`~/.config` secret, `~/secrets.txt` not) — the shape this
+  entry removes. **Rejected: keeping D104's panel list**, which is what this
+  entry deletes. D104's other half stands: runtime configuration belongs in
+  the database, not the module, and nothing here puts it back in Nix.
 
 ## Platform ground truth
 

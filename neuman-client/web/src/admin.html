@@ -72,10 +72,6 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z" /></svg>
             <span class="admin-nav-label">Tools</span>
           </button>
-          <button type="button" data-tab="files" aria-current="false" title="Files">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></svg>
-            <span class="admin-nav-label">Files</span>
-          </button>
           <button type="button" data-tab="prompt" aria-current="false" title="Prompt">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16" /><path d="M4 12h13" /><path d="M4 17h8" /></svg>
             <span class="admin-nav-label">Prompt</span>
@@ -499,26 +495,6 @@
               <div class="admin-card">
                 <h2>Providers <span class="admin-tip" data-tip="A provider needs only its API key. The key is stored where only the server can read it, and is never shown again or backed up."></span></h2>
                 <div id="provider-tiles" class="admin-tile-grid"></div>
-              </div>
-            </div>
-          </section>
-
-          <section id="tab-files" class="admin-section hidden">
-            <header class="admin-page-head">
-              <div class="admin-page-head-text">
-                <h1>Files</h1>
-                <p>Which folders a $HOME grant names, on whichever computer runs the tool.</p>
-              </div>
-              <div class="admin-page-actions">
-                <button id="save-home-dirs" type="button" class="primary">Save</button>
-                <button id="reset-home-dirs" type="button">Use defaults</button>
-              </div>
-            </header>
-            <div class="admin-page-body">
-              <div class="admin-card">
-                <h2>Home folders <span class="admin-tip" data-tip="A $HOME entry in a role's Files read or Files write expands to these folders under the person's home. The home itself is never granted, so ~/.ssh and the other dotfiles stay out of reach. shell and python are not constrained by this list."></span></h2>
-                <textarea id="home-dirs" class="admin-json admin-json-short" spellcheck="false"></textarea>
-                <p class="dim admin-hint">One folder per line, relative to the person's home. The next turn uses a saved change; no restart.</p>
               </div>
             </div>
           </section>

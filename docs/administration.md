@@ -31,7 +31,7 @@ A role can grant:
 | Permission | What it means |
 |---|---|
 | Tools | Which tools the agent may use |
-| Files read, Files write | Which folders the file tools may read and write. `$HOME` means the person's home folders (`Documents`, `Desktop`, `Downloads` and `workspace` until changed under **Files**), on whichever computer runs the tool |
+| Files read, Files write | Which folders the file tools may read and write. `$HOME` means the whole home directory, dotfiles included, on whichever computer runs the tool; a role that wants particular folders names them |
 | Web tools | Whether tools that reach the network are offered |
 | Models | Which models the person may choose |
 | Approval ceiling | The least the agent must ask before acting: `never` (asks before everything), `safe` (asks before anything that changes something) or `yolo` (asks only before critical actions). The person can choose to be asked more, never less |
@@ -120,15 +120,6 @@ Built-in tools, and **packages**: optional sets of tools, such as Blender, that
 you turn on for the whole appliance. Each package says what it does and what a
 person needs installed to use it. Enabling a package grants its tools to nobody;
 add them to a role. [Tools](tools.md) describes every tool.
-
-### Files
-
-The folders a role's `$HOME` grant expands to: `Documents`, `Desktop`,
-`Downloads` and `workspace` until you change them. `$HOME` never means the home
-directory itself, so `~/.ssh` and the other dotfiles stay out of reach. A saved
-change is used by the next turn, and **Use defaults** removes your list rather
-than copying it — so a later release can still improve the default. The list
-does not confine `shell` or `python`, which reach what the person reaches.
 
 ### Prompt
 
@@ -223,10 +214,6 @@ models (never keys) as one file, and load it back on another appliance:
 neuman-admin --json baseline show > baseline.json
 neuman-admin baseline set baseline.json
 ```
-
-The home folders are a setting of their own, not part of that document: `$HOME`
-expands to whatever `neuman-admin files show` prints, and `files set projects
-business` replaces it (`files reset` returns to the default).
 
 **Clear out old conversations.**
 

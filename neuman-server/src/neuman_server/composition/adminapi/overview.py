@@ -419,8 +419,6 @@ _PHRASES = {
     "settings.baseline_set": "edited the configuration",
     "settings.role_renamed": "renamed role {from} to {to}",
     "settings.prompt_set": "changed the prompt",
-    "settings.home_dirs_set": "changed the home folders",
-    "settings.home_dirs_reset": "reset the home folders to the default",
     "policy.role_granted": "granted {role} to {group}",
     "policy.role_revoked": "revoked {role} from {group}",
     "policy.overlay_set": "changed {account}'s exception",

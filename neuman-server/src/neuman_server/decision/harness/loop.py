@@ -37,7 +37,7 @@ from ..audit import chain
 from ..audit.ports import AuditRepository
 from ..policy import gate
 from ..policy.compose import EffectivePolicy
-from ..policy.paths import DEFAULT_HOME_DATA_DIRS, expand_paths
+from ..policy.paths import expand_paths
 from ..policy.ports import ToolRegistry
 from . import events, projection
 from .context import ContextManager, estimate_tokens, measured_tokens
@@ -237,11 +237,6 @@ HANDOFF_NOTE = (
 
 @dataclass(frozen=True, slots=True)
 class HarnessConfig:
-    # What an entry naming `$HOME` expands to, for the reach the model is told
-    # about and for the working-directory check. Not a grant: the client runs
-    # as the human and there is no profile to build. The live value is the
-    # appliance's row, passed in when a turn is built (D104).
-    home_data_dirs: tuple[str, ...] = DEFAULT_HOME_DATA_DIRS
     # How long a model may stay silent before the client is told it is waiting.
     # Long enough that a responsive provider never triggers it, short enough
     # that a cold VRAM load does not look like a hang.
@@ -879,7 +874,6 @@ class Harness:
             "read": expand_paths(
                 policy.files_read,
                 home=actor.home,
-                data_dirs=self.config.home_data_dirs,
             ),
             "write": [],
         }
@@ -1157,12 +1151,10 @@ class Harness:
                 expanded_read=expand_paths(
                     policy.files_read,
                     home=actor.home,
-                    data_dirs=self.config.home_data_dirs,
                 ),
                 expanded_write=expand_paths(
                     policy.files_write,
                     home=actor.home,
-                    data_dirs=self.config.home_data_dirs,
                 ),
                 # Narrows the advertisement, never the authority. Passed on
                 # every step rather than resolved once per turn, for the reason
@@ -2318,12 +2310,10 @@ class Harness:
             "read": expand_paths(
                 policy.files_read,
                 home=actor.home,
-                data_dirs=self.config.home_data_dirs,
             ),
             "write": expand_paths(
                 policy.files_write,
                 home=actor.home,
-                data_dirs=self.config.home_data_dirs,
             ),
         }
 

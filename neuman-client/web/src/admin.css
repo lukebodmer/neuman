@@ -66,12 +66,6 @@ body.admin textarea:focus { outline: none; border-color: var(--accent); }
   margin: 8px 0;
 }
 
-/* The same box for a list of a few short lines: the prompt's 280px would be
-   four folder names and a screenful of nothing. */
-.admin-json-short {
-  min-height: 120px;
-}
-
 .admin-login { max-width: 360px; margin: 12vh auto; }
 .admin-login h1 { font-size: 18px; margin: 0 0 8px; }
 .admin-login input { display: block; width: 100%; box-sizing: border-box; margin: 8px 0; }

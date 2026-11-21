@@ -532,7 +532,6 @@ def within_write(
     policy: EffectivePolicy,
     *,
     home: str | None,
-    data_dirs: Sequence[str],
 ) -> bool:
     """Is `candidate` inside what policy already grants for writing?
 
@@ -543,7 +542,7 @@ def within_write(
     target = _normalise(candidate)
     if not target.startswith("/") or ".." in target.split("/"):
         return False
-    for granted in expand_paths(policy.files_write, home=home, data_dirs=data_dirs):
+    for granted in expand_paths(policy.files_write, home=home):
         if target == granted or target.startswith(f"{granted}/"):
             return True
     return False
@@ -554,7 +553,6 @@ def intersect(
     envelope: TaskEnvelope,
     *,
     home: str | None,
-    data_dirs: Sequence[str],
 ) -> EffectivePolicy:
     """The policy an agent step actually executes under.
 
@@ -570,11 +568,11 @@ def intersect(
     return EffectivePolicy(
         tools=tuple(name for name in account.tools if name in envelope.tools),
         files_read=_intersect_paths(
-            expand_paths(account.files_read, home=home, data_dirs=data_dirs),
+            expand_paths(account.files_read, home=home),
             envelope.files_read,
         ),
         files_write=_intersect_paths(
-            expand_paths(account.files_write, home=home, data_dirs=data_dirs),
+            expand_paths(account.files_write, home=home),
             envelope.files_write,
         ),
         models=tuple(name for name in account.models if name in envelope.models),
@@ -598,7 +596,6 @@ def validate(
     enabled: bool,
     registry: ToolRegistry,
     home: str | None,
-    data_dirs: Sequence[str],
 ) -> None:
     """Refuse a task the owner's policy, the registry or D96 does not allow.
 
@@ -630,9 +627,9 @@ def validate(
         except TaskValidationError as exc:
             problems.extend(f"schedule: {problem}" for problem in exc.problems)
 
-    if not within_reach(recipe.workspace, account, home=home, data_dirs=data_dirs):
+    if not within_reach(recipe.workspace, account, home=home):
         problems.append(f"workspace {recipe.workspace!r} is outside the account's reach")
-    if not within_write(recipe.run_root, account, home=home, data_dirs=data_dirs):
+    if not within_write(recipe.run_root, account, home=home):
         problems.append(f"run root {recipe.run_root!r} is outside the account's write reach")
     if RECORD_TOOL not in account.tools:
         problems.append(
@@ -650,18 +647,14 @@ def validate(
     protected: list[tuple[str, str]] = [("the workspace", recipe.workspace)]
     for index, step in enumerate(recipe.steps):
         if isinstance(step, RunStep):
-            problems.extend(
-                _run_step_problems(step, recipe, account, registry, home, data_dirs)
-            )
+            problems.extend(_run_step_problems(step, recipe, account, registry, home))
             protected.append((f"step {step.name!r}'s working directory", recipe.cwd_of(step)))
             if step.argv and step.argv[0].startswith("/"):
                 protected.append((f"step {step.name!r}'s program", step.argv[0]))
         else:
             later_run = any(isinstance(other, RunStep) for other in recipe.steps[index + 1 :])
             problems.extend(
-                _agent_step_problems(
-                    step, recipe, account, registry, home, data_dirs, later_run=later_run
-                )
+                _agent_step_problems(step, recipe, account, registry, home, later_run=later_run)
             )
 
     for label, path in protected[1:]:
@@ -690,7 +683,6 @@ def _run_step_problems(
     account: EffectivePolicy,
     registry: ToolRegistry,
     home: str | None,
-    data_dirs: Sequence[str],
 ) -> list[str]:
     problems: list[str] = []
     label = f"step {step.name!r}"
@@ -707,7 +699,7 @@ def _run_step_problems(
     if not program or program.startswith("-") or "=" in program:
         problems.append(f"{label}'s program {program!r} is not a program name or path")
     cwd = recipe.cwd_of(step)
-    if not within_reach(cwd, account, home=home, data_dirs=data_dirs):
+    if not within_reach(cwd, account, home=home):
         problems.append(f"{label}'s working directory {cwd!r} is outside the account's reach")
     return problems
 
@@ -718,7 +710,6 @@ def _agent_step_problems(
     account: EffectivePolicy,
     registry: ToolRegistry,
     home: str | None,
-    data_dirs: Sequence[str],
     *,
     later_run: bool,
 ) -> list[str]:
@@ -785,10 +776,10 @@ def _agent_step_problems(
         problems.append(f"{label}: model {step.model!r} is not granted to this account")
 
     for path in envelope.files_read:
-        if not within_reach(path, account, home=home, data_dirs=data_dirs):
+        if not within_reach(path, account, home=home):
             problems.append(f"{label}: read path {path!r} is outside the account's reach")
     for path in envelope.files_write:
-        if not within_write(path, account, home=home, data_dirs=data_dirs):
+        if not within_write(path, account, home=home):
             problems.append(f"{label}: write path {path!r} is outside the account's reach")
 
     cwd = _concrete(step.cwd, recipe.run_root)

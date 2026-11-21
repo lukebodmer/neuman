@@ -105,7 +105,6 @@ async def _browse(request: Request) -> Response:
         path,
         policy,
         home=acting_home(services, principal),
-        data_dirs=services.home_data_dirs,
     ):
         return JSONResponse(
             {
@@ -147,7 +146,6 @@ async def _browse(request: Request) -> Response:
             "read": expand_paths(
                 policy.files_read,
                 home=acting_home(services, principal),
-                data_dirs=services.home_data_dirs,
             ),
             "write": [],
         },
@@ -225,9 +223,8 @@ async def _environment(request: Request) -> Response:
         )
 
     home = acting_home(services, principal)
-    data_dirs = services.home_data_dirs
 
-    if not within_reach(path, policy, home=home, data_dirs=data_dirs):
+    if not within_reach(path, policy, home=home):
         return JSONResponse(
             {
                 "error": "outside_policy",
@@ -254,7 +251,7 @@ async def _environment(request: Request) -> Response:
         # running. The account's own expanded read paths are what this route
         # already checked `within_reach` against.
         surfaces={
-            "read": expand_paths(policy.files_read, home=home, data_dirs=data_dirs),
+            "read": expand_paths(policy.files_read, home=home),
             "write": [],
         },
     )

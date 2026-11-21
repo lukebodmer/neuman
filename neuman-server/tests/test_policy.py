@@ -359,7 +359,7 @@ def test_a_working_directory_must_be_inside_policy():
     from neuman_server.decision.policy.paths import within_reach
 
     policy = EffectivePolicy(files_read=("/srv/eng", "/home/alice/projects"))
-    reach = {"home": "/home/alice", "data_dirs": ()}
+    reach = {"home": "/home/alice"}
 
     assert within_reach("/srv/eng", policy, **reach)
     assert within_reach("/srv/eng/deep/inside", policy, **reach)
@@ -381,8 +381,8 @@ def test_a_sibling_with_a_shared_prefix_is_not_inside():
     from neuman_server.decision.policy.paths import within_reach
 
     policy = EffectivePolicy(files_read=("/srv/eng",))
-    assert not within_reach("/srv/engine", policy, home="/home/alice", data_dirs=())
-    assert not within_reach("/srv/eng-backup", policy, home="/home/alice", data_dirs=())
+    assert not within_reach("/srv/engine", policy, home="/home/alice")
+    assert not within_reach("/srv/eng-backup", policy, home="/home/alice")
 
 
 def test_a_traversal_is_refused_before_it_is_compared():
@@ -396,56 +396,57 @@ def test_a_traversal_is_refused_before_it_is_compared():
     from neuman_server.decision.policy.paths import within_reach
 
     policy = EffectivePolicy(files_read=("/srv/eng",))
-    reach = {"home": "/home/alice", "data_dirs": ()}
+    reach = {"home": "/home/alice"}
 
     assert not within_reach("/srv/eng/../../etc", policy, **reach)
     assert not within_reach("../etc", policy, **reach)
     assert not within_reach("relative/path", policy, **reach)
 
 
-def test_a_home_grant_expands_before_the_comparison():
-    """`$HOME` never means the whole home directory (the dotfile rule).
+def test_a_home_grant_names_the_whole_home_dotfiles_included():
+    """`$HOME` means the home, not a subset of it (D105).
 
-    So a working directory of `~/Documents/x` is inside a `$HOME` grant and
-    `~/.ssh` is not, for the same reason a `$HOME` grant never names the whole home.
+    That includes the dotfiles: `~/.ssh` and `~/.gnupg` are inside a `$HOME`
+    grant, asserted here so the cost of the plain meaning is visible in a test
+    rather than discovered in use. A role that wants two folders names two
+    folders; no appliance-wide list narrows the token.
     """
 
     from neuman_server.decision.policy.paths import within_reach
 
-    policy = EffectivePolicy(files_read=("/home/alice",))
-    reach = {"home": "/home/alice", "data_dirs": ("Documents", "workspace")}
-
-    assert within_reach("/home/alice/Documents/notes", policy, **reach)
-    assert not within_reach("/home/alice/.ssh", policy, **reach)
-    assert not within_reach("/home/alice", policy, **reach)
-
-    # The other spelling of the same thing: `$HOME` names the acting account's
-    # home on whichever machine runs the tool, so it expands against *that*
-    # home. Written as the literal path, the entry names one machine's
-    # directory and would expand against the home of a different one (N145).
     token = EffectivePolicy(files_read=("$HOME",))
+    reach = {"home": "/home/alice"}
 
     assert within_reach("/home/alice/Documents/notes", token, **reach)
-    assert not within_reach("/home/alice/.ssh", token, **reach)
-    assert not within_reach("/home/alice", token, **reach)
+    assert within_reach("/home/alice", token, **reach)
+    assert within_reach("/home/alice/.ssh/id_ed25519", token, **reach)
+
+
+def test_the_token_reaches_nothing_until_a_client_reports_a_home():
+    """An account is not a host account (D67), so there is no home to expand."""
+
+    from neuman_server.decision.policy.paths import within_reach
+
+    token = EffectivePolicy(files_read=("$HOME",))
+
+    assert not within_reach("/home/alice", token, home=None)
 
 
 def test_an_absolute_home_grant_names_that_directory_and_not_the_acting_home():
     """A path is a path; `$HOME` is the spelling that names no machine.
 
-    The two agree only while the client's home *is* the path the operator wrote.
-    Once the client is elsewhere they part: the absolute entry stays a literal
-    directory, and the token follows the acting account. Which is why an operator
-    who means "their home" should write the token — an absolute path is right for
-    a shared directory, and wrong for a home (N145).
+    The absolute entry stays a literal directory wherever the client is. Which
+    is why an operator who means "their home" writes the token — an absolute
+    path is right for a shared directory, and wrong for a home (N145).
     """
 
     from neuman_server.decision.policy.paths import within_reach
 
     policy = EffectivePolicy(files_read=("/home/alice",))
-    reach = {"home": "/home/remote", "data_dirs": ("Documents",)}
+    reach = {"home": "/home/remote"}
 
     assert within_reach("/home/alice", policy, **reach)
+    assert within_reach("/home/alice/.ssh", policy, **reach)
     assert not within_reach("/home/remote/Documents", policy, **reach)
 
 

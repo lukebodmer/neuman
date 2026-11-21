@@ -814,9 +814,11 @@ is the record of both.
 ### N57 — An attachment is a path, because everything else fights the architecture
 - **What:** "attach a file to the session" looks like an upload. Three separate
   walls say otherwise, and each was found by trying:
-  - **`~/.local/share/neuman/attachments/` is unreachable.** A `$HOME` grant
-    expands to `home_data_dirs`, which never includes `.local`, so `within_reach`
-    is `False`. A file copied there uploads fine and is invisible to every tool.
+  - **`~/.local/share/neuman/attachments/` had nowhere to live.** At the time a
+    `$HOME` grant expanded to a configured list of data folders that never
+    included `.local`, so `within_reach` was `False` for a file copied there.
+    (`$HOME` means the whole home now, so that wall is gone — D105 — but the
+    other two stand on their own and are why an upload is still not a path.)
   - **The server cannot write into a home directory at all.** `/home/<user>` is
     `0700` and the server runs as `neuman`.
   - **No tool can accept bytes.** `fs_write` takes `content` as a *string*, so a
@@ -3167,9 +3169,10 @@ the next model added.
 **Two failures in one rule, found by asking what a policy means when the client
 is on another machine.**
 
-An entry naming a home directory expands to the configured data subdirectories,
-so the home is never named wholesale and dotfiles are excluded by construction.
-Both halves of how that was implemented were wrong:
+An entry naming a home directory expands to the configured data subdirectories
+— at the time; D105 later removed the list and made the token name the whole
+home — so the home was never named wholesale and dotfiles were excluded by
+construction. Both halves of how that was implemented were wrong:
 
 - **It expanded against *this host's* home.** `expand_paths` was called with the
   account's `pw_dir` from the server's own host. On one machine that is the right

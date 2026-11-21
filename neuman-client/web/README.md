@@ -982,11 +982,10 @@ Neither picker opens the OS file dialog, and that is **not** a UI choice
 (gotchas N57). A browser never hands a page an absolute path — `<input
 type="file">` gives bytes and a bare filename — while an attachment here is a
 **path** and a working directory *is* an absolute path the server stores. An
-upload would also have nowhere to land: `~/.local/share/neuman/` is outside
-`home_data_dirs` so `within_reach` is false, the server runs as `neuman` and
-cannot write into a `0700` home, and no tool accepts bytes. The chooser produces
-real paths because the listing is a dispatch to the client, which runs as the
-user on their own machine.
+upload would also have nowhere to land: the server runs as `neuman` and cannot
+write into a `0700` home, and no tool accepts bytes. The chooser produces real
+paths because the listing is a dispatch to the client, which runs as the user on
+their own machine.
 
 Each chooser is a **type-ahead field over three panels**. The middle panel is the
 directory you are looking at, the left is where it sits, the right is the

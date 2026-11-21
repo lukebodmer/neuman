@@ -40,7 +40,6 @@ from ..decision.harness.presets import preset_problems, refresh_facts
 from ..decision.harness.prompt import DEFAULT_NAME
 from ..decision.identity.authz import AdminPolicy
 from ..decision.identity.throttle import LoginThrottle
-from ..decision.policy.paths import DEFAULT_HOME_DATA_DIRS, as_home_data_dirs
 from ..decision.policy.source import PolicySource
 from ..foundation import Settings, configure_logging, get_logger
 from ..foundation.db import Database, migrate
@@ -119,11 +118,6 @@ class Services:
     # reaches nothing — the identity sentence sits above the reach list and no
     # dispatch reads it.
     agent_name: str = DEFAULT_NAME
-    # The folders a `$HOME` policy entry expands to, for the working-directory
-    # check and the reach the model is told about. Runtime configuration: a
-    # `settings` row an administrator edits under Files, replaced in memory when
-    # written so the next turn uses it without a restart (D104).
-    home_data_dirs: tuple[str, ...] = DEFAULT_HOME_DATA_DIRS
     baseline: dict[str, Any] = field(default_factory=dict)
     # The providers and models Neuman ships (D76): what the administration page
     # offers as tiles, and what an entry added from one is held to. Part of the
@@ -468,18 +462,6 @@ async def load_runtime(services: Services) -> None:
             name = DEFAULT_NAME
             await store.set("name", name)
 
-        # Absent, not written: unlike the name, "no set chosen yet" is a state
-        # the Files page shows, and one a release can still improve the built-in
-        # default under (D104). A row that is present but malformed is a write
-        # past the route, so it is reported rather than quietly replaced.
-        stored_dirs = await store.get("home_data_dirs")
-        home_data_dirs = as_home_data_dirs(stored_dirs)
-        if stored_dirs is not None and home_data_dirs is None:
-            _log.warning(
-                "home_data_dirs is not a list of folder names; using the default",
-                fields={"value": repr(stored_dirs)},
-            )
-
     baseline = baseline if isinstance(baseline, dict) else {}
     if services.presets["models"] or services.presets["providers"]:
         # Facts belong to the release (D76). An entry added from a preset gets
@@ -496,7 +478,6 @@ async def load_runtime(services: Services) -> None:
     services.baseline = baseline
     services.operator_prompt = prompt if isinstance(prompt, str) else ""
     services.agent_name = name.strip()
-    services.home_data_dirs = home_data_dirs or DEFAULT_HOME_DATA_DIRS
     # Said once at startup as well as on every write: the host may have started
     # first, or the document may predate a release that changed its shape.
     publish_runtime(services)

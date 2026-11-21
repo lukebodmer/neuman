@@ -230,7 +230,6 @@ async def _validated(
         enabled=enabled,
         registry=services.registry,
         home=services.execution.home(account),
-        data_dirs=services.home_data_dirs,
     )
     return recipe, schedule, enabled
 
@@ -596,15 +595,14 @@ async def start_run(services: Any, run_id: str) -> TaskRunRow | None:
             directory=services.directory,
             grants=GrantStore(conn),
         )
-        data_dirs = services.home_data_dirs
-        if not within_reach(task.workspace, policy, home=home, data_dirs=data_dirs):
+        if not within_reach(task.workspace, policy, home=home):
             await runs.finish(
                 run_id,
                 status="failed",
                 error=f"workspace {task.workspace!r} is outside the account's current reach",
             )
             return await runs.get(run_id)
-        if not within_write(task.run_root, policy, home=home, data_dirs=data_dirs):
+        if not within_write(task.run_root, policy, home=home):
             await runs.finish(
                 run_id,
                 status="failed",
@@ -878,7 +876,6 @@ async def _owner_dispatch(
             mirror=services.settings.audit_mirror_path,
         )
 
-    data_dirs = services.home_data_dirs
     outcome = await services.execution.dispatch(
         user=account.name,
         dispatch_id=dispatch_id,
@@ -887,8 +884,8 @@ async def _owner_dispatch(
         wait_ms=min(wait_ms, manifest.lifetime_ms),
         lifetime_ms=min(wait_ms, manifest.lifetime_ms),
         surfaces={
-            "read": expand_paths(policy.files_read, home=home, data_dirs=data_dirs),
-            "write": expand_paths(policy.files_write, home=home, data_dirs=data_dirs),
+            "read": expand_paths(policy.files_read, home=home),
+            "write": expand_paths(policy.files_write, home=home),
         },
         working_dir=working_dir,
     )
@@ -1039,7 +1036,6 @@ async def _run_agent(
                     base,
                     envelope,
                     home=home,
-                    data_dirs=services.home_data_dirs,
                 )
 
             harness = Harness(
@@ -1053,7 +1049,6 @@ async def _run_agent(
                 policy_for=policy_for,
                 resolve_model=services.model_catalog().resolve,
                 config=HarnessConfig(
-                    home_data_dirs=services.home_data_dirs,
                     tool_wait_ms=services.settings.tool_wait_ms,
                     approval_timeout_s=services.settings.approval_timeout_s,
                     max_tokens=services.settings.max_tokens,

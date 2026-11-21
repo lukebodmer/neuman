@@ -34,8 +34,6 @@ from neuman_server.decision.tasks import (
     within_write,
 )
 
-DATA_DIRS = ("Documents", "Desktop", "Downloads", "workspace")
-
 
 def account(**overrides) -> EffectivePolicy:
     base = dict(
@@ -141,7 +139,7 @@ def test_bad_schedules_are_refused(body):
 
 
 def test_intersect_takes_the_narrower_of_every_field():
-    effective = intersect(account(), envelope(), home=None, data_dirs=DATA_DIRS)
+    effective = intersect(account(), envelope(), home=None)
     assert effective.tools == ("fs_read", "fs_write", "web_fetch")
     assert effective.files_read == ("/var/lib/runs",)
     assert effective.files_write == ("/var/lib/runs",)
@@ -157,7 +155,6 @@ def test_intersect_drops_what_the_account_does_not_hold():
         account(tools=("fs_read",), files_write=()),
         envelope(),
         home=None,
-        data_dirs=DATA_DIRS,
     )
     assert "fs_write" not in effective.tools
     assert effective.files_write == ()
@@ -173,7 +170,6 @@ def test_intersect_keeps_only_the_overlapping_prefix():
             files_write=("/srv/work/today",),
         ),
         home=None,
-        data_dirs=DATA_DIRS,
     )
     assert effective.files_read == ("/srv/work/today",)
     assert effective.files_write == ("/srv/work/today",)
@@ -184,7 +180,6 @@ def test_intersect_does_not_treat_a_sibling_as_inside():
         account(files_read=("/srv/eng",), files_write=()),
         envelope(files_read=("/srv/engine",), files_write=()),
         home=None,
-        data_dirs=DATA_DIRS,
     )
     assert effective.files_read == ()
 
@@ -194,7 +189,6 @@ def test_intersect_expands_home_before_narrowing():
         account(files_read=("$HOME",), files_write=()),
         envelope(files_read=("/home/alice/Documents",), files_write=()),
         home="/home/alice",
-        data_dirs=DATA_DIRS,
     )
     assert effective.files_read == ("/home/alice/Documents",)
 
@@ -204,7 +198,6 @@ def test_network_is_any_only_when_both_hold_it():
         account(network="none"),
         envelope(network="any"),
         home=None,
-        data_dirs=DATA_DIRS,
     )
     assert effective.network == "none"
 
@@ -214,7 +207,6 @@ def test_max_iterations_is_the_smaller():
         account(max_iterations=40),
         envelope(max_iterations=80),
         home=None,
-        data_dirs=DATA_DIRS,
     )
     assert effective.max_iterations == 40
 
@@ -364,7 +356,6 @@ def check(rec, policy=None, schedule=DAILY, *, enabled=True):
         enabled=enabled,
         registry=registry(),
         home=None,
-        data_dirs=DATA_DIRS,
     )
 
 
@@ -528,6 +519,6 @@ def test_an_enabled_schedule_must_fill_required_inputs():
 
 def test_within_write_respects_the_path_boundary():
     policy = account(files_write=("/srv/work",))
-    assert within_write("/srv/work/today", policy, home=None, data_dirs=DATA_DIRS)
-    assert not within_write("/srv/work2", policy, home=None, data_dirs=DATA_DIRS)
-    assert not within_write("/srv", policy, home=None, data_dirs=DATA_DIRS)
+    assert within_write("/srv/work/today", policy, home=None)
+    assert not within_write("/srv/work2", policy, home=None)
+    assert not within_write("/srv", policy, home=None)

@@ -1573,10 +1573,10 @@ def test_a_working_directory_survives_a_resume(surface, client):
 def test_the_policy_response_separates_granted_from_reachable(surface, client):
     """`readable` is what a chooser may offer; `files_read` is not.
 
-    A grant naming a home directory expands to `home_data_dirs` and the home
-    itself is never bound — so the raw list contains entries no dispatch can use,
-    and a picker built from it offers a path the server then refuses. Which is a
-    confusing way to learn about the expansion.
+    A grant naming the home is the token, which is not a path until the client
+    reports its home — so the raw list contains an entry no dispatch can use,
+    and a picker built from it would offer `$HOME` as a directory. `readable`
+    is the expansion.
     """
 
     authenticate(surface, client)
@@ -1612,31 +1612,29 @@ def _home_baseline(tmp_path, read):
     return baseline
 
 
-def test_a_home_grant_is_offered_as_its_data_directories(monkeypatch, tmp_path):
-    """The case the chooser exists for, and the one the raw list gets wrong.
+def test_a_home_grant_is_offered_as_the_home(monkeypatch, tmp_path):
+    """What the chooser offers for a home grant: the home itself (D105).
 
-    A baseline granting the home reaches its `home_data_dirs`, not the home — the
-    home is never named wholesale, so dotfiles stay out of reach by construction.
-    A menu built from `policy.files_read` would offer `/home/alice`, and the PATCH
-    that followed would be refused. So this asserts both halves: the expansion is
-    offered, and the raw entry is not.
+    The expanded list is what the PATCH checks against, so the two must agree:
+    the home a `$HOME` entry names is offered, a directory inside it is
+    accepted — dotfiles included, which is the plain meaning's cost — and a
+    path outside it is refused.
     """
 
-    baseline = _home_baseline(tmp_path, ["/home/alice"])
+    baseline = _home_baseline(tmp_path, ["$HOME"])
     surface = build_surface(monkeypatch, tmp_path, baseline=baseline)
-    # The home is the connected client's; an absolute entry is recognised as it.
     surface.services.execution.home_value = "/home/alice"
     with surface.client() as client:
         csrf = authenticate(surface, client)
         body = client.get("/api/policy").json()
 
-        assert "/home/alice" in body["policy"]["files_read"]
-        assert "/home/alice" not in body["readable"], body["readable"]
-        assert "/home/alice/Documents" in body["readable"], body["readable"]
+        assert body["policy"]["files_read"] == ["$HOME"]
+        assert body["readable"] == ["/home/alice"], body["readable"]
 
-        # And the offer is honest: what the menu shows, the PATCH accepts.
+        # And the offer is honest: what the menu shows, the PATCH accepts,
+        # and any directory under it is a working directory like another.
         created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
-        for path in body["readable"]:
+        for path in ("/home/alice", "/home/alice/Documents", "/home/alice/.ssh"):
             response = client.patch(
                 f"/api/branches/{created['branch']['id']}",
                 json={"working_dir": path},
@@ -1644,13 +1642,12 @@ def test_a_home_grant_is_offered_as_its_data_directories(monkeypatch, tmp_path):
             )
             assert response.status_code == 200, (path, response.text)
 
-        # The raw entry, which a naive menu would have offered, is refused.
-        refused = client.patch(
+        outside = client.patch(
             f"/api/branches/{created['branch']['id']}",
-            json={"working_dir": "/home/alice"},
+            json={"working_dir": "/srv/eng"},
             headers={"x-csrf-token": csrf},
         )
-        assert refused.status_code == 403, refused.text
+        assert outside.status_code == 403, outside.text
 
 
 def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
@@ -1681,9 +1678,8 @@ def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
         body = client.get("/api/policy").json()
         readable = body["readable"]
 
-        assert "/home/remote/Documents" in readable, readable
-        assert "/home/remote" not in readable, readable
-        assert not [p for p in readable if p.startswith("/home/alice")], readable
+        assert readable == ["/home/remote"], readable
+        assert "/home/alice" not in readable, readable
 
         # And the offer is what the PATCH checks against, so a directory chosen
         # from the menu is accepted rather than refused one step later.

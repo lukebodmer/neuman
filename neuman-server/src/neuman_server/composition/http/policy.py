@@ -208,19 +208,17 @@ async def _my_policy(request: Request) -> Response:
             "provenance": policy.provenance,
             # The *expanded* paths, which are what is actually reachable and
             # therefore what a client may offer as a working directory. A grant
-            # naming a home directory expands to `home_data_dirs` and the home
-            # itself is never bound — so `policy.files_read` contains entries no
-            # dispatch can use, and a picker built from it would offer a path the
-            # server then refuses.
+            # naming the home expands to the home the client reported, so
+            # `policy.files_read` may contain the token — which is not a path a
+            # dispatch can use — and a picker built from it would offer a path
+            # the server then refuses.
             "readable": expand_paths(
                 policy.files_read,
                 home=acting_home(services, principal),
-                data_dirs=services.home_data_dirs,
             ),
             "writable": expand_paths(
                 policy.files_write,
                 home=acting_home(services, principal),
-                data_dirs=services.home_data_dirs,
             ),
             # What the composer draws its thinking control from, for the models
             # this account may select. Here rather than on the model panel

@@ -5,15 +5,18 @@ reaches (D57). What remains is the two questions a *server* can answer without
 a filesystem — what does a policy entry actually name, and is this candidate
 inside it — and both exist to give an answer better than an opaque failure.
 
-An entry naming a home directory expands to the configured data
-subdirectories, so the home itself is never named wholesale and dotfiles are
-excluded by construction. Two spellings name it: `$HOME`, which is the one to
-use when the client may not be on this machine, and the absolute path that
-happens to be the acting account's home. Which directory *is* that home is the
-acting machine's answer, not this server's — the client reports it when it
-connects (N145). With no client connected there is no home, and a `$HOME` entry
-reaches nothing: an account is not a host account (D67), so this server has no
-directory of its own to offer in its place.
+`$HOME` names the acting account's home directory, and nothing else: the whole
+home, dotfiles included. A role that wants two folders under it names two
+paths; no appliance-wide list changes what the token means (D105). Which
+directory *is* that home is the acting machine's answer, not this server's —
+the client reports it when it connects (N145) — so with no client connected a
+`$HOME` entry reaches nothing: an account is not a host account (D67), and this
+server has no directory of its own to offer in its place.
+
+An absolute path is a path. It names one machine's directory and is not
+reinterpreted when the client reports a different home, so a policy that must
+hold on more than one machine uses the token, and a machine that needs
+different folders gets them named in that account's own policy.
 """
 
 from __future__ import annotations
@@ -22,57 +25,11 @@ from collections.abc import Sequence
 
 from .compose import EffectivePolicy
 
-__all__ = [
-    "DEFAULT_HOME_DATA_DIRS",
-    "HOME_TOKEN",
-    "as_home_data_dirs",
-    "attachable",
-    "expand_paths",
-    "within_reach",
-]
+__all__ = ["HOME_TOKEN", "attachable", "expand_paths", "within_reach"]
 
 # The spelling an operator should use for "the acting account's home", because
-# it does not name a machine. The absolute path is also accepted — an operator
-# who writes it out means the same thing — and the two are expanded identically.
+# it does not name a machine.
 HOME_TOKEN = "$HOME"
-
-# The folders a home-naming entry expands to on an appliance nobody has
-# configured, and what "Use defaults" in the administration page restores.
-#
-# This is runtime configuration, not a deployment fact: it is a `settings` row
-# an administrator edits under Files, and a change lands on the next turn
-# (D104). The value here is what a fresh database has in force until then.
-DEFAULT_HOME_DATA_DIRS = ("Documents", "Desktop", "Downloads", "workspace")
-
-
-def as_home_data_dirs(value: object) -> tuple[str, ...] | None:
-    """The configured data subdirectories, or None if `value` is not one.
-
-    A name is one path component under the home. A separator, `.`, `..`, a
-    control character or a name with padding means somewhere other than what
-    the row appears to say, and an empty list would make `$HOME` name nothing
-    while looking like a setting — all refused rather than interpreted.
-
-    This is not confinement: the list decides what `$HOME` names, and `shell`
-    and `python` reach past it anyway (D57). The check exists so a malformed
-    row fails at the edge with a message, not as a path the model is told
-    about and the client then refuses.
-    """
-
-    if not isinstance(value, (list, tuple)):
-        return None
-    names: list[str] = []
-    for item in value:
-        if not isinstance(item, str) or not item or item != item.strip():
-            return None
-        if item in (".", "..") or "/" in item or "\x00" in item:
-            return None
-        names.append(item)
-    if not names:
-        return None
-    # Duplicates are harmless but would be repeated in the prompt on every
-    # turn; collapse them while keeping the operator's order.
-    return tuple(dict.fromkeys(names))
 
 
 def _normalize(path: str) -> str:
@@ -82,18 +39,16 @@ def _normalize(path: str) -> str:
     return stripped or "/"
 
 
-def _expand(entries: Sequence[str], home: str | None, data_dirs: Sequence[str]) -> list[str]:
-    """Expand a home-naming entry into its data subdirectories, preserving order."""
+def _expand(entries: Sequence[str], home: str | None) -> list[str]:
+    """Resolve the token against the client's home, preserving order."""
 
-    home = _normalize(home) if home else None
+    normalized_home = _normalize(home) if home else None
     result: list[str] = []
     for entry in entries:
         normalized = _normalize(entry)
         if normalized == HOME_TOKEN:
-            if home is not None:
-                result.extend(f"{home}/{name}" for name in data_dirs)
-        elif normalized == home:
-            result.extend(f"{home}/{name}" for name in data_dirs)
+            if normalized_home is not None:
+                result.append(normalized_home)
         else:
             result.append(normalized)
 
@@ -106,26 +61,18 @@ def _expand(entries: Sequence[str], home: str | None, data_dirs: Sequence[str]) 
     return ordered
 
 
-def expand_paths(
-    entries: Sequence[str], *, home: str | None, data_dirs: Sequence[str]
-) -> list[str]:
+def expand_paths(entries: Sequence[str], *, home: str | None) -> list[str]:
     """The paths a policy entry actually reaches.
 
-    The raw list may contain an entry naming the home directory, which is not
-    named wholesale, so a picker built from the raw list would offer a path the
-    dispatch then refuses — a confusing way to learn about the expansion.
+    The raw list may contain the token, which is not a path until the client
+    says which home it means, so a picker built from the raw list would offer
+    `$HOME` as a directory — a confusing way to learn about the expansion.
     """
 
-    return _expand(entries, home, data_dirs)
+    return _expand(entries, home)
 
 
-def within_reach(
-    candidate: str,
-    policy: EffectivePolicy,
-    *,
-    home: str | None,
-    data_dirs: Sequence[str],
-) -> bool:
+def within_reach(candidate: str, policy: EffectivePolicy, *, home: str | None) -> bool:
     """Is ``candidate`` inside what policy already grants for reading?
 
     This is what keeps a working directory a *hint*. A session can point the
@@ -142,7 +89,7 @@ def within_reach(
     if not target.startswith("/") or ".." in target.split("/"):
         return False
 
-    for granted in _expand(policy.files_read, home, data_dirs):
+    for granted in _expand(policy.files_read, home):
         if target == granted or target.startswith(f"{granted}/"):
             return True
     return False
@@ -154,7 +101,6 @@ def attachable(
     *,
     home: str | None,
     drops: str | None,
-    data_dirs: Sequence[str],
 ) -> bool:
     """May ``candidate`` be attached to a conversation?
 
@@ -167,7 +113,7 @@ def attachable(
     `$HOME` grant.
     """
 
-    if within_reach(candidate, policy, home=home, data_dirs=data_dirs):
+    if within_reach(candidate, policy, home=home):
         return True
     if not drops:
         return False

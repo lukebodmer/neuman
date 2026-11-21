@@ -670,7 +670,6 @@ async def _patch_branch(request: Request) -> Response:
                     working_dir,
                     policy,
                     home=acting_home(services, principal),
-                    data_dirs=services.home_data_dirs,
                 ):
                     # Named rather than a bare 400: the user picked a real
                     # directory and the answer is that policy does not reach it,
@@ -708,7 +707,6 @@ async def _patch_branch(request: Request) -> Response:
                     policy,
                     home=acting_home(services, principal),
                     drops=acting_drops(services, principal),
-                    data_dirs=services.home_data_dirs,
                 ):
                     return JSONResponse(
                         {
@@ -863,9 +861,7 @@ async def _fork_branch(request: Request) -> Response:
 
         warnings: list[str] = []
         working_dir = source.working_dir
-        if working_dir and not within_reach(
-            working_dir, policy, home=home, data_dirs=services.home_data_dirs
-        ):
+        if working_dir and not within_reach(working_dir, policy, home=home):
             warnings.append(
                 f"{working_dir} is outside what policy now reaches; "
                 "the fork starts without a working directory."
@@ -880,7 +876,6 @@ async def _fork_branch(request: Request) -> Response:
                 policy,
                 home=home,
                 drops=drops,
-                data_dirs=services.home_data_dirs,
             ):
                 attachments.append(entry)
             else:

@@ -274,7 +274,6 @@ async def _run_turn(
             # next turn without a restart.
             resolve_model=services.model_catalog().resolve,
             config=HarnessConfig(
-                home_data_dirs=services.home_data_dirs,
                 tool_wait_ms=settings.tool_wait_ms,
                 approval_timeout_s=settings.approval_timeout_s,
                 max_tokens=settings.max_tokens,
