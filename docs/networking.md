@@ -122,9 +122,9 @@ acting (D56).
 
 The upgrade carries the cookie, and the account is the session's. The client's
 `hello` names the tools it can run and the home directory on the machine it runs
-on — the last because the core cannot look it up, and a `$HOME` policy entry it
-expanded against the wrong host would name directories that do not exist where
-the tool runs (N145). It carries no account name: the local account that holds
+on — the last because the core cannot look it up, and a `$HOME` or
+`$HOME/<path>` policy entry it expanded against the wrong host would name
+directories that do not exist where the tool runs (N145). It carries no account name: the local account that holds
 the process is the executor, not the principal, and it need not be named like the
 account on the appliance (D67). The core intersects the tool list with the
 catalog and the account's grants (D57). Identity is Neuman's — an argon2id

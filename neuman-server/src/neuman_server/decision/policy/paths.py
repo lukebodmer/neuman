@@ -5,13 +5,15 @@ reaches (D57). What remains is the two questions a *server* can answer without
 a filesystem — what does a policy entry actually name, and is this candidate
 inside it — and both exist to give an answer better than an opaque failure.
 
-`$HOME` names the acting account's home directory, and nothing else: the whole
-home, dotfiles included. A role that wants two folders under it names two
-paths; no appliance-wide list changes what the token means (D105). Which
-directory *is* that home is the acting machine's answer, not this server's —
-the client reports it when it connects (N145) — so with no client connected a
-`$HOME` entry reaches nothing: an account is not a host account (D67), and this
-server has no directory of its own to offer in its place.
+`$HOME` names the acting account's home directory, and `$HOME/<path>` a path
+under it: `$HOME/Documents` is that folder wherever the client runs, which is
+what lets one role serve several people and more than one operating system
+(D105, D106). The bare token means the home whole, dotfiles included; a role
+that wants two folders names two. Which directory *is* that home is the acting
+machine's answer, not this server's — the client reports it when it connects
+(N145) — so with no client connected a `$HOME` entry reaches nothing: an
+account is not a host account (D67), and this server has no directory of its
+own to offer in its place.
 
 An absolute path is a path. It names one machine's directory and is not
 reinterpreted when the client reports a different home, so a policy that must
@@ -39,18 +41,36 @@ def _normalize(path: str) -> str:
     return stripped or "/"
 
 
+def _resolve(entry: str, home: str | None) -> str | None:
+    """The path one policy entry names, or None if it names nothing here.
+
+    `$HOME` is the acting account's home and `$HOME/<path>` is a path under
+    it; both need the client's answer to "which home", so with no client
+    connected they name nothing. Everything else is taken as written, and a
+    string that is neither nor absolute names nothing: the schema refuses it at
+    the edge, so this is the second line of defence rather than a parser.
+    """
+
+    if entry == HOME_TOKEN:
+        return home
+    if entry.startswith(HOME_TOKEN + "/"):
+        rest = entry[len(HOME_TOKEN) + 1 :]
+        if not rest or any(part in ("", ".", "..") for part in rest.split("/")):
+            return None
+        return f"{home}/{rest}" if home else None
+    normalized = _normalize(entry)
+    return normalized if normalized.startswith("/") else None
+
+
 def _expand(entries: Sequence[str], home: str | None) -> list[str]:
-    """Resolve the token against the client's home, preserving order."""
+    """Resolve every entry against the client's home, preserving order."""
 
     normalized_home = _normalize(home) if home else None
     result: list[str] = []
     for entry in entries:
-        normalized = _normalize(entry)
-        if normalized == HOME_TOKEN:
-            if normalized_home is not None:
-                result.append(normalized_home)
-        else:
-            result.append(normalized)
+        resolved = _resolve(entry, normalized_home)
+        if resolved is not None:
+            result.append(resolved)
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -66,7 +86,8 @@ def expand_paths(entries: Sequence[str], *, home: str | None) -> list[str]:
 
     The raw list may contain the token, which is not a path until the client
     says which home it means, so a picker built from the raw list would offer
-    `$HOME` as a directory — a confusing way to learn about the expansion.
+    `$HOME` or `$HOME/Documents` as if they were directories — a confusing way
+    to learn about the expansion.
     """
 
     return _expand(entries, home)

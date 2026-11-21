@@ -44,7 +44,10 @@ runs on the human's machine.
   LaunchAgent. It is not built with Nix on the customer's machine.
 - macOS TCC applies: Desktop, Documents and Downloads need the user's consent;
   a LaunchAgent may need Full Disk Access for paths a terminal-run process can
-  already reach. `neuman-client doctor` reports what it can see.
+  already reach. A `$HOME/Documents` grant can be legal in Neuman and still
+  refused by macOS until that consent exists, so the client reports it as the
+  OS's refusal rather than as a policy refusal. `neuman-client doctor` reports
+  what it can see.
 
 ## What differs by platform
 

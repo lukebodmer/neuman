@@ -219,7 +219,7 @@ SCHEMA = json.loads(r"""
     },
     "home": {
      "$ref": "common.schema.json#/$defs/absPath",
-     "description": "The home directory on the machine this client runs on \u2014 what `~` means there. The core expands a `$HOME` policy entry against it and must not use the account's home on *its* host: a client on another machine has a different one, and a dispatch checked against the wrong home refuses paths the account can read (N145). A dishonest value cannot widen anything \u2014 `shell` and `python` are unchecked, so a client wanting more reach would not ask \u2014 but it decides which directories a `$HOME` grant names, and that is a question only the client can answer."
+     "description": "The home directory on the machine this client runs on \u2014 what `~` means there. The core expands `$HOME` and `$HOME/<path>` policy entries against it and must not use the account's home on *its* host: a client on another machine has a different one, and a dispatch checked against the wrong home refuses paths the account can read (N145). A dishonest value cannot widen anything \u2014 `shell` and `python` are unchecked, so a client wanting more reach would not ask \u2014 but it decides which directories those entries name, and that is a question only the client can answer."
     },
     "rpc_version": {
      "$ref": "#/$defs/rpcVersion"

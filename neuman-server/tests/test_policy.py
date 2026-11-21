@@ -427,9 +427,51 @@ def test_the_token_reaches_nothing_until_a_client_reports_a_home():
 
     from neuman_server.decision.policy.paths import within_reach
 
-    token = EffectivePolicy(files_read=("$HOME",))
+    token = EffectivePolicy(files_read=("$HOME", "$HOME/Documents"))
 
     assert not within_reach("/home/alice", token, home=None)
+    assert not within_reach("/home/alice/Documents", token, home=None)
+
+
+def test_a_subpath_of_the_token_follows_the_client():
+    """`$HOME/Documents` is that folder wherever home is (D106).
+
+    The same role serves a Linux user, a Mac user and a client on another
+    machine: only the home the client reports changes, and the narrow grant
+    stays narrow. The sibling check is here too, because `/projects/neuman`
+    and `/projects/neuman-2` differ by two characters and a prefix test would
+    grant both.
+    """
+
+    from neuman_server.decision.policy.paths import within_reach
+
+    policy = EffectivePolicy(files_read=("$HOME/Documents", "$HOME/projects/neuman"))
+
+    linux = {"home": "/home/alice"}
+    assert within_reach("/home/alice/Documents/notes", policy, **linux)
+    assert within_reach("/home/alice/projects/neuman", policy, **linux)
+    assert not within_reach("/home/alice", policy, **linux)
+    assert not within_reach("/home/alice/projects", policy, **linux)
+    assert not within_reach("/home/alice/projects/neuman-2", policy, **linux)
+
+    mac = {"home": "/Users/alice"}
+    assert within_reach("/Users/alice/Documents/notes", policy, **mac)
+    assert not within_reach("/home/alice/Documents/notes", policy, **mac)
+
+
+def test_a_subpath_that_could_leave_the_home_names_nothing():
+    """The schema refuses these on write; a row written past the route reaches nothing.
+
+    `.config` is a real folder and stays legal — the rule is about `.` and
+    `..` as segments, not about leading dots.
+    """
+
+    from neuman_server.decision.policy.paths import expand_paths
+
+    assert expand_paths(("$HOME/../etc",), home="/home/alice") == []
+    assert expand_paths(("$HOME//etc",), home="/home/alice") == []
+    assert expand_paths(("$HOME/./etc",), home="/home/alice") == []
+    assert expand_paths(("$HOME/.config",), home="/home/alice") == ["/home/alice/.config"]
 
 
 def test_an_absolute_home_grant_names_that_directory_and_not_the_acting_home():

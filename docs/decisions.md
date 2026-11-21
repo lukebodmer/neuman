@@ -2874,7 +2874,9 @@ Final until explicitly reversed here, with a new entry.
   pin was trying to be: the deployment owns a value and the page says so,
   never a seed that is consumed once and then lies.
 
-- **D105 — `$HOME` names the home, whole.** The token resolves to the acting
+- **D105 — `$HOME` names the home, whole.** *Amended by D106: the token also
+  composes — `$HOME/Documents` — so a role can name a folder under the home
+  without naming a machine or an account.* The token resolves to the acting
   account's home directory and to nothing else — dotfiles included. The
   `home_data_dirs` row, `/admin/home-dirs`, `neuman-admin files` and the Files
   page that D104 introduced are gone; a role that wants particular folders
@@ -2915,6 +2917,41 @@ Final until explicitly reversed here, with a new entry.
   entry removes. **Rejected: keeping D104's panel list**, which is what this
   entry deletes. D104's other half stands: runtime configuration belongs in
   the database, not the module, and nothing here puts it back in Nix.
+
+- **D106 — The token composes: `$HOME/Documents` is that folder wherever home
+  is.** A `files_read` or `files_write` entry may be the bare token, an
+  absolute path, or a path under the home written from it — one or more
+  segments, no `.` or `..`, no empty segment. The schema allows the shape,
+  `paths._resolve` expands it against the home the client reports, and nothing
+  else changes: `hello` carries the same home, `rpc_version` stays where it is,
+  and there is still no appliance-level list.
+
+  **Why D105's answer was half right.** D105 took the token down to the home
+  and told roles to name folders absolutely. That is right for one person on
+  one machine and wrong for the case the product exists for: a role is shared
+  by a group, and `/home/lj/Documents` names one member's directory and nobody
+  else's. Naming each home in that account's overlay would make the most
+  personal grant a manual step for every person, which is the arrangement this
+  entry removes.
+
+  **And for the port to come.** A client may be on macOS, where the home is
+  `/Users/<user>`. An absolute path in a role is wrong for the same person on
+  a different OS; `$HOME/Documents` is right on both, because only the client
+  knows its home (N145) and the platform seam already answers `home_dir()`
+  per OS. One role, not one per platform.
+
+  **The cost.** One more shape for the schema to validate and the resolver to
+  expand — a pattern and one branch — and one more thing the policy preview
+  must print correctly, which it already does because it prints the expansion.
+  The security position is D105's, unchanged: the bare token is the whole
+  home, dotfiles included; `$HOME/.ssh` is expressible because someone might
+  mean it; roles ship with folder grants.
+
+  **Rejected: dropping the token instead**, which was D105's alternative — it
+  makes every home personal configuration rather than a role grant, and it
+  cannot survive a second operating system. **Rejected: the appliance list**
+  (D104) — a token whose value changes per appliance is the shape both of these
+  replace.
 
 ## Platform ground truth
 

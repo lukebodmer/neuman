@@ -31,7 +31,7 @@ A role can grant:
 | Permission | What it means |
 |---|---|
 | Tools | Which tools the agent may use |
-| Files read, Files write | Which folders the file tools may read and write. `$HOME` means the whole home directory, dotfiles included, on whichever computer runs the tool; a role that wants particular folders names them |
+| Files read, Files write | Which folders the file tools may read and write. `$HOME` is the person's home on whichever computer runs the tool — write `$HOME/Documents` for a folder in it. The bare token means the whole home, dotfiles included |
 | Web tools | Whether tools that reach the network are offered |
 | Models | Which models the person may choose |
 | Approval ceiling | The least the agent must ask before acting: `never` (asks before everything), `safe` (asks before anything that changes something) or `yolo` (asks only before critical actions). The person can choose to be asked more, never less |

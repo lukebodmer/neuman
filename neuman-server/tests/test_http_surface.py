@@ -1650,6 +1650,39 @@ def test_a_home_grant_is_offered_as_the_home(monkeypatch, tmp_path):
         assert outside.status_code == 403, outside.text
 
 
+def test_a_subpath_grant_is_offered_and_bounded(monkeypatch, tmp_path):
+    """`$HOME/Documents` offers that folder and nothing else (D106).
+
+    A macOS home on purpose: the same role serves `/home/alice` and
+    `/Users/alice`, and what the picker offers is what the PATCH checks
+    against, so the two cannot disagree.
+    """
+
+    baseline = _home_baseline(tmp_path, ["$HOME/Documents"])
+    surface = build_surface(monkeypatch, tmp_path, baseline=baseline)
+    surface.services.execution.home_value = "/Users/alice"
+    with surface.client() as client:
+        csrf = authenticate(surface, client)
+        body = client.get("/api/policy").json()
+        assert body["readable"] == ["/Users/alice/Documents"], body["readable"]
+
+        created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+        inside = client.patch(
+            f"/api/branches/{created['branch']['id']}",
+            json={"working_dir": "/Users/alice/Documents"},
+            headers={"x-csrf-token": csrf},
+        )
+        assert inside.status_code == 200, inside.text
+
+        # The home the folder sits in is not itself granted.
+        home = client.patch(
+            f"/api/branches/{created['branch']['id']}",
+            json={"working_dir": "/Users/alice"},
+            headers={"x-csrf-token": csrf},
+        )
+        assert home.status_code == 403, home.text
+
+
 def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
     """N145: `$HOME` is the home of the machine that runs the tool.
 

@@ -42,9 +42,16 @@ SCHEMA = json.loads(r"""
     },
     {
      "const": "$HOME"
+    },
+    {
+     "not": {
+      "pattern": "(^|/)\\.\\.?($|/)"
+     },
+     "pattern": "^\\$HOME(/[^/]+)+$",
+     "type": "string"
     }
    ],
-   "description": "A path a `files_read` or `files_write` entry names: an absolute path, or exactly `$HOME` for the acting account's home directory. `$HOME` is the spelling to prefer whenever the client may not be on the server's machine \u2014 it names the home of whichever machine runs the tool, which the client reports, while an absolute path names one machine's directory (N145). The token means the home, whole: dotfiles such as `~/.ssh` included. A role that wants particular folders names them, and an account on another machine names that machine's paths (D105).",
+   "description": "A path a `files_read` or `files_write` entry names: an absolute path, or a path under the acting account's home written from its directory \u2014 `$HOME` for the home itself, `$HOME/Documents` for a folder in it, `$HOME/projects/neuman` for something deeper. The token is the spelling to prefer whenever the client may not be on the server's machine: it names the home of whichever machine runs the tool, which the client reports, while an absolute path names one machine's directory (N145). It also keeps a role valid across operating systems, where the home is `/home/<user>` or `/Users/<user>`. The bare token means the home whole, dotfiles included; a grant that wants particular folders names them (D105, D106).",
    "type": "string"
   },
   "userName": {

@@ -403,16 +403,17 @@ one under **Roles** in the administration page:
     "web_fetch", "browse",
     "session_query"
   ],
-  "files_read":  ["$HOME"],
-  "files_write": ["$HOME"],
+  "files_read":  ["$HOME/workspace"],
+  "files_write": ["$HOME/workspace"],
   "network": "any",
   "auto_accept": "safe",
   "models": ["<a vision-capable model>"]
 }
 ```
 
-`$HOME` expands to the person's home directory — the whole of it, dotfiles
-included — so make a folder such as `~/workspace/tools-tour`
+`$HOME/workspace` expands to `~/workspace` on the machine that runs the tool —
+the token is the client's home, so the same role works on Linux and macOS — and
+nothing outside that folder. So make a folder such as `~/workspace/tools-tour`
 and choose it as the working directory in the message box. `network = "any"` is
 what `web_fetch` needs to be offered, and `fs_image` needs a model that can see
 images. With `auto_accept = "safe"`, the steps that change files stop for your

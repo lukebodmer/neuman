@@ -117,7 +117,8 @@ hold.
     this account's dispatch output (D42), the other only files this account's
     person dropped on the chat window (D102), and neither is writable through a
     declared path. `$HOME` means the whole home, dotfiles included (D105), so a
-    grant of the token includes `~/.ssh`: the surfaces refuse what policy does
+    grant of the token includes `~/.ssh`; `$HOME/<path>` names a folder in it
+    and is the narrow spelling (D106). The surfaces refuse what policy does
     not name, never what the operator did not intend.
 
 [^devices]: A status bar or a local model is not worth the server holding a GPU

@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "defaults": {
+    "files_read": ["$HOME/Documents", "$HOME/projects/privateai_solutions"],
+    "files_write": ["$HOME/workspace"],
+    "auto_accept": "safe"
+  },
+  "roles": {},
+  "users": [{"name": "alice"}]
+}
