@@ -1,0 +1,9 @@
+#!/bin/sh
+# The browser host. It finds Chromium on PATH (`chromium`,
+# `chromium-browser`, `google-chrome`, `google-chrome-stable`) or via
+# NEUMAN_BROWSER_CHROMIUM, starts its own instance with a dedicated profile,
+# and bridges the DevTools loopback port onto the user's runtime socket.
+set -e
+PYTHONPATH="/opt/neuman-client/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_client.browser.cli "$@"

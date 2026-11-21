@@ -1,0 +1,17 @@
+[Unit]
+Description=Neuman browser
+After=graphical-session.target neuman-client.service
+PartOf=graphical-session.target
+
+[Service]
+# A leftover `ui-url` names a URL nothing is listening on; a present file and a
+# listening server are different facts, and only the 303 the token bootstrap
+# returns means both (N183). The check is the client's, so the NixOS module and
+# this package run one implementation of it (D108).
+ExecStartPre=/usr/bin/neuman-client wait-for-ui
+ExecStart=/usr/bin/neuman-browser --socket %t/neuman-browse.sock
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

@@ -1,0 +1,53 @@
+# nfpm's description of the Ubuntu client package. `deploy/ubuntu/
+# build-client.sh` substitutes @VERSION@ and @STAGE@ and runs `nfpm package`.
+#
+# Separate from the server package and installed under /opt/neuman-client, so
+# one machine can run both sides without either owning the other's files.
+name: neuman-client
+arch: amd64
+platform: linux
+version: "@VERSION@"
+section: net
+priority: optional
+maintainer: Luke Bodmer <lukejbodmer@gmail.com>
+vendor: Private AI Solutions
+homepage: https://privateai.solutions
+description: |
+  Neuman's client: the executor, the UI and the browser host.
+
+  Runs on the machine a person works at, as that person. It serves the chat
+  window on loopback, connects to the appliance, and executes the tools a role
+  grants. There is no system daemon and no root component.
+depends:
+  # 24.04's Python 3.12: the bundled wheels carry extension modules tagged for
+  # that interpreter, and a newer release's 3.13 would install and then fail to
+  # import them (D107, D108).
+  - python3 (>= 3.12)
+  - python3 (<< 3.13)
+  # The `git` tool's wrapper execs this; the rest of the tools are standard
+  # library only.
+  - git
+recommends:
+  # `browse` drives a Chromium the person already has; the package does not
+  # bundle one, because owning a browser's security updates is a worse deal
+  # than using the distribution's (D108). Google Chrome's deb is accepted too.
+  - chromium | google-chrome-stable
+  # Only `--profile copy` uses it.
+  - rsync
+contents:
+  - src: "@STAGE@/opt/neuman-client"
+    dst: /opt/neuman-client
+  - src: "@STAGE@/usr/bin/neuman-client"
+    dst: /usr/bin/neuman-client
+  - src: "@STAGE@/usr/bin/neuman-browser"
+    dst: /usr/bin/neuman-browser
+  - src: "@STAGE@/usr/lib/neuman-client"
+    dst: /usr/lib/neuman-client
+  - src: "@STAGE@/usr/share/neuman-client"
+    dst: /usr/share/neuman-client
+  - src: "@STAGE@/usr/lib/systemd/user/neuman-client.service"
+    dst: /usr/lib/systemd/user/neuman-client.service
+  - src: "@STAGE@/usr/lib/systemd/user/neuman-browser.service"
+    dst: /usr/lib/systemd/user/neuman-browser.service
+  - src: "@STAGE@/usr/share/applications/neuman.desktop"
+    dst: /usr/share/applications/neuman.desktop

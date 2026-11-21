@@ -43,6 +43,28 @@ def test_macos_has_no_ozone_flags():
     assert _darwin.display_args() == []
 
 
+def test_linux_copy_source_follows_the_browser_the_user_runs(monkeypatch, tmp_path):
+    """`--profile copy` seeds from wherever their browser keeps its profile.
+
+    The Chromium snap puts it under the snap's own `common` directory, not
+    `~/.config`, so a default that only knew the deb layout copies nothing on
+    a stock Ubuntu desktop — and copy mode used to proceed anyway, leaving the
+    browser with the `own` profile while the operator believed otherwise
+    (D108).
+    """
+
+    monkeypatch.setattr(_linux, "home_dir", lambda: tmp_path)
+    assert _linux.browser_copy_source() == tmp_path / ".config" / "chromium"
+
+    snap = tmp_path / "snap" / "chromium" / "common" / "chromium"
+    snap.mkdir(parents=True)
+    assert _linux.browser_copy_source() == snap
+
+    apt = tmp_path / ".config" / "chromium"
+    apt.mkdir(parents=True)
+    assert _linux.browser_copy_source() == apt
+
+
 def test_the_state_and_socket_overrides_win(monkeypatch, tmp_path):
     monkeypatch.setenv("NEUMAN_CLIENT_STATE", str(tmp_path / "state"))
     monkeypatch.setenv("NEUMAN_BROWSE_SOCKET", str(tmp_path / "browse.sock"))

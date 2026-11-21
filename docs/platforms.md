@@ -9,7 +9,7 @@ a date on it; it is a host the code has no backend for.
 |---|---|---|---|
 | `neuman-server` | Supported (NixOS module; Ubuntu 24.04 `.deb`) | Not supported | Not supported |
 | `neuman-admin` | Supported over the local socket | Not applicable (server is Linux) | Not supported |
-| `neuman-client` | Supported (Nix/home-manager today) | In progress: Apple silicon, macOS 14+ | Not supported |
+| `neuman-client` | Supported (Nix/home-manager; Ubuntu 24.04 `.deb`) | In progress: Apple silicon, macOS 14+ | Not supported |
 | Neuman appliance image | Supported (NixOS) | Not applicable | Not applicable |
 
 `neuman-server` is deliberately Linux-only. A macOS or Windows host that needs
@@ -37,8 +37,11 @@ sudo usermod -aG neuman "$USER"     # then log out and back in
 neuman-admin bootstrap --name you
 ```
 
-- 24.04 is the baseline: it ships Python 3.12, which is what the server
-  requires. 22.04 is not supported.
+- 24.04 only, for now: the package is built for its Python 3.12 and depends
+  on `python3 (<< 3.13)`. 22.04 ships 3.10, and releases since 25.04 ship 3.13
+  or newer, whose interpreter cannot load the bundled extension modules — so
+  `apt` refuses rather than installing a server that cannot start. Each Ubuntu
+  release needs its own build (D109).
 - The package creates the `neuman` user and group, the directories and the
   Postgres role and database. If Postgres was not running at install time,
   `sudo dpkg-reconfigure neuman` repeats the provisioning.
@@ -59,9 +62,39 @@ neuman-admin bootstrap --name you
 - Browser bridge: `$XDG_RUNTIME_DIR/neuman-browse.sock`, mode `0600` in the
   user's `0700` runtime directory.
 - Browser profile: `~/.local/share/neuman/browser`; `--profile copy` seeds from
-  `~/.config/chromium`.
+  the user's own profile — `~/.config/chromium`, the Chromium snap's
+  `~/snap/chromium/common/chromium`, or `~/.config/google-chrome`, the first
+  that exists, or `--copy-source`.
 - Service hint: `systemctl --user status neuman-client`.
-- The Nix `programs.neuman-client` module is the current install path.
+- Two install paths: the Nix `programs.neuman-client` module, and the Ubuntu
+  24.04 `.deb` below.
+
+#### Ubuntu 24.04
+
+The client as a `.deb`, from the download page. Per user, with no root
+component and no bundled browser (D108):
+
+```bash
+sudo apt install ./neuman-client_<version>_amd64.deb
+neuman-client login --server https://appliance.example:8443 --user you
+systemctl --user daemon-reload
+systemctl --user enable --now neuman-client.service
+systemctl --user enable --now neuman-browser.service
+```
+
+- `login` stores the server in `session.json`; neither unit needs it, so there
+  is no per-user configuration file.
+- Built for 24.04's Python 3.12, and depends on `python3 (<< 3.13)` for the
+  same reason as the server package (D109).
+- The browser is the person's: `chromium`, `chromium-browser`, `google-chrome`
+  or `google-chrome-stable` on `PATH`, or `NEUMAN_BROWSER_CHROMIUM`. Only the
+  `browse` tool needs it, so it is a `Recommends`. `chromium` on Ubuntu is the
+  snap; `--profile copy` reads the snap's profile path.
+- The DevTools endpoint is loopback TCP with no authentication. The `0600`
+  socket gates the tool, not the machine's other local accounts, so this
+  assumes every account on the machine is trusted as the user is.
+- `neuman-client doctor` reports the interpreter, the session, the browser, the
+  profile and the socket length; a clean exit is the first acceptance check.
 
 ### macOS
 

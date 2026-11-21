@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Neuman
+Comment=Open Neuman
+Exec=systemctl --user start neuman-client.service neuman-browser.service
+Icon=web-browser
+Terminal=false
+Categories=Network;WebBrowser;

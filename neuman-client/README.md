@@ -120,7 +120,9 @@ someone relies on it is worse than none (D31) — and bridges its DevTools port
 onto the user's runtime socket: `$XDG_RUNTIME_DIR/neuman-browse.sock` on Linux,
 `$TMPDIR/neuman-browse.sock` on macOS. The socket is `0600` in a `0700`
 directory; its mode is an access control a loopback port is not, and CDP carries
-no authentication of its own.
+no authentication of its own. Chromium only offers CDP on a loopback TCP port,
+which the bridge forwards to — that port is unauthenticated too, so the socket
+gates the tool and not the machine's other local accounts (D108).
 
 On Linux Chromium is found by name. On macOS it is found in `/Applications` or
 `~/Applications`; `NEUMAN_BROWSER_CHROMIUM` names an explicit executable.

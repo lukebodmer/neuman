@@ -3006,6 +3006,76 @@ Final until explicitly reversed here, with a new entry.
   package:** the client, which is the larger half, and local models, because
   `neuman-runtime` needs a `llama-server` a distribution has to supply.
 
+- **D108 — The client also installs on Ubuntu 24.04, and the browser is the
+  person's.** A `neuman-client` `.deb`, per user, with no root component: the
+  client wheel, the tools (standard library only, one wrapper per manifest
+  `exec`), the client's own copy of the manifests, the four web files, and two
+  user units plus a desktop entry. Neither unit names the server, because
+  `neuman-client login` stores it in the user's `session.json` — the login is
+  the configuration, so there is no per-user file to write.
+
+  **No bundled Chromium.** The Nix package pins one because Nix can — a store
+  path with no maintenance. On a distribution, bundling means owning a
+  browser's security updates on exactly the path where a model-injected page
+  runs, and the client already prefers a system browser (`find_chromium` looks
+  for `chromium`, `chromium-browser`, `google-chrome`, `google-chrome-stable`).
+  Only `browse` needs one, and only roles that grant `browse` reach it, so the
+  package recommends `chromium | google-chrome-stable` rather than depending on
+  it. A minimum major version is checked when the browser host starts: old
+  enough that it refuses nothing that works, present so an ancient browser is a
+  sentence rather than a protocol error.
+
+  **Two bugs the packaging surfaced, both fixed here.** `--profile copy`
+  returned quietly when rsync or the source profile was missing, leaving the
+  browser on the `own` profile while the operator believed it held their
+  logins — a silent change in whose identity a page acts as. It fails closed
+  now, and `browser_copy_source()` knows the Chromium snap's profile under
+  `~/snap/chromium/common`, which `~/.config/chromium` alone never found on a
+  stock Ubuntu desktop. Second, the readiness check the browser unit runs moved
+  out of the home-manager module's shell script into
+  `neuman-client wait-for-ui`, so the module and the deb run one implementation
+  of N183.
+
+  **The cost.** A second artifact to cut and publish in step with the server.
+  The deb does not pin Chromium, so a CDP change in a future browser is the
+  user's update to absorb — the version floor and `doctor` are the warning.
+  And the last point is now stated in `networking.md` rather than implied: the
+  DevTools endpoint is loopback TCP with no authentication, so the `0600`
+  socket gates the tool and not the machine's other local accounts. The client
+  assumes every account on the machine is trusted as the user is — true of a
+  personal laptop, not of a shared workstation. `--remote-debugging-pipe`
+  would remove the port, but the pipe is NUL-delimited CDP rather than
+  HTTP/WebSocket, so it changes the tool↔host protocol and is its own decision,
+  triggered by clients on shared machines.
+
+  **Out of scope here:** local models (still a distribution's `llama-server`),
+  the Blender add-on's install, and the macOS client, which is its own plan.
+
+- **D109 — An Ubuntu package is built for one release's Python.** The wheels a
+  package carries include compiled extensions — `psycopg-binary`, `rpds-py`,
+  `argon2-cffi-bindings` in the server, `websockets`' optional speedup in the
+  client — and their files are tagged for an interpreter (`*.cpython-312-*`).
+  CPython's ABI is not forward compatible, so a newer release's 3.13 will not
+  load them: the package would install on a satisfied `python3 (>= 3.12)` and
+  then fail at import under systemd. Both packages therefore depend on
+  `python3 (>= 3.12), python3 (<< 3.13)`: 24.04 installs, 22.04 (3.10) and
+  25.04 or later (3.13, 3.14) are refused by apt with a sentence rather than
+  installed and broken. Supporting a new Ubuntu release is a new pair of
+  builds, not a flag.
+
+  **Rejected: depending on the distribution's Python packages.** It would make
+  one artifact span releases, but the versions available in each release are
+  not the set the suite runs against — the pinning D107 exists to keep — and
+  the packages the server needs (`starlette`, `uvicorn`, `psycopg` 3) are not
+  all present or current. **Rejected: bundling an interpreter**, which is a
+  second Python to track security fixes for. **Rejected: a single deb that
+  falls back to pure-Python implementations**, which trades a clear refusal for
+  a path nobody tested.
+
+  **The cost:** the download page and the platform matrix name one Ubuntu
+  release, and a person on the newest Ubuntu waits for its build. That is the
+  honest state until there is a reason to support more than the LTS.
+
 ## Platform ground truth
 
 Facts about Linux, Postgres, Python, and Nix that the design must assume.

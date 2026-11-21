@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -43,6 +44,32 @@ from .bridge import serve
 # The token is in the URL the daemon writes; this is only the fallback.
 DEFAULT_URL = "http://127.0.0.1:8642"
 DEFAULT_PORT = 9222
+
+# Chromium's DevTools surface has been stable for years and the reference
+# appliance pins a current one, so this floor is old on purpose: its job is a
+# sentence instead of a protocol error on an ancient browser, not a gate on a
+# version the bridge could not use anyway. A binary that will not answer
+# `--version` is let through, because the error it then gives names itself.
+MINIMUM_CHROMIUM_MAJOR = 120
+
+
+class ProfileError(Exception):
+    """`--profile copy` was asked for and cannot be honoured."""
+
+
+def _chromium_major(chromium: str) -> int | None:
+    try:
+        completed = subprocess.run(
+            [chromium, "--version"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    match = re.search(r"(\d+)\.", completed.stdout)
+    return int(match.group(1)) if match else None
 
 
 def _default_url() -> str:
@@ -88,14 +115,30 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _copy_profile(source: str, destination: str, rsync: str | None) -> None:
-    if rsync is None or not os.path.isdir(source):
-        return
+    """Seed the profile, or refuse. Copy mode is opt-in and must not degrade.
+
+    A missing rsync or a missing source used to return quietly, which left the
+    browser running with the `own` profile while the operator believed it had
+    their logins — a silent change in who a page injected with the model acts
+    as. The dangerous mode fails closed instead.
+    """
+
+    if rsync is None:
+        raise ProfileError("copy needs rsync; install it or set NEUMAN_BROWSER_RSYNC")
+    if not os.path.isdir(source):
+        raise ProfileError(f"no browser profile at {source}; pass --copy-source")
+
     os.makedirs(destination, exist_ok=True, mode=0o700)
-    subprocess.run(
-        [rsync, "-a", "--delete", f"{source}/", f"{destination}/"],
-        check=False,
-        timeout=120,
-    )
+    try:
+        completed = subprocess.run(
+            [rsync, "-a", "--delete", f"{source}/", f"{destination}/"],
+            check=False,
+            timeout=120,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ProfileError(f"cannot copy {source}: {error}") from error
+    if completed.returncode != 0:
+        raise ProfileError(f"rsync failed copying {source}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -109,10 +152,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 1
 
+    major = _chromium_major(chromium)
+    if major is not None and major < MINIMUM_CHROMIUM_MAJOR:
+        print(
+            f"neuman-browser: {chromium} is Chromium {major}; "
+            f"{MINIMUM_CHROMIUM_MAJOR} or newer is required",
+            file=sys.stderr,
+        )
+        return 1
+
     profile = Path(args.user_data_dir).expanduser()
     os.makedirs(profile, exist_ok=True, mode=0o700)
     if args.profile == "copy":
-        _copy_profile(str(Path(args.copy_source).expanduser()), str(profile), _rsync())
+        try:
+            _copy_profile(str(Path(args.copy_source).expanduser()), str(profile), _rsync())
+        except ProfileError as error:
+            print(f"neuman-browser: {error}", file=sys.stderr)
+            return 1
 
     socket_path = Path(args.socket).expanduser() if args.socket else None
     if not socket_path:

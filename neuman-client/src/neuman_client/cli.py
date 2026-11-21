@@ -13,9 +13,11 @@ import argparse
 import asyncio
 import errno
 import getpass
+import http.client
 import os
 import secrets
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -147,6 +149,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("doctor", help="report what this host can and cannot do")
+
+    wait = sub.add_parser(
+        "wait-for-ui",
+        help="wait until the UI answers its token bootstrap (for the browser unit)",
+    )
+    wait.add_argument("--timeout", type=float, default=30.0)
+    wait.add_argument("--interval", type=float, default=0.2)
 
     return parser
 
@@ -304,6 +313,60 @@ def _doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _wait_for_ui(args: argparse.Namespace) -> int:
+    """Block until the UI answers with the 303 its token bootstrap returns.
+
+    The browser unit runs this before opening a window. A leftover `ui-url`
+    from a previous run names a URL nothing is listening on, and opening it
+    never completes the bootstrap (N183): a file existing and a server
+    listening are different facts, and only the 303 means both.
+
+    The URL carries the per-install token, so nothing here prints it — a
+    failure names the host and port and what was last seen instead.
+    """
+
+    state = Path(args.state_dir).expanduser()
+    path = state / "ui-url"
+    deadline = time.monotonic() + args.timeout
+    location = "the UI"
+    last = "no ui-url file yet"
+
+    while time.monotonic() < deadline:
+        try:
+            url = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            url = ""
+        if url:
+            parts = urlsplit(url)
+            host = parts.hostname or "127.0.0.1"
+            port = parts.port or 80
+            location = f"{host}:{port}"
+            target = parts.path or "/"
+            if parts.query:
+                target = f"{target}?{parts.query}"
+            try:
+                connection = http.client.HTTPConnection(host, port, timeout=2.0)
+                try:
+                    connection.request("GET", target)
+                    response = connection.getresponse()
+                    status = response.status
+                    response.read()
+                finally:
+                    connection.close()
+                if status == 303:
+                    return 0
+                last = f"answered HTTP {status}"
+            except (OSError, http.client.HTTPException) as error:
+                last = str(error) or "connection failed"
+        time.sleep(args.interval)
+
+    print(
+        f"neuman-client: {location} did not answer within {args.timeout:g}s ({last})",
+        file=sys.stderr,
+    )
+    return 1
+
+
 def _login(args: argparse.Namespace) -> int:
     if unsafe := _secure_scheme(args.server):
         print(f"neuman-client: {unsafe}", file=sys.stderr)
@@ -337,6 +400,8 @@ def main(argv: list[str] | None = None) -> int:
         return _login(args)
     if args.command == "doctor":
         return _doctor(args)
+    if args.command == "wait-for-ui":
+        return _wait_for_ui(args)
     if args.command in (None, "run"):
         return _run(args, parser)
     parser.error(f"unknown command: {args.command}")

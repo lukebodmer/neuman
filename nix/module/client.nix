@@ -18,8 +18,6 @@ let
   # listens. One value, passed to both services, so they cannot drift.
   socket = "%t/neuman-browse.sock";
 
-  stateDir = "${config.home.homeDirectory}/.local/share/neuman/client";
-
   browserArguments = [
     "--port"
     (toString cfg.browserPort)
@@ -36,22 +34,9 @@ let
 
   # A file's presence is not a server's readiness: a leftover `ui-url` from a
   # previous run names a URL nothing is listening on, and opening it never
-  # completes the token bootstrap (N183). The client writes the file only after
-  # its port is bound, so a 303 from the token bootstrap means both are true.
-  waitForUi = pkgs.writeShellScript "neuman-wait-for-ui" ''
-    for _ in $(${pkgs.coreutils}/bin/seq 1 150); do
-      url=$(${pkgs.coreutils}/bin/cat ${stateDir}/ui-url 2>/dev/null) || {
-        ${pkgs.coreutils}/bin/sleep 0.2
-        continue
-      }
-      if ${pkgs.curl}/bin/curl -s --max-time 2 -o /dev/null -D - "$url" \
-        | ${pkgs.gnugrep}/bin/grep -q '^HTTP/1.1 303'; then
-        exit 0
-      fi
-      ${pkgs.coreutils}/bin/sleep 0.2
-    done
-    exit 1
-  '';
+  # completes the token bootstrap (N183). The check lives in the client rather
+  # than in a script here, so the NixOS module and the .deb run one
+  # implementation of it (D108).
 in
 {
   options.programs.neuman-client = {
@@ -183,7 +168,7 @@ in
         # and its token bootstrap never runs (N183). Wait for the URL to answer
         # with the 303 that only the live token bootstrap returns, so a present
         # file and a listening server mean the same thing.
-        ExecStartPre = "${waitForUi}";
+        ExecStartPre = "${cfg.package}/bin/neuman-client wait-for-ui";
         ExecStart = browserExec;
         Restart = "on-failure";
         RestartSec = 2;

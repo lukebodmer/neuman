@@ -37,7 +37,25 @@ def browser_profile_dir() -> Path:
 
 
 def browser_copy_source() -> Path:
-    return home_dir() / ".config" / "chromium"
+    """The user's own profile, where the browser they run keeps one.
+
+    `--profile copy` seeds Neuman's browser from this. Three places a Linux
+    browser keeps a profile: the packaged Chromium, the Chromium snap — whose
+    home is the snap's own `common` directory, not `~/.config` — and Google
+    Chrome. The first that exists wins; `--copy-source` overrides, and the
+    browser refuses to start in copy mode when the chosen path is absent,
+    rather than silently running without the logins it was asked for.
+    """
+
+    candidates = (
+        home_dir() / ".config" / "chromium",
+        home_dir() / "snap" / "chromium" / "common" / "chromium",
+        home_dir() / ".config" / "google-chrome",
+    )
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 def find_chromium() -> str | None:

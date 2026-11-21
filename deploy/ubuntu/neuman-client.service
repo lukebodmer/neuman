@@ -1,0 +1,14 @@
+[Unit]
+Description=Neuman client
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+# The server is not named here: `neuman-client login` stores it in the user's
+# session file, so the unit needs no per-user configuration (D108).
+ExecStart=/usr/bin/neuman-client run --ui-port 8642 --browse-socket %t/neuman-browse.sock
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

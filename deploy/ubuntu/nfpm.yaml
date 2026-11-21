@@ -16,9 +16,12 @@ description: |
   and the tool manifests. Accounts, roles, providers, models and the prompt are
   made in the administration page, not in a configuration file.
 depends:
-  # The Python modules are installed against the distribution's interpreter;
-  # the package does not bundle one. 24.04 is the supported baseline (D107).
+  # Ubuntu 24.04 only, for now: the wheels are built for CPython 3.12, and a
+  # newer release ships 3.13 or later, whose extension modules are a different
+  # ABI — the package would install and then fail at import. Refusing here is
+  # the honest dependency until each release gets its own build (D107).
   - python3 (>= 3.12)
+  - python3 (<< 3.13)
   - postgresql
   # pg_dump and pg_restore, which the backup and restore routes invoke.
   - postgresql-client

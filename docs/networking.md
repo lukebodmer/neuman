@@ -183,6 +183,14 @@ That is why the link is a socket with a mode (`0600` inside the user's `0700`
 runtime directory), and why the tool only speaks TCP when it is pointed at a
 port explicitly. Nothing sets that for you.
 
+The hop behind the bridge is not a socket, because Chromium does not offer one:
+the browser host starts Chromium with `--remote-debugging-port` on loopback and
+forwards to it. That port is unauthenticated as well and reachable by every
+local process, whatever user it runs as — so the socket gates the tool, and the
+machine's other accounts are trusted as the user is. Removing the port means
+`--remote-debugging-pipe`, which changes the protocol between the tool and the
+host, so it is a decision rather than a flag (D108).
+
 The profile is the client's choice (`own` by default, `copy` to seed the user's
 real cookies), and the browser's outbound traffic is the user's own network, not
 the appliance's.

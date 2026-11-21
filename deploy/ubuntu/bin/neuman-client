@@ -1,0 +1,13 @@
+#!/bin/sh
+# The client's installation contract: modules under /opt/neuman-client, the
+# system interpreter, and the three directories the package owns. The browser
+# is deliberately not named here — `find_chromium()` looks for the one the
+# person already has (D108).
+set -e
+NEUMAN_CLIENT_MANIFESTS=${NEUMAN_CLIENT_MANIFESTS:-/usr/share/neuman-client/registry}
+NEUMAN_CLIENT_BIN=${NEUMAN_CLIENT_BIN:-/usr/lib/neuman-client/bin}
+NEUMAN_CLIENT_WEB=${NEUMAN_CLIENT_WEB:-/usr/share/neuman-client/web}
+export NEUMAN_CLIENT_MANIFESTS NEUMAN_CLIENT_BIN NEUMAN_CLIENT_WEB
+PYTHONPATH="/opt/neuman-client/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_client "$@"

@@ -392,10 +392,13 @@ is then a CPU build, and the GPU sampler is not installed.
 `browse` is an ordinary client tool: it runs on the acting human's machine, as
 that human (D31, D55). The client's `neuman-browser` starts a real Chromium and
 bridges its DevTools endpoint onto a Unix socket in that user's runtime
-directory; `browse` dials the same path, which the client hands to the tool. It
-is never a network port, because Chrome DevTools Protocol has no authentication
-and `127.0.0.1:9222` is reachable by every process on the machine. Grant it by
-adding `browse` to a role.
+directory; `browse` dials the same path, which the client hands to the tool. The
+tool's link is never a network port, because Chrome DevTools Protocol has no
+authentication. The hop behind the bridge is: Chromium exposes CDP on a
+loopback port and nowhere else, which is why the bridge exists. That port is
+unauthenticated too, so the socket gates the tool and not the machine — the
+client assumes every account on the machine is trusted as the user is (D108).
+Grant `browse` by adding it to a role.
 
 **The profile is chosen on the client.** `programs.neuman-client.profile = "own"`
 (the default) is a profile belonging to Neuman, so a page that injects the model

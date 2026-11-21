@@ -9,8 +9,10 @@ store paths answers "why did nothing happen" with silence.
 
 from __future__ import annotations
 
+import http.server
 import json
 import socket
+import threading
 from pathlib import Path
 
 import pytest
@@ -214,3 +216,69 @@ def test_login_names_the_account_on_the_core(tmp_path, capsys):
     assert caught.value.code == 2
     assert "--user" in capsys.readouterr().err
     assert not (tmp_path / "session.json").exists()
+
+
+# -- the browser unit's readiness check --------------------------------------
+
+
+def _ui_server(status: int) -> http.server.ThreadingHTTPServer:
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            self.send_response(status)
+            self.end_headers()
+
+        def log_message(self, *_args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
+def test_wait_for_ui_returns_on_the_token_bootstrap(tmp_path):
+    """A 303, not merely a file: the browser unit's readiness condition (N183)."""
+
+    server = _ui_server(303)
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/?token=SECRET"
+        (tmp_path / "ui-url").write_text(url, encoding="utf-8")
+
+        assert cli.main(["--state-dir", str(tmp_path), "wait-for-ui", "--timeout", "3"]) == 0
+    finally:
+        server.shutdown()
+
+
+def test_wait_for_ui_times_out_without_printing_the_token(tmp_path, capsys):
+    """The URL carries the per-install token; a failure must not log it."""
+
+    server = _ui_server(200)
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/?token=SECRET"
+        (tmp_path / "ui-url").write_text(url, encoding="utf-8")
+        code = cli.main(
+            [
+                "--state-dir",
+                str(tmp_path),
+                "wait-for-ui",
+                "--timeout",
+                "0.5",
+                "--interval",
+                "0.1",
+            ]
+        )
+    finally:
+        server.shutdown()
+
+    assert code == 1
+    error = capsys.readouterr().err
+    assert "SECRET" not in error
+    assert str(server.server_port) in error
+
+
+def test_wait_for_ui_says_when_there_is_no_url_yet(tmp_path, capsys):
+    code = cli.main(
+        ["--state-dir", str(tmp_path), "wait-for-ui", "--timeout", "0.3", "--interval", "0.1"]
+    )
+
+    assert code == 1
+    assert "no ui-url" in capsys.readouterr().err
