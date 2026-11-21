@@ -80,6 +80,62 @@ def test_a_busy_ui_port_is_a_message_not_a_traceback(tmp_path, capsys):
     assert "Traceback" not in err, err
 
 
+def test_ui_url_is_written_only_after_the_ui_binds(tmp_path, monkeypatch):
+    """The browser reads this file to decide where to open; a stale URL is a dead page.
+
+    The file used to be written before the port was bound and left behind when
+    the client stopped, so a restart's browser could open a URL nothing answered
+    and never complete the token bootstrap (N183). The client now removes the
+    stale file and writes the new one after the bind.
+    """
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "ui-url").write_text("http://127.0.0.1:1/?token=stale", encoding="utf-8")
+
+    seen: list[str] = []
+
+    class _Stop(Exception):
+        pass
+
+    class _Daemon:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        async def run(self) -> None:
+            # The UI is bound and the file is written before the daemon starts,
+            # so by now it must name the bound UI rather than the stale URL.
+            seen.append((state / "ui-url").read_text(encoding="utf-8").strip())
+            raise _Stop
+
+    monkeypatch.setattr(cli, "ClientDaemon", _Daemon)
+
+    with pytest.raises(_Stop):
+        cli.main(
+            [
+                "--state-dir",
+                str(state),
+                "run",
+                "--server",
+                "http://127.0.0.1:1",
+                "--manifests",
+                str(_manifests(tmp_path)),
+                "--bin",
+                str(tmp_path / "bin"),
+                "--web-root",
+                str(_web_root(tmp_path)),
+                "--ui-port",
+                "0",
+            ]
+        )
+
+    assert seen, "the daemon never ran"
+    url = seen[0]
+    assert url != "http://127.0.0.1:1/?token=stale"
+    assert url.startswith("http://127.0.0.1:")
+    assert "?token=" in url
+
+
 def test_plain_http_is_loopback_only():
     """The rule that makes the cookie's `Secure` attribute mean something.
 

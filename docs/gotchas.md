@@ -4409,3 +4409,42 @@ change. `docs/setup.md` now names this case next to restore and start over.
 words into the docs; the words in the migration are part of the schema. The cost
 is permanent: `0001_initial.sql`'s header can never gain the citation or the
 wording it deserves.
+
+### N183 — A present `ui-url` file is not a listening UI, and the page blamed the password
+
+**What happened.** After a change to the install method, logging in to an
+account answered "Incorrect username or password." The core's audit log had no
+login attempt, successful or denied, and no logout either — the request never
+reached it. The browser unit had started before the client, but its
+`ExecStartPre` only waited for `ui-url` to exist. The file was left over from the
+previous run, so the gate passed immediately and the browser opened the URL while
+the client was down. Chromium's first request failed, the token bootstrap never
+ran, and the page that eventually loaded had no `neuman_client` cookie. The
+client's own proxy refused every `/api` request as "not this client", and the
+sign-in handler turned that 401 into "Incorrect username or password" — so a
+local proxy refusal was shown as a credential failure. The core session was
+still valid throughout.
+
+**Why.** Two independent assumptions were both "the file exists":
+`ExecStartPre` treated a file's presence as the server's readiness, and `run`
+wrote the file before `ui.start()` bound the port and left it behind when the
+client stopped. A restart therefore had a file naming a dead URL. The 401 body
+was plain text (`not this client`), and the page's 401 handler assumed "the
+session went away", so the one case the page could not fix — a tab without the
+local token — was indistinguishable from the one it could.
+
+**Fix.** The client removes a stale `ui-url` before it starts and writes the file
+only after `ui.start()` has bound the port; `UiServer.url` uses the bound port
+rather than the requested one, so a `--ui-port 0` URL is not port 0. The module's
+browser unit waits for the URL in that file to answer the token bootstrap with a
+303, so a present file and a listening server mean the same thing. A request
+without the local cookie now gets a JSON 401 naming `not_this_client`, and the
+page tells that case apart from an ended session and says the tab is not signed
+in to the local client instead of blaming the password. The cost is that a
+browser launched at login waits up to 30 seconds for the client, and the
+readiness probe is one extra 303 request per launch.
+
+**The lesson:** a file's existence is not a server's readiness. A readiness
+signal has to be answered by the thing that is supposed to be ready, and a 401
+from the local proxy is not a credential failure from the core — the page must
+know which layer refused it before it can say anything true about why.

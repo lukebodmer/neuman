@@ -133,6 +133,29 @@ def _response(
     return ("\r\n".join(head) + "\r\n\r\n").encode("latin-1") + body
 
 
+def _not_this_client() -> bytes:
+    """The refusal for a request without the local token cookie.
+
+    A 401 here does not mean the core rejected a credential: the request never
+    reached it. The body names that case so the page can tell "this tab is not
+    the client's browser" from "the session ended" — the login form's password
+    goes through the same proxy and would fail the same way (N183).
+    """
+
+    return _response(
+        401,
+        "Unauthorized",
+        content_type="application/json",
+        body=json.dumps(
+            {
+                "error": "not_this_client",
+                "detail": "This tab is not signed in to the local client; "
+                "open the URL from ui-url.",
+            }
+        ).encode("utf-8"),
+    )
+
+
 def _job_rows(registry: JobRegistry | None) -> list[dict[str, object]]:
     """What the browser's job row draws: enough to tell two builds apart.
 
@@ -206,7 +229,9 @@ class UiServer:
     def url(self) -> str:
         """Where the browser should open the UI, token included."""
 
-        return f"http://127.0.0.1:{self._port}/?token={self._token}"
+        # The bound port, not the requested one: `0` asks the OS to choose, and
+        # a URL written before the bind would name port 0 (N183).
+        return f"http://127.0.0.1:{self.port}/?token={self._token}"
 
     @property
     def port(self) -> int:
@@ -369,7 +394,7 @@ class UiServer:
         """
 
         if not self._authorised(request):
-            writer.write(_response(401, "Unauthorized", body=b"not this client"))
+            writer.write(_not_this_client())
             return
 
         if request.path == "/api/jobs":
@@ -434,7 +459,7 @@ class UiServer:
         """
 
         if not self._authorised(request):
-            writer.write(_response(401, "Unauthorized", body=b"not this client"))
+            writer.write(_not_this_client())
             return
         if request.method != "POST":
             writer.write(_response(405, "Method Not Allowed"))
@@ -522,7 +547,7 @@ class UiServer:
 
     async def _proxy_api(self, request: _Request, writer: asyncio.StreamWriter) -> None:
         if not self._authorised(request):
-            writer.write(_response(401, "Unauthorized", body=b"not this client"))
+            writer.write(_not_this_client())
             return
 
         status, headers, body, set_cookies = await asyncio.to_thread(self._forward, request)
@@ -599,7 +624,7 @@ class UiServer:
         writer: asyncio.StreamWriter,
     ) -> None:
         if not self._authorised(request):
-            writer.write(_response(401, "Unauthorized", body=b"not this client"))
+            writer.write(_not_this_client())
             return
 
         key = request.headers.get("sec-websocket-key")

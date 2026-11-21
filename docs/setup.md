@@ -157,7 +157,9 @@ $ cat ~/.local/share/neuman/client/ui-url
 ```
 
 Open that URL — the client's loopback UI, token included — and follow
-**Manage Neuman** at the foot of the chat window's rail.
+**Manage Neuman** at the foot of the chat window's rail. The client writes
+`ui-url` once its UI is listening; the browser unit waits for that URL to answer
+before it opens one (N183).
 
 ## 4. Providers and models
 

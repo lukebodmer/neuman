@@ -82,6 +82,20 @@ def test_the_client_reconnects_a_dropped_socket():
     assert "4401" in source and "4403" in source
 
 
+def test_the_page_tells_a_missing_local_cookie_from_a_wrong_password():
+    """A 401 from the client's proxy is not a 401 from the core.
+
+    The login form's password goes through the same proxy that refused the
+    request, so sending the user back to it would fail identically. The page
+    reads the body's `not_this_client` and says so instead (N183).
+    """
+
+    source = (WEB / "neuman.js").read_text()
+
+    assert 'payload.error === "not_this_client"' in source
+    assert "This tab is not signed in to the local client" in source
+
+
 def test_the_client_has_no_stale_element_references():
     """Every `$("id")` in the client must exist in the HTML.
 

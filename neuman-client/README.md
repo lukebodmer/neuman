@@ -85,8 +85,10 @@ and `/ws` to the core with the session it holds, so the browser and the executor
 share one origin, the core's cookie never reaches the browser, and the browser
 needs no certificate to reach a remote core. The browser authenticates to the
 client with
-a per-install token: `run` writes the tokenised URL to `ui-url` and
-`neuman-browser` opens it.
+a per-install token: `run` writes the tokenised URL to `ui-url` once the UI is
+listening, and `neuman-browser` opens it. The module's browser unit waits for
+that URL to answer before it starts, so a leftover file from a previous run
+cannot send the browser to a dead page (N183).
 
 The proxy forwards `x-csrf-token` and nothing else of the browser's request
 headers. The core re-checks CSRF per unsafe request, so a proxy that dropped it
@@ -140,7 +142,7 @@ the account:
 |---|---|
 | `session.json` | The session cookie and the core's URL, `0600` from creation |
 | `ui-token` | The browser's token for the local UI, `0600`, stable across restarts |
-| `ui-url` | Where the UI is, token included — what `neuman-browser` opens |
+| `ui-url` | Where the UI is, token included — written once the UI is listening, and what `neuman-browser` opens |
 | `spill/` | Tool output too large to stream, named by dispatch id (D42) |
 | `drops/` | Files dropped on the chat window, by content hash; deleted once no conversation attaches them (D102) |
 

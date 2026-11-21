@@ -586,6 +586,26 @@ async function api(method, path, body) {
   });
 
   if (response.status === 401) {
+    // A 401 from the client's own proxy means this tab never carried the local
+    // token cookie: the request did not reach the core and no password was
+    // tried. "Session ended" would send the user to a form that cannot succeed
+    // either (N183).
+    const text = await response.text();
+    let payload = null;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      // A plain-text 401 from something in front of the proxy.
+    }
+    if (payload && payload.error === "not_this_client") {
+      // The login form's password goes through the same proxy, so returning to
+      // it without saying why would fail identically. This is the one 401 the
+      // page cannot fix by signing in again (N183).
+      showLogin(
+        "This tab is not signed in to the local client. Close this window and open Neuman from its launcher."
+      );
+      throw new Error("not_this_client");
+    }
     // The session went away — a restart, an expiry, or a uid change (D17).
     // Returning to the login form is the honest response; retrying would loop.
     showLogin("Session ended. Sign in again.");
@@ -8927,7 +8947,9 @@ async function signIn() {
     // password, and neither does this: anything else is an enumeration oracle.
     $("login-msg").textContent = error.message === "unauthenticated"
       ? "Incorrect username or password."
-      : error.message;
+      : error.message === "not_this_client"
+        ? "This tab is not signed in to the local client. Close this window and open Neuman from its launcher."
+        : error.message;
   }
 }
 
@@ -9816,7 +9838,14 @@ $("logout").onclick = async () => {
     showDraft();
     loadSessions();
     startActive();
-  } catch {
-    showLogin();
+  } catch (error) {
+    // A missing local token is the one boot failure the login form cannot fix:
+    // the password goes through the same proxy. Say what to do instead of
+    // presenting a form that will fail (N183).
+    showLogin(
+      error && error.message === "not_this_client"
+        ? "This tab is not signed in to the local client. Close this window and open Neuman from its launcher."
+        : undefined
+    );
   }
 })();

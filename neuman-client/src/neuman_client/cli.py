@@ -204,9 +204,12 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             jobs=jobs,
             drops=drops,
         )
-        # The browser host reads this rather than being told the URL, so a
-        # launch does not have to carry a token through a command line.
-        _private_write(state / "ui-url", ui.url)
+        # A leftover file from a previous run names a URL nothing is listening
+        # on. A browser opened against it never completes the token bootstrap,
+        # so every request is refused as "not this client" and the page blames
+        # the password (N183). The file is written again only once the port is
+        # bound, below.
+        (state / "ui-url").unlink(missing_ok=True)
 
     daemon = ClientDaemon(
         transport=WebSocketTransport(url=_client_url(server), cookie=session.cookie),
@@ -219,9 +222,15 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     )
 
     async def both() -> None:
-        if ui is not None:
-            await ui.start()
         try:
+            if ui is not None:
+                await ui.start()
+                # The browser host reads this rather than being told the URL, so
+                # a launch does not have to carry a token through a command
+                # line. Written after the bind, so the file's presence means the
+                # UI is actually answering — the browser's ExecStartPre waits on
+                # that URL, not on the file alone (N183).
+                _private_write(state / "ui-url", ui.url)
             await daemon.run()
         finally:
             if ui is not None:

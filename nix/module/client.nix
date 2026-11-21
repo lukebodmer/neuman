@@ -33,6 +33,25 @@ let
 
   clientExec = "${cfg.package}/bin/neuman-client run --server ${cfg.server} --ui-port ${toString cfg.uiPort} --browse-socket ${cfg.socket}";
   browserExec = "${cfg.package}/bin/neuman-browser ${lib.escapeShellArgs browserArguments}";
+
+  # A file's presence is not a server's readiness: a leftover `ui-url` from a
+  # previous run names a URL nothing is listening on, and opening it never
+  # completes the token bootstrap (N183). The client writes the file only after
+  # its port is bound, so a 303 from the token bootstrap means both are true.
+  waitForUi = pkgs.writeShellScript "neuman-wait-for-ui" ''
+    for _ in $(${pkgs.coreutils}/bin/seq 1 150); do
+      url=$(${pkgs.coreutils}/bin/cat ${stateDir}/ui-url 2>/dev/null) || {
+        ${pkgs.coreutils}/bin/sleep 0.2
+        continue
+      }
+      if ${pkgs.curl}/bin/curl -s --max-time 2 -o /dev/null -D - "$url" \
+        | ${pkgs.gnugrep}/bin/grep -q '^HTTP/1.1 303'; then
+        exit 0
+      fi
+      ${pkgs.coreutils}/bin/sleep 0.2
+    done
+    exit 1
+  '';
 in
 {
   options.programs.neuman-client = {
@@ -158,15 +177,13 @@ in
         PartOf = [ "graphical-session.target" ];
       };
       Service = {
-        # The daemon writes the UI's URL — token included — when it starts, and
-        # the browser reads it. Waiting here rather than racing it is what keeps
-        # the browser from opening the core's address instead of the client's.
-        ExecStartPre = "${pkgs.bash}/bin/bash -c ${
-          lib.escapeShellArg (
-            "for _ in ${pkgs.coreutils}/bin/seq 1 150; do [ -s ${stateDir}/ui-url ] && exit 0; "
-            + "${pkgs.coreutils}/bin/sleep 0.2; done; exit 1"
-          )
-        }";
+        # The daemon writes the UI's URL — token included — once its port is
+        # bound, and the browser reads it. Waiting for the file to exist is not
+        # enough: a leftover from the last run sends the browser to a dead URL
+        # and its token bootstrap never runs (N183). Wait for the URL to answer
+        # with the 303 that only the live token bootstrap returns, so a present
+        # file and a listening server mean the same thing.
+        ExecStartPre = "${waitForUi}";
         ExecStart = browserExec;
         Restart = "on-failure";
         RestartSec = 2;

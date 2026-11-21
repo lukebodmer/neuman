@@ -157,6 +157,21 @@ async def test_the_api_needs_the_local_credential(ui):
     assert status == 401
 
 
+async def test_a_request_without_the_local_cookie_names_itself(ui):
+    """The page must not read this as a wrong password.
+
+    A 401 here is the client's own proxy refusing a request that never reached
+    the core; the login form's password goes through the same proxy. The body
+    says which refusal it is so the page can tell them apart (N183).
+    """
+
+    server, _session = ui
+    status, body = await asyncio.to_thread(_get, server, "/api/greet")
+
+    assert status == 401
+    assert json.loads(body)["error"] == "not_this_client"
+
+
 async def test_the_api_proxies_to_the_core_with_the_session_cookie(ui):
     server, session = ui
     session.store(server=server.server_url, cookie="stored-cookie")
