@@ -9,6 +9,10 @@ requires-python = ">=3.12"
 dependencies = [
   "argon2-cffi>=23",
   "jsonschema>=4",
+  # The generated wire contracts. Local to this repository rather than on
+  # PyPI: a wheel of the server needs a wheel of the contracts beside it, which
+  # is what a release publishes and what `deploy/ubuntu/build.sh` installs.
+  "neuman-contracts>=0.1.0",
   "psycopg[binary,pool]>=3",
   "starlette>=0.37",
   "uvicorn>=0.30",

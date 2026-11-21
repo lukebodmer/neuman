@@ -13,6 +13,9 @@ appliance has no accounts, roles, providers or models (D68). You create the firs
 administrator over a local socket, and everything after that is the
 administration page — a provider is its tile and an API key, a model is its tile.
 
+**Not on NixOS?** `platforms.md` has the Ubuntu 24.04 package. The rest of this
+document is the NixOS path.
+
 ## 1. The flake input and the module
 
 ```nix

@@ -1,0 +1,8 @@
+# The module's tmpfiles rules, minus what the service unit creates itself.
+#
+# StateDirectory, LogsDirectory and RuntimeDirectory make the server's own
+# places on every start, so they are not here (N167). These two are not the
+# unit's: `/run/neuman` is root-owned on purpose, and the backup directory
+# lives under the state directory but is not the server's to create.
+d /run/neuman 0755 root root -
+d /var/lib/neuman/backups 0700 neuman neuman -

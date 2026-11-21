@@ -1,0 +1,50 @@
+# nfpm's description of the Ubuntu package. `deploy/ubuntu/build.sh`
+# substitutes @VERSION@ and @STAGE@ and runs `nfpm package`.
+name: neuman
+arch: amd64
+platform: linux
+version: "@VERSION@"
+section: admin
+priority: optional
+maintainer: Luke Bodmer <lukejbodmer@gmail.com>
+vendor: Private AI Solutions
+homepage: https://privateai.solutions
+description: |
+  Neuman's decision core.
+
+  The server half of the Neuman appliance: the decision core, the admin CLI,
+  and the tool manifests. Accounts, roles, providers, models and the prompt are
+  made in the administration page, not in a configuration file.
+depends:
+  # The Python modules are installed against the distribution's interpreter;
+  # the package does not bundle one. 24.04 is the supported baseline (D107).
+  - python3 (>= 3.12)
+  - postgresql
+  # pg_dump and pg_restore, which the backup and restore routes invoke.
+  - postgresql-client
+  - adduser
+contents:
+  - src: "@STAGE@/opt/neuman"
+    dst: /opt/neuman
+  - src: "@STAGE@/usr/bin/neuman-server"
+    dst: /usr/bin/neuman-server
+  - src: "@STAGE@/usr/bin/neuman-admin"
+    dst: /usr/bin/neuman-admin
+  - src: "@STAGE@/usr/bin/neuman-runtime"
+    dst: /usr/bin/neuman-runtime
+  - src: "@STAGE@/usr/bin/neuman-fetch"
+    dst: /usr/bin/neuman-fetch
+  - src: "@STAGE@/usr/share/neuman"
+    dst: /usr/share/neuman
+  - src: "@STAGE@/usr/lib/systemd/system/neuman-server.service"
+    dst: /usr/lib/systemd/system/neuman-server.service
+  - src: "@STAGE@/usr/lib/tmpfiles.d/neuman.conf"
+    dst: /usr/lib/tmpfiles.d/neuman.conf
+  # A conffile: an upgrade must not overwrite what the operator set.
+  - src: "@STAGE@/etc/neuman/server.env"
+    dst: /etc/neuman/server.env
+    type: config
+scripts:
+  postinstall: "@HERE@/scripts/postinst"
+  preremove: "@HERE@/scripts/prerm"
+  postremove: "@HERE@/scripts/postrm"

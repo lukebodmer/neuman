@@ -1,0 +1,54 @@
+[Unit]
+Description=Neuman decision core
+Documentation=https://privateai.solutions/docs/setup
+# The database is provisioned by this package's postinst, but a host that
+# installed Postgres afterwards still needs the unit to wait for it.
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/neuman-server
+User=neuman
+Group=neuman
+EnvironmentFile=/etc/neuman/server.env
+Restart=on-failure
+# EX_CONFIG: a bad environment is not worth retrying. The server exits 78 so
+# systemd can say "configuration problem" rather than "crash loop".
+RestartPreventExitStatus=78
+
+# The same sandbox as the NixOS module's unit, and for the same reason: these
+# directives are what the security model's "the server reaches only its own
+# state" claim is enforced by. An install that drops them is a weaker
+# appliance under the same name, which is why the unit ships in the package
+# and is not the operator's to write (D107).
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+MemoryDenyWriteExecute=true
+
+# The server's writable places, made by systemd on every start and owned by
+# `neuman`. `/run/neuman` itself stays root-owned so a directory the server
+# could replace wholesale is never the boundary (N73).
+StateDirectory=neuman
+StateDirectoryMode=0750
+LogsDirectory=neuman
+LogsDirectoryMode=0750
+RuntimeDirectory=neuman/admin
+RuntimeDirectoryMode=0750
+# The runtime host's and the fetcher's sockets, when those units are installed:
+# optional (`-`), so a `/run` being rebuilt is not a unit that refuses to
+# start.
+ReadWritePaths=-/run/neuman
+# The weights are the fetcher's to write, not the server's (D79).
+ReadOnlyPaths=-/var/lib/neuman/models
+
+[Install]
+WantedBy=multi-user.target

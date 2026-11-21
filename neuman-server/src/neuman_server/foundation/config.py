@@ -41,7 +41,6 @@ class Settings:
     audit_mirror_path: Path = Path("/var/log/neuman/audit.jsonl")
 
     # Local sockets.
-    auth_socket: Path = Path("/run/neuman/auth.sock")
     admin_socket: Path = Path("/run/neuman/admin/admin.sock")
 
     # The tool registry: <registry_dir>/<name>/manifest.toml.
@@ -179,7 +178,6 @@ class Settings:
             pool_max_size=integer("NEUMAN_POOL_MAX", 16),
             state_dir=path("NEUMAN_STATE_DIR", "/var/lib/neuman/state"),
             audit_mirror_path=path("NEUMAN_AUDIT_MIRROR", "/var/log/neuman/audit.jsonl"),
-            auth_socket=path("NEUMAN_AUTH_SOCKET", "/run/neuman/auth.sock"),
             admin_socket=path("NEUMAN_ADMIN_SOCKET", "/run/neuman/admin/admin.sock"),
             registry_dir=path("NEUMAN_REGISTRY_DIR", "/etc/neuman/registry"),
             bind=source.get("NEUMAN_BIND") or "127.0.0.1",
@@ -225,7 +223,6 @@ class Settings:
             raise ConfigError(f"NEUMAN_TOOL_WAIT_MS must be positive: {self.tool_wait_ms}")
         for name, value in (
             ("state_dir", self.state_dir),
-            ("auth_socket", self.auth_socket),
             ("registry_dir", self.registry_dir),
         ):
             if not value.is_absolute():

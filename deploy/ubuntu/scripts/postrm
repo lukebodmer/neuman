@@ -1,0 +1,10 @@
+#!/bin/sh
+# The user, the database and /var/lib/neuman survive a removal, including a
+# purge: they hold the record — accounts, conversations, the audit chain —
+# and an uninstall is not the place to decide it is disposable. Starting over
+# is a deliberate act, documented in the setup guide.
+set -e
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+fi
+exit 0

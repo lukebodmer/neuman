@@ -1,0 +1,8 @@
+#!/bin/sh
+# The same installation contract as `neuman-server`: modules under /opt, the
+# system interpreter. The CLI is a separate trust position and needs no state
+# of its own.
+set -e
+PYTHONPATH="/opt/neuman/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_admin "$@"

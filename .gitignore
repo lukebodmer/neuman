@@ -33,3 +33,11 @@ __pycache__/
 # after every session is noise.
 .probe
 .wtest
+
+# Debian packages built by deploy/ubuntu/build.sh. The released artifact goes
+# to the project site, not into this repository.
+/deploy/ubuntu/*.deb
+
+# `pip wheel` and `pip install` write these into the source tree.
+/build/
+/*/build/

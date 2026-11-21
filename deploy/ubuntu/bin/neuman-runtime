@@ -1,0 +1,8 @@
+#!/bin/sh
+# The local-model host (D78). Needs NEUMAN_LLAMA_SERVER from its own unit, and
+# is only started when an operator installs local models; it is packaged so
+# the server's `runtime_socket` has something to talk to.
+set -e
+PYTHONPATH="/opt/neuman/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_server.runtime.host "$@"

@@ -101,8 +101,8 @@
           python-lint = pkgs.runCommand "python-lint" { } ''
             cd ${self}
             export RUFF_CACHE_DIR=$TMPDIR/ruff-cache
-            ${pkgs.ruff}/bin/ruff check contracts neuman-server neuman-client neuman-admin tools nix
-            ${pkgs.ruff}/bin/ruff format --check contracts neuman-server neuman-client neuman-admin tools nix
+            ${pkgs.ruff}/bin/ruff check contracts neuman-server neuman-client neuman-admin tools nix deploy
+            ${pkgs.ruff}/bin/ruff format --check contracts neuman-server neuman-client neuman-admin tools nix deploy
             touch $out
           '';
 

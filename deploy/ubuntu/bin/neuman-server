@@ -1,0 +1,15 @@
+#!/bin/sh
+# The package installs the Python modules outside the system's site-packages,
+# so PYTHONPATH is the installation contract and Ubuntu's own interpreter is
+# the runtime — hence the `python3 (>= 3.12)` dependency rather than a bundled
+# one. NEUMAN_BUILD_ID names the package version, the deb's answer to the Nix
+# module's store path: it is what a turn's audit entry carries, so "which code
+# served this turn" has an answer after an upgrade (D69, D107).
+set -e
+if [ -z "${NEUMAN_BUILD_ID:-}" ] && [ -r /usr/share/neuman/build-id ]; then
+    NEUMAN_BUILD_ID=$(cat /usr/share/neuman/build-id)
+    export NEUMAN_BUILD_ID
+fi
+PYTHONPATH="/opt/neuman/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_server "$@"

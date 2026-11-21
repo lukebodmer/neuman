@@ -1,0 +1,8 @@
+#!/bin/sh
+# Stop before the files under /opt go away. `deb-systemd-invoke` is the Debian
+# helper that respects a masked or disabled unit instead of starting one.
+set -e
+if [ -d /run/systemd/system ]; then
+    deb-systemd-invoke stop neuman-server.service >/dev/null || true
+fi
+exit 0

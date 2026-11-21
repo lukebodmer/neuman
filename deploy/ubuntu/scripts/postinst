@@ -1,0 +1,48 @@
+#!/bin/sh
+# Runs on install and on `dpkg-reconfigure neuman`. Idempotent: an upgrade runs
+# it again and must change nothing that exists.
+set -e
+
+getent group neuman >/dev/null || addgroup --system neuman
+if ! getent passwd neuman >/dev/null; then
+    adduser --system --ingroup neuman --home /var/lib/neuman \
+        --no-create-home --shell /usr/sbin/nologin --gecos "Neuman" neuman
+fi
+
+# The unit's State/Logs/Runtime directories are systemd's; these are the ones
+# that are not (the module's tmpfiles rules): the root-owned /run parent and
+# the backup directory.
+install -d -m 0755 -o root -g root /run/neuman
+install -d -m 0750 -o neuman -g neuman /var/lib/neuman
+install -d -m 0700 -o neuman -g neuman /var/lib/neuman/backups
+install -d -m 0750 -o neuman -g neuman /var/log/neuman
+install -d -m 0750 -o neuman -g neuman /run/neuman/admin
+
+# Database provisioning, best effort. A container, or a host where Postgres is
+# installed but not yet up, must still install; running `dpkg-reconfigure
+# neuman` later repeats this once it is.
+if command -v psql >/dev/null 2>&1; then
+    if ! su -s /bin/sh postgres -c \
+        "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='neuman'\"" 2>/dev/null | grep -q 1; then
+        su -s /bin/sh postgres -c "createuser neuman" || true
+    fi
+    if ! su -s /bin/sh postgres -c \
+        "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='neuman'\"" 2>/dev/null | grep -q 1; then
+        su -s /bin/sh postgres -c "createdb -O neuman neuman" || true
+    fi
+fi
+
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload >/dev/null 2>&1 || true
+    deb-systemd-invoke start neuman-server.service >/dev/null || true
+fi
+
+cat <<'NOTE'
+Neuman is installed, and its administration page is served by a client, not by
+this server. Until a client connects, administer it over the socket:
+
+  sudo usermod -aG neuman "$USER"     # then log out and back in
+  neuman-admin bootstrap --name you
+
+NOTE
+exit 0

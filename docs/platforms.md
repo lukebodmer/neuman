@@ -7,7 +7,7 @@ a date on it; it is a host the code has no backend for.
 
 | Component | Linux | macOS | Windows |
 |---|---|---|---|
-| `neuman-server` | Supported (Linux service, Postgres) | Not supported | Not supported |
+| `neuman-server` | Supported (NixOS module; Ubuntu 24.04 `.deb`) | Not supported | Not supported |
 | `neuman-admin` | Supported over the local socket | Not applicable (server is Linux) | Not supported |
 | `neuman-client` | Supported (Nix/home-manager today) | In progress: Apple silicon, macOS 14+ | Not supported |
 | Neuman appliance image | Supported (NixOS) | Not applicable | Not applicable |
@@ -15,6 +15,41 @@ a date on it; it is a host the code has no backend for.
 `neuman-server` is deliberately Linux-only. A macOS or Windows host that needs
 a server can run the Linux service in a container; the client is the part that
 runs on the human's machine.
+
+## Server hosts
+
+### NixOS
+
+The reference install: the flake's module, described in `setup.md`. It owns the
+packages, the unit and its sandbox, the directories, the database and the
+operator group.
+
+### Ubuntu 24.04
+
+The same server as a `.deb`, from the download page. The package carries the
+same systemd unit as the NixOS module, so the sandbox is not something the
+installer chooses, and its Python dependencies are pinned to the versions the
+suite runs against (D107).
+
+```bash
+sudo apt install ./neuman_<version>_amd64.deb
+sudo usermod -aG neuman "$USER"     # then log out and back in
+neuman-admin bootstrap --name you
+```
+
+- 24.04 is the baseline: it ships Python 3.12, which is what the server
+  requires. 22.04 is not supported.
+- The package creates the `neuman` user and group, the directories and the
+  Postgres role and database. If Postgres was not running at install time,
+  `sudo dpkg-reconfigure neuman` repeats the provisioning.
+- **The administration page is the client's.** A server with no client
+  connected is administered with `neuman-admin` over the socket; the page
+  appears when a client connects.
+- Deployment settings — bind, port, TLS, paths — are in
+  `/etc/neuman/server.env`, a conffile. Accounts, roles, providers, models and
+  the prompt are settings of the appliance, made in the administration page.
+- Local models are not in the package: `neuman-runtime` needs
+  `NEUMAN_LLAMA_SERVER`, which means a `llama-server` the distribution supplies.
 
 ## Client hosts
 

@@ -1,0 +1,7 @@
+#!/bin/sh
+# The weights fetcher (D79). Same contract as the runtime host: packaged, not
+# enabled until the operator runs local models.
+set -e
+PYTHONPATH="/opt/neuman/lib${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec python3 -m neuman_server.runtime.fetch "$@"
