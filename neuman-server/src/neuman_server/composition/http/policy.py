@@ -215,12 +215,12 @@ async def _my_policy(request: Request) -> Response:
             "readable": expand_paths(
                 policy.files_read,
                 home=acting_home(services, principal),
-                data_dirs=services.settings.home_data_dirs,
+                data_dirs=services.home_data_dirs,
             ),
             "writable": expand_paths(
                 policy.files_write,
                 home=acting_home(services, principal),
-                data_dirs=services.settings.home_data_dirs,
+                data_dirs=services.home_data_dirs,
             ),
             # What the composer draws its thinking control from, for the models
             # this account may select. Here rather than on the model panel

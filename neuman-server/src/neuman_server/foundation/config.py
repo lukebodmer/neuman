@@ -80,10 +80,6 @@ class Settings:
     # Logging.
     log_level: str = "INFO"
 
-    # What a policy entry naming `$HOME` expands to, for the working-directory
-    # check and the reach the model is told about. Not a grant: the client runs
-    # as the human and there is no profile to build.
-    home_data_dirs: tuple[str, ...] = ("Documents", "Desktop", "Downloads", "workspace")
     # The longest a model's tool call may block its turn. Caps the wait the
     # harness sends, never a background job's lifetime (the manifest's) and
     # never a task's run step, whose wait is the owner's `timeout_s` (D96, D98).
@@ -192,9 +188,6 @@ class Settings:
             tls_key=opt_path("NEUMAN_TLS_KEY"),
             allowed_origins=items("NEUMAN_ALLOWED_ORIGINS", ""),
             log_level=source.get("NEUMAN_LOG_LEVEL") or "INFO",
-            home_data_dirs=items(
-                "NEUMAN_HOME_DATA_DIRS", "Documents:Desktop:Downloads:workspace"
-            ),
             runtime_socket=path("NEUMAN_RUNTIME_SOCKET", "/run/neuman/runtime/control.sock"),
             runtime_config=path("NEUMAN_RUNTIME_CONFIG", "/var/lib/neuman/state/runtime.json"),
             runtime_chat_url=source.get("NEUMAN_RUNTIME_CHAT_URL")

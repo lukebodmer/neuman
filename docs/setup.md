@@ -256,8 +256,9 @@ approval starts. Create one under **Roles**:
 - **Files read / write** — `$HOME` is the spelling to use: it names the home of
   whichever machine runs the tool, so a role that means "their home" keeps
   meaning it when the client is not on this host. It does not grant the home
-  directory: it expands to `services.neuman.homeDataDirs` (`Documents`,
-  `Desktop`, `Downloads`, `workspace` by default), so dotfiles stay out of reach.
+  directory: it expands to the appliance's **home folders**, set under *Files*
+  in the administration page (`Documents`, `Desktop`, `Downloads` and
+  `workspace` until someone changes them), so dotfiles stay out of reach.
 - **Models** — the names from the Models section.
 - **Approval** — `never` asks for every call, `safe` for mutating ones, `yolo`
   only for critical ones. A user may move it in Settings within the role's

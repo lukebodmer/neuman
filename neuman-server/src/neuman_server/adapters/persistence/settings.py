@@ -41,6 +41,15 @@ class SettingsStore:
             (key, json.dumps(value)),
         )
 
+    async def delete(self, key: str) -> None:
+        """Remove a key, so the value in force is the default again.
+
+        Used by the settings whose absence is meaningful — the home folders,
+        where "nobody has chosen a set" is what "Use defaults" restores.
+        """
+
+        await self._conn.execute("DELETE FROM settings WHERE key = %s", (key,))
+
     async def replace_if(self, key: str, *, expected: Any, value: Any) -> bool:
         """Replace a value only if it is still the one the caller read.
 

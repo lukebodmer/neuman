@@ -326,6 +326,7 @@ const loaders = {
   models: loadModels,
   providers: loadProviders,
   tools: loadTools,
+  files: loadFiles,
   prompt: loadPrompt,
   sessions: loadSessions,
   usage: loadUsage,
@@ -4190,6 +4191,20 @@ async function modelPresetDialog(preset, options, providerLabel) {
     note(`${name.value.trim()} added. Grant it to a role so someone can choose it.`);
   });
 }
+// -- files ------------------------------------------------------------------
+
+function renderHomeDirs(data) {
+  $("home-dirs").value = (data.dirs || []).join("\n");
+  // Nothing to restore when the default list is already in force, and the
+  // button says which folders that is so "defaults" is not a guess.
+  $("reset-home-dirs").disabled = !data.set;
+  $("reset-home-dirs").title = `Defaults: ${(data.default || []).join(", ")}`;
+}
+
+async function loadFiles() {
+  renderHomeDirs(await api("GET", "/api/admin/home-dirs"));
+}
+
 // -- prompt -----------------------------------------------------------------
 
 async function loadPrompt() {
@@ -4592,6 +4607,32 @@ $("save-prompt").onclick = async () => {
   try {
     await api("PUT", "/api/admin/prompt", { text: $("prompt").value });
     note("Prompt saved.");
+  } catch (error) {
+    note(error.message, true);
+  }
+};
+
+$("save-home-dirs").onclick = async () => {
+  // Blank lines are dropped rather than sent: a trailing newline is how a
+  // textarea ends, not an empty folder name. Everything else is the server's
+  // to refuse, with a reason the operator can act on.
+  const dirs = $("home-dirs")
+    .value.split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  try {
+    const data = await api("PUT", "/api/admin/home-dirs", { dirs });
+    renderHomeDirs(data);
+    note("Home folders saved. The next turn uses them.");
+  } catch (error) {
+    note(error.message, true);
+  }
+};
+
+$("reset-home-dirs").onclick = async () => {
+  try {
+    renderHomeDirs(await api("DELETE", "/api/admin/home-dirs"));
+    note("Using the built-in home folders.");
   } catch (error) {
     note(error.message, true);
   }

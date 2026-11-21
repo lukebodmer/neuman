@@ -37,7 +37,7 @@ from ..audit import chain
 from ..audit.ports import AuditRepository
 from ..policy import gate
 from ..policy.compose import EffectivePolicy
-from ..policy.paths import expand_paths
+from ..policy.paths import DEFAULT_HOME_DATA_DIRS, expand_paths
 from ..policy.ports import ToolRegistry
 from . import events, projection
 from .context import ContextManager, estimate_tokens, measured_tokens
@@ -239,8 +239,9 @@ HANDOFF_NOTE = (
 class HarnessConfig:
     # What an entry naming `$HOME` expands to, for the reach the model is told
     # about and for the working-directory check. Not a grant: the client runs
-    # as the human and there is no profile to build.
-    home_data_dirs: tuple[str, ...] = ("Documents", "Desktop", "Downloads", "workspace")
+    # as the human and there is no profile to build. The live value is the
+    # appliance's row, passed in when a turn is built (D104).
+    home_data_dirs: tuple[str, ...] = DEFAULT_HOME_DATA_DIRS
     # How long a model may stay silent before the client is told it is waiting.
     # Long enough that a responsive provider never triggers it, short enough
     # that a cold VRAM load does not look like a hang.

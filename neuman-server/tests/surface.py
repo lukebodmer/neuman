@@ -578,6 +578,9 @@ class FakeSettings:
     async def set(self, key: str, value: Any) -> None:
         self.values[key] = copy.deepcopy(value)
 
+    async def delete(self, key: str) -> None:
+        self.values.pop(key, None)
+
     async def replace_if(self, key: str, *, expected: Any, value: Any) -> bool:
         if key not in self.values or self.values[key] != expected:
             return False

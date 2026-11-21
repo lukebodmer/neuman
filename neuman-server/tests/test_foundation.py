@@ -48,11 +48,6 @@ def test_relative_paths_are_rejected():
         Settings.from_env({"NEUMAN_STATE_DIR": "var/lib/neuman"})
 
 
-def test_colon_separated_lists_parse():
-    settings = Settings.from_env({"NEUMAN_HOME_DATA_DIRS": "Docs:Work"})
-    assert settings.home_data_dirs == ("Docs", "Work")
-
-
 def test_pool_bounds_are_checked():
     with pytest.raises(ConfigError, match="invalid pool bounds"):
         Settings.from_env({"NEUMAN_POOL_MIN": "10", "NEUMAN_POOL_MAX": "2"})

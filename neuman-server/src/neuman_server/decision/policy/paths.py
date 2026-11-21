@@ -22,12 +22,57 @@ from collections.abc import Sequence
 
 from .compose import EffectivePolicy
 
-__all__ = ["HOME_TOKEN", "attachable", "expand_paths", "within_reach"]
+__all__ = [
+    "DEFAULT_HOME_DATA_DIRS",
+    "HOME_TOKEN",
+    "as_home_data_dirs",
+    "attachable",
+    "expand_paths",
+    "within_reach",
+]
 
 # The spelling an operator should use for "the acting account's home", because
 # it does not name a machine. The absolute path is also accepted — an operator
 # who writes it out means the same thing — and the two are expanded identically.
 HOME_TOKEN = "$HOME"
+
+# The folders a home-naming entry expands to on an appliance nobody has
+# configured, and what "Use defaults" in the administration page restores.
+#
+# This is runtime configuration, not a deployment fact: it is a `settings` row
+# an administrator edits under Files, and a change lands on the next turn
+# (D104). The value here is what a fresh database has in force until then.
+DEFAULT_HOME_DATA_DIRS = ("Documents", "Desktop", "Downloads", "workspace")
+
+
+def as_home_data_dirs(value: object) -> tuple[str, ...] | None:
+    """The configured data subdirectories, or None if `value` is not one.
+
+    A name is one path component under the home. A separator, `.`, `..`, a
+    control character or a name with padding means somewhere other than what
+    the row appears to say, and an empty list would make `$HOME` name nothing
+    while looking like a setting — all refused rather than interpreted.
+
+    This is not confinement: the list decides what `$HOME` names, and `shell`
+    and `python` reach past it anyway (D57). The check exists so a malformed
+    row fails at the edge with a message, not as a path the model is told
+    about and the client then refuses.
+    """
+
+    if not isinstance(value, (list, tuple)):
+        return None
+    names: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or not item or item != item.strip():
+            return None
+        if item in (".", "..") or "/" in item or "\x00" in item:
+            return None
+        names.append(item)
+    if not names:
+        return None
+    # Duplicates are harmless but would be repeated in the prompt on every
+    # turn; collapse them while keeping the operator's order.
+    return tuple(dict.fromkeys(names))
 
 
 def _normalize(path: str) -> str:

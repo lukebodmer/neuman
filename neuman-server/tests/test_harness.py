@@ -2544,8 +2544,8 @@ async def test_the_configured_reply_budget_reaches_the_request():
 
     `HarnessConfig.max_tokens` existed from the start and `Settings` did not
     carry it, so the dataclass default was the only reachable value — the same
-    shape as `NEUMAN_HOME_DATA_DIRS` before it had a module option, and as
-    `contextSize` reaching llama.cpp but not the budget (N86). A test of
+    shape as a value whose only reachable setting is a dataclass default, and
+    as `contextSize` reaching llama.cpp but not the budget (N86). A test of
     `Settings` alone would pass with the harness never passing it on.
     """
 

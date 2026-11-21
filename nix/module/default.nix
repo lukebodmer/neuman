@@ -9,12 +9,13 @@
 # wrong is how a boundary quietly stops existing.
 #
 # What this module deliberately does **not** do: configure Neuman. Accounts,
-# roles, providers, models and the prompt live in Postgres and are made in the
-# administration page or with `neuman-admin` (D16, D68); a fresh appliance
-# starts empty. The module owns what a restart changes — packages, paths,
-# ports, TLS, the units and their sandboxes — and one host job: the OS `neuman`
-# group, which decides who may open the admin socket and therefore who can
-# create the first administrator.
+# roles, providers, models, the prompt and the folders a `$HOME` grant expands
+# to live in Postgres and are made in the administration page or with
+# `neuman-admin` (D16, D68, D104); a fresh appliance starts empty. The module
+# owns what a restart changes — packages, paths, ports, TLS, the units and
+# their sandboxes — and one host job: the OS `neuman` group, which decides who
+# may open the admin socket and therefore who can create the first
+# administrator.
 {
   config,
   lib,
@@ -79,39 +80,6 @@ in
         32k window, 8192 leaves roughly 21k for history.
 
         Read by the server as `NEUMAN_MAX_TOKENS`.
-      '';
-    };
-
-    homeDataDirs = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [
-        "Documents"
-        "Desktop"
-        "Downloads"
-        "workspace"
-      ];
-      example = [
-        "projects"
-        "Documents"
-      ];
-      description = ''
-        What a `$HOME` entry in `files_read` or `files_write` expands to.
-
-        A `$HOME` entry names these subdirectories rather than the home itself, so
-        the declared surfaces are the places work actually happens — `~/.ssh`,
-        `~/.bashrc` and `~/.config/systemd` are not among them. `$HOME` is the
-        spelling to prefer: it names the home of whichever machine runs the tool,
-        which the client reports, where an absolute path names one machine's
-        directory. The client runs as the user and reaches what the user reaches,
-        so this list is what policy declares and what the working-directory check
-        compares against, not a boundary. `shell` and `python` are not
-        constrained by it at all.
-
-        So this is the list of places work happens. Granting a home plus naming
-        `projects` here is one policy entry that covers every project under it,
-        rather than a whitelist that grows.
-
-        Read by the server as `NEUMAN_HOME_DATA_DIRS`.
       '';
     };
 
@@ -280,7 +248,6 @@ in
         NEUMAN_STATE_DIR = "/var/lib/neuman/state";
         NEUMAN_AUDIT_MIRROR = "/var/log/neuman/audit.jsonl";
         NEUMAN_ADMIN_SOCKET = "/run/neuman/admin/admin.sock";
-        NEUMAN_HOME_DATA_DIRS = lib.concatStringsSep ":" cfg.homeDataDirs;
         NEUMAN_MAX_TOKENS = toString cfg.maxTokens;
         NEUMAN_MODELS_DIR = cfg.modelsDir;
         NEUMAN_BIND = cfg.bind;

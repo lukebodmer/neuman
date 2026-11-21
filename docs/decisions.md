@@ -2824,6 +2824,54 @@ Final until explicitly reversed here, with a new entry.
   release, which would leave every deployment holding a schema its own version
   number does not identify.
 
+- **D104 — The folders a `$HOME` grant expands to are runtime configuration,
+  and the module has no option for them.** `services.neuman.homeDataDirs` and
+  `NEUMAN_HOME_DATA_DIRS` are gone. The list is the `settings` row
+  `home_data_dirs`, edited under **Files** in the administration page (or with
+  `neuman-admin`), read by every expansion, and in force on the next turn. A
+  fresh database has no row and uses the built-in four — `Documents`,
+  `Desktop`, `Downloads`, `workspace` — and *Use defaults* deletes the row
+  rather than writing today's list into it, so a release can still improve the
+  default under an appliance that never chose one.
+
+  **What it corrects in D68.** D68 listed "paths" among the deployment
+  settings that stay in the module. This was one, and it should not have been:
+  nothing at startup reads it, every use is a per-request or per-turn
+  expansion (`paths.expand_paths` and its callers), and the value changes when
+  an operator adds a folder to the places work happens — not when the process
+  restarts. Filing it under paths also made it the one runtime value a NixOS
+  install could set and an Ubuntu install could not, which is backwards: the
+  server must not know which of them it is installed on. The rule that
+  replaces it: the module owns what a restart changes — packages, ports, TLS,
+  sockets, the units and their sandboxes — and the database owns every value
+  an operator changes while it runs.
+
+  **The cost.** A NixOS administrator can no longer pin the list in the flake;
+  the only declarative route is a deploy step that writes the row over the
+  socket (`neuman-admin`), which is a re-run rather than a rebuild. And a
+  fresh install's list is now the default one until someone saves a set, so an
+  organisation whose work lives outside those four folders has one more step
+  after installation. It is not a security boundary either way: `shell` and
+  `python` ignore the list (D57), and a role can name the same directory
+  absolutely in `files_read`, so nothing is confined by where this lives.
+
+  **Rejected: keeping the option and pinning it**, so a deployment-set value
+  wins and the page renders it read-only. It buys reproducibility for exactly
+  one value while every role, the prompt and the whole catalog stay database
+  owned — the appliance is not deterministic in the sense the pin suggests —
+  and it makes the panel's behaviour depend on a fact the panel itself has to
+  explain. **Rejected: keeping the option as a default the page may
+  overwrite**, which is the seed D68 removed: a second copy that stops being
+  true after the first edit and says nothing when it does. **Rejected:
+  deprecating for a release.** The removal landed days after the first
+  release, with no installed appliance to migrate; a window would have kept
+  the second source alive to protect nobody.
+
+  When Nix-side configuration returns — and it may, for the whole runtime
+  document rather than one field — the shape to build is the assertion the
+  pin was trying to be: the deployment owns a value and the page says so,
+  never a seed that is consumed once and then lies.
+
 ## Platform ground truth
 
 Facts about Linux, Postgres, Python, and Nix that the design must assume.

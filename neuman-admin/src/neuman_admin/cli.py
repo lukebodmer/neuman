@@ -295,6 +295,17 @@ def build_parser() -> argparse.ArgumentParser:
     prompt_set.add_argument("source")
     prompt_set.set_defaults(handler=_prompt_set)
 
+    files = sub.add_parser("files", help="the folders a $HOME grant expands to").add_subparsers(
+        dest="subcommand", required=True
+    )
+    files_show = files.add_parser("show", help="print the folders in force")
+    files_show.set_defaults(handler=_files_show)
+    files_set = files.add_parser("set", help="replace them, one folder name per argument")
+    files_set.add_argument("dirs", nargs="+", metavar="folder")
+    files_set.set_defaults(handler=_files_set)
+    files_reset = files.add_parser("reset", help="back to the built-in folders")
+    files_reset.set_defaults(handler=_files_reset)
+
     events = sub.add_parser("events", help="recent warnings and errors")
     events.add_argument("--level", choices=["warning", "error"])
     events.add_argument("--limit", type=int, default=100)
@@ -645,6 +656,20 @@ def _prompt_show(client: AdminClient, args: Any) -> Any:
 def _prompt_set(client: AdminClient, args: Any) -> Any:
     text = sys.stdin.read() if args.source == "-" else Path(args.source).read_text()
     return client.request("PUT", "/admin/prompt", body={"text": text})
+
+
+def _files_show(client: AdminClient, args: Any) -> Any:
+    del args
+    return client.request("GET", "/admin/home-dirs")
+
+
+def _files_set(client: AdminClient, args: Any) -> Any:
+    return client.request("PUT", "/admin/home-dirs", body={"dirs": list(args.dirs)})
+
+
+def _files_reset(client: AdminClient, args: Any) -> Any:
+    del args
+    return client.request("DELETE", "/admin/home-dirs")
 
 
 def _events(client: AdminClient, args: Any) -> Any:

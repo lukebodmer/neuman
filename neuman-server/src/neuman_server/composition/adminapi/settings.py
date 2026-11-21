@@ -1,8 +1,9 @@
-"""Runtime settings: the policy/model baseline, the prompt, and events.
+"""Runtime settings: the policy/model baseline, the prompt, home folders, events.
 
 The baseline is one database document holding the policy layers and the model
 catalog, so an operator adds a provider, a model, a role or a user without a
-rebuild (D68). The prompt is the same story one field down.
+rebuild (D68). The prompt and the folders a `$HOME` grant expands to are the
+same story one field down (D104).
 
 A baseline write bumps every account's policy generation after storing it. The
 policy engine re-reads on every step anyway; the generation is how a live
@@ -11,6 +12,7 @@ session is told its policy changed rather than discovering it one call later.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from ...adapters.persistence import AccountStore, AuditStore, GenerationStore, GrantStore
@@ -23,6 +25,7 @@ from ...decision.identity.authz import Denied, require_admin
 from ...decision.policy.fragments import SCALAR_DEFAULTS
 from ...decision.policy.generations import record
 from ...decision.policy.ops import preview_policy
+from ...decision.policy.paths import DEFAULT_HOME_DATA_DIRS, as_home_data_dirs
 from ...decision.policy.roles import RoleError, rename_in_baseline
 from ...decision.policy.source import (
     PolicySource,
@@ -51,6 +54,9 @@ def admin_settings_routes() -> list[Any]:
         Route("/admin/prompt", _put_prompt, methods=["PUT"]),
         Route("/admin/prompt/compose", _compose_prompt, methods=["GET"]),
         Route("/admin/name", _put_name, methods=["PUT"]),
+        Route("/admin/home-dirs", _get_home_dirs, methods=["GET"]),
+        Route("/admin/home-dirs", _put_home_dirs, methods=["PUT"]),
+        Route("/admin/home-dirs", _delete_home_dirs, methods=["DELETE"]),
         Route("/admin/events", _events, methods=["GET"]),
     ]
 
@@ -379,6 +385,119 @@ async def _put_name(request: Request) -> Response:
     return JSONResponse({"name": name})
 
 
+def _home_dirs_response(dirs: Sequence[str], *, stored: bool) -> dict[str, Any]:
+    """The effective folders, the built-in default, and which of the two it is.
+
+    `default` travels with the document for the same reason `built_in` travels
+    with the baseline: "Use defaults" has to name what it restores, and the page
+    should not carry a second copy of a list the server owns.
+    """
+
+    return {
+        "dirs": list(dirs),
+        "default": list(DEFAULT_HOME_DATA_DIRS),
+        "set": stored,
+    }
+
+
+async def _get_home_dirs(request: Request) -> Response:
+    from starlette.responses import JSONResponse
+
+    async with connection(request) as conn:
+        # Read from the row rather than from memory, so the page answers what
+        # the database says. A malformed row is shown as unset, the same answer
+        # startup reaches when it falls back to the default.
+        stored = as_home_data_dirs(await SettingsStore(conn).get("home_data_dirs"))
+    return JSONResponse(
+        _home_dirs_response(stored or DEFAULT_HOME_DATA_DIRS, stored=stored is not None)
+    )
+
+
+async def _put_home_dirs(request: Request) -> Response:
+    """Set the folders a `$HOME` grant expands to (D104).
+
+    Not a boundary (D57): this decides what the token names, not what the tool
+    can reach. A change is live on the next turn because every use expands the
+    in-memory list, and the harness is built per turn.
+    """
+
+    from starlette.responses import JSONResponse
+
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    dirs = as_home_data_dirs(body.get("dirs"))
+    if dirs is None:
+        return JSONResponse(
+            {
+                "error": "home_dirs_invalid",
+                "detail": (
+                    "Each folder is one name under the person's home: no slash, "
+                    "not `.` or `..`, no surrounding spaces, and at least one."
+                ),
+            },
+            status_code=400,
+        )
+
+    services = services_of(request)
+    async with connection(request) as conn:
+        actor = admin_actor(request)
+        try:
+            await require_admin(
+                actor, directory=services.directory, policy=services.admin_policy
+            )
+        except Denied as exc:
+            return JSONResponse({"error": "forbidden", "detail": str(exc)}, status_code=403)
+
+        await SettingsStore(conn).set("home_data_dirs", list(dirs))
+        services.home_data_dirs = dirs
+        await chain.append(
+            AuditStore(conn),
+            actor=actor,
+            action="settings.home_dirs_set",
+            payload={"dirs": list(dirs)},
+            mirror=services.settings.audit_mirror_path,
+        )
+
+    return JSONResponse(_home_dirs_response(dirs, stored=True))
+
+
+async def _delete_home_dirs(request: Request) -> Response:
+    """Back to the built-in folders: the row is removed, not replaced.
+
+    Deleting is what makes an improved default reach an appliance that never
+    chose a set; writing the current default into the row would freeze it at
+    the release the operator happened to delete on.
+    """
+
+    from starlette.responses import JSONResponse
+
+    services = services_of(request)
+    async with connection(request) as conn:
+        actor = admin_actor(request)
+        try:
+            await require_admin(
+                actor, directory=services.directory, policy=services.admin_policy
+            )
+        except Denied as exc:
+            return JSONResponse({"error": "forbidden", "detail": str(exc)}, status_code=403)
+
+        await SettingsStore(conn).delete("home_data_dirs")
+        services.home_data_dirs = DEFAULT_HOME_DATA_DIRS
+        await chain.append(
+            AuditStore(conn),
+            actor=actor,
+            action="settings.home_dirs_reset",
+            payload={"dirs": list(DEFAULT_HOME_DATA_DIRS)},
+            mirror=services.settings.audit_mirror_path,
+        )
+
+    return JSONResponse(_home_dirs_response(DEFAULT_HOME_DATA_DIRS, stored=False))
+
+
 async def _compose_prompt(request: Request) -> Response:
     """The system prompt as one account would receive it, section by section.
 
@@ -444,10 +563,10 @@ async def _compose_prompt(request: Request) -> Response:
         operator_prompt=services.operator_prompt,
         account_prompt=row.instructions,
         expanded_read=expand_paths(
-            policy.files_read, home=home, data_dirs=services.settings.home_data_dirs
+            policy.files_read, home=home, data_dirs=services.home_data_dirs
         ),
         expanded_write=expand_paths(
-            policy.files_write, home=home, data_dirs=services.settings.home_data_dirs
+            policy.files_write, home=home, data_dirs=services.home_data_dirs
         ),
     )
 

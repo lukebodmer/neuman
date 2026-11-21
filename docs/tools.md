@@ -411,8 +411,9 @@ one under **Roles** in the administration page:
 }
 ```
 
-`$HOME` expands to the role's home folders (`workspace`, `Documents`, `Desktop`
-and `Downloads` by default), so make a folder such as `~/workspace/tools-tour`
+`$HOME` expands to the appliance's home folders (`Documents`, `Desktop`,
+`Downloads` and `workspace` until changed under **Files** in the administration
+page), so make a folder such as `~/workspace/tools-tour`
 and choose it as the working directory in the message box. `network = "any"` is
 what `web_fetch` needs to be offered, and `fs_image` needs a model that can see
 images. With `auto_accept = "safe"`, the steps that change files stop for your
