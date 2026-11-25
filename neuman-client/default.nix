@@ -51,7 +51,8 @@ python3.pkgs.buildPythonApplication {
     wrapProgram $out/bin/neuman-client \
       --set NEUMAN_CLIENT_MANIFESTS ${neuman-registry} \
       --set NEUMAN_CLIENT_BIN ${neuman-tools}/bin \
-      --set NEUMAN_CLIENT_WEB ${neuman-web-client}
+      --set NEUMAN_CLIENT_WEB ${neuman-web-client} \
+      --set NEUMAN_CLIENT_BUILD_ID ${placeholder "out"}
     wrapProgram $out/bin/neuman-browser \
       --set NEUMAN_BROWSER_CHROMIUM ${lib.getExe chromium} \
       --set NEUMAN_BROWSER_RSYNC ${rsync}/bin/rsync

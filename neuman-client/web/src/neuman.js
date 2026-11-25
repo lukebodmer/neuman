@@ -578,12 +578,22 @@ async function api(method, path, body) {
   // trusting the session, so a GET does not need it and a POST always does.
   if (csrf && method !== "GET") headers["x-csrf-token"] = csrf;
 
-  const response = await fetch(path, {
-    method,
-    headers,
-    credentials: "same-origin",
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      method,
+      headers,
+      credentials: "same-origin",
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    // The process that serves this page is the one that answers `/api`, not the
+    // appliance, so a network failure here is that process restarting — an
+    // update, or a crash — and the browser's "Failed to fetch" is not a
+    // sentence anyone can act on (D111).
+    loadLink();
+    throw new Error("Neuman stopped answering on this computer");
+  }
 
   if (response.status === 401) {
     // A 401 from the client's own proxy means this tab never carried the local
@@ -6960,7 +6970,13 @@ function connect(view) {
     }
     if (view === currentView) {
       setBusy(false);
-      note(`Disconnected${event.code ? ` (${event.code})` : ""}. Reconnecting…`);
+      // A restart the person asked for by installing is not a dropped
+      // connection, and it should not read like one (D111).
+      note(
+        lastLink && lastLink.state === "updating"
+          ? "Neuman updated — reconnecting…"
+          : `Disconnected${event.code ? ` (${event.code})` : ""}. Reconnecting…`
+      );
     } else if (wasRunning) {
       withView(view, () => note(`Disconnected${event.code ? ` (${event.code})` : ""}.`));
     }
@@ -9794,6 +9810,82 @@ $("logout").onclick = async () => {
   }
   showLogin("Signed out.");
 };
+
+// -- the client's own link --------------------------------------------------
+//
+// `/api/local` is answered by the client and never forwarded, because the
+// question it answers is one the core cannot: a client it refused and a client
+// that never started are the same fact from over there (D111). The page polls
+// rather than subscribes — the answer changes with a socket nobody here holds,
+// and two seconds of staleness is invisible next to a second channel to keep
+// honest.
+const LINK_POLL_MS = 2000;
+let lastLink = null;
+
+async function loadLink() {
+  let state;
+  try {
+    const response = await fetch("/api/local", {
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    if (!response.ok) return;
+    state = await response.json();
+  } catch {
+    // This process is not answering at all, which is either the restart an
+    // update performs or a client that has died. There is nothing to draw: the
+    // window's own socket says the rest, and the next poll will answer.
+    return;
+  }
+  lastLink = state;
+  renderLink(state);
+}
+
+function renderLink(state) {
+  const banner = $("link-banner");
+  if (!banner) return;
+  const visible = Boolean(state && state.visible);
+  banner.classList.toggle("hidden", !visible);
+  if (!visible) return;
+  // `textContent`, never `innerHTML`: the two version strings come from the
+  // appliance, and a version is not a place to discover a markup bug.
+  $("link-title").textContent = state.title || "";
+  $("link-body").textContent = state.body || "";
+  const hasCommand = Boolean(state.command);
+  $("link-command").textContent = hasCommand ? state.command : "";
+  $("link-command").classList.toggle("hidden", !hasCommand);
+  $("link-copy").classList.toggle("hidden", !hasCommand);
+  // Retrying changes the answer for one state and no other: a version mismatch
+  // is fixed by installing, and an update is fixed by waiting. A button that
+  // cannot do anything is worse than no button.
+  $("link-retry").classList.toggle("hidden", state.state !== "unreachable");
+}
+
+$("link-copy").addEventListener("click", async () => {
+  const text = $("link-command").textContent;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    $("link-copy").textContent = "Copied";
+    setTimeout(() => {
+      $("link-copy").textContent = "Copy";
+    }, 1500);
+  } catch {
+    // The command is on screen either way; selecting it by hand still works.
+  }
+});
+
+$("link-retry").addEventListener("click", async () => {
+  try {
+    await fetch("/api/local/retry", { method: "POST", credentials: "same-origin" });
+  } catch {
+    // The daemon reconnects on its own timetable; this only skips the wait.
+  }
+  loadLink();
+});
+
+loadLink();
+setInterval(loadLink, LINK_POLL_MS);
 
 // -- start ------------------------------------------------------------------
 //

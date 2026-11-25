@@ -116,6 +116,65 @@ async def test_a_dispatch_round_trips():
     assert outcome.exit_code == 0
 
 
+async def test_a_dispatch_speaks_the_shape_the_connection_settled_on():
+    """The frame's version is the connection's, not the module's (D111).
+
+    One build can serve a client one shape behind, and every frame on that
+    socket has to be a shape that client can read. Pinned here with a version
+    this build does not itself speak, so the test proves the plumbing rather
+    than the constant.
+    """
+
+    hub = ClientHub()
+    channel = FakeChannel()
+    connection = ClientConnection(
+        channel,
+        account="alice",
+        tools=frozenset({"fs_read"}),
+        home="/home/alice",
+        drops="/home/alice/.local/state/neuman/drops",
+        rpc_version=7,
+        release="0.0.7",
+    )
+    await hub.register(connection)
+
+    dispatch = asyncio.create_task(
+        hub.dispatch(
+            user="alice",
+            dispatch_id="d12345678",
+            tool="fs_read",
+            args={"path": "/tmp/x"},
+            wait_ms=5000,
+            surfaces={"read": [], "write": []},
+        )
+    )
+    await _wait_for_sent(channel)
+    assert channel.sent[0]["rpc_version"] == 7
+
+    await hub.cancel(user="alice", dispatch_id="d12345678")
+    assert channel.sent[1] == {
+        "type": "cancel",
+        "rpc_version": 7,
+        "dispatch_id": "d12345678",
+    }
+
+    connection.deliver(_started("d12345678"))
+    connection.deliver(
+        {
+            "type": "result",
+            "rpc_version": 7,
+            "dispatch_id": "d12345678",
+            "sequence": 1,
+            "exit_code": 0,
+            "wall_ms": 1,
+            "timed_out": False,
+            "cancelled": False,
+            "truncated": False,
+        }
+    )
+    await dispatch
+
+
 async def test_a_dispatch_with_no_connected_client_is_unavailable():
     hub = ClientHub()
     with pytest.raises(ClientUnavailable):

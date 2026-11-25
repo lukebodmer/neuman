@@ -469,6 +469,12 @@ its SHA-256 (D103) — so a migration that fails leaves the schema exactly as it
 was, and the journal names the file that failed instead of the appliance coming
 up half-migrated.
 
+**Not on NixOS?** The Ubuntu package is upgraded with `apt` from the Neuman
+repository, after a backup: [platforms.md](platforms.md#ubuntu-2404) has the
+two commands and what each failure means. The server is deliberately not taken
+by unattended upgrades — its undo is a backup only an administrator account can
+take — while the client is, because it has no schema to migrate (D111).
+
 Take a backup first: `neuman-admin backup`, and the audit mirror beside it. A
 downgrade is a restore from that backup, because migrations are forward-only and
 there is no down-migration to run.

@@ -21,11 +21,14 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from .daemon import ClientDaemon
+from . import __version__
+from .build import installed_build_id, running_build_id
+from .daemon import RPC_VERSION, ClientDaemon
 from .drops import DropStore
 from .executor import Executor
 from .hosts import HostManager
 from .jobs import JobRegistry
+from .link import UPDATE_COMMAND
 from .platform import (
     browse_socket,
     browser_profile_dir,
@@ -45,6 +48,12 @@ __all__ = ["main"]
 
 DEFAULT_SERVER = "https://127.0.0.1:8443"
 DEFAULT_UI_PORT = 8642
+
+# `sysexits.h` EX_TEMPFAIL. The client exits with this when a package was
+# installed under the running process and the user unit should restart into it.
+# Exit 2 is already "not signed in", which the unit deliberately does not retry
+# (D111, D108), so a restart needs a code of its own.
+_RESTART_CODE = 75
 
 
 # Loopback, where http is not a network: the cookie is `Secure`, and a browser
@@ -203,6 +212,15 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     # One registry, two readers: the daemon runs the jobs, the UI server lists
     # and stops them (D98). Built here because this is where both are wired.
     jobs = JobRegistry()
+    daemon = ClientDaemon(
+        transport=WebSocketTransport(url=_client_url(server), cookie=session.cookie),
+        home=str(home_dir()),
+        drops=str(drops.root),
+        host=host,
+        executor=Executor(spill_dir=spill),
+        jobs=jobs,
+        hosts=HostManager(state / "hosts"),
+    )
     if args.web_root:
         ui = UiServer(
             web_root=args.web_root,
@@ -213,6 +231,10 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             host=args.ui_host,
             jobs=jobs,
             drops=drops,
+            # The page's banner is this daemon's own state; the retry it offers
+            # is the daemon's too (D111).
+            link=daemon.link,
+            retry=daemon.retry,
         )
         # A leftover file from a previous run names a URL nothing is listening
         # on. A browser opened against it never completes the token bootstrap,
@@ -221,17 +243,9 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         # bound, below.
         (state / "ui-url").unlink(missing_ok=True)
 
-    daemon = ClientDaemon(
-        transport=WebSocketTransport(url=_client_url(server), cookie=session.cookie),
-        home=str(home_dir()),
-        drops=str(drops.root),
-        host=host,
-        executor=Executor(spill_dir=spill),
-        jobs=jobs,
-        hosts=HostManager(state / "hosts"),
-    )
+    restart = asyncio.Event()
 
-    async def both() -> None:
+    async def both() -> int:
         try:
             if ui is not None:
                 await ui.start()
@@ -241,13 +255,32 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                 # UI is actually answering — the browser's ExecStartPre waits on
                 # that URL, not on the file alone (N183).
                 _private_write(state / "ui-url", ui.url)
-            await daemon.run()
+            served = asyncio.create_task(daemon.run())
+            watched = asyncio.create_task(daemon.watch_build(restart))
+            try:
+                done, _pending = await asyncio.wait(
+                    {served, watched}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if served in done:
+                    # `run()` is not supposed to return. If it did, the reason is
+                    # the caller's to see — an exception swallowed here would be
+                    # a client that exits zero for no reason.
+                    served.result()
+            finally:
+                for task in (served, watched):
+                    task.cancel()
+                await asyncio.gather(served, watched, return_exceptions=True)
+            # A package installed under this process: exit non-zero so the user
+            # unit restarts into it. Exit 2 is already "not logged in", which
+            # the unit deliberately does not retry, so this needs its own code
+            # (D111).
+            return _RESTART_CODE if restart.is_set() else 0
         finally:
             if ui is not None:
                 await ui.stop()
 
     try:
-        asyncio.run(both())
+        return asyncio.run(both())
     except KeyboardInterrupt:
         return 0
     except OSError as error:
@@ -271,8 +304,33 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     return 0
 
 
+def _appliance_versions(server: str | None) -> dict[str, object] | None:
+    """What the appliance's `/versions` says, or None when it cannot be read.
+
+    Unauthenticated on purpose (D111): this is the one question `doctor` asks
+    when the session is exactly what is broken. A certificate that does not
+    verify is reported as unreachable rather than papered over with an
+    unverified context — a doctor that trusts any certificate could not report
+    the one thing that matters.
+    """
+
+    if not server:
+        return None
+
+    import json
+    import urllib.error
+    import urllib.request
+
+    try:
+        with urllib.request.urlopen(f"{server.rstrip('/')}/versions", timeout=5) as response:
+            payload = json.loads(response.read())
+    except (OSError, ValueError, urllib.error.URLError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _doctor(args: argparse.Namespace) -> int:
-    """Report the facts a Mac support conversation always starts by asking for.
+    """The facts a support conversation starts by asking for, on any host.
 
     No secret is printed: the session file's server is useful, its cookie is
     not. The socket length check is here because macOS's AF_UNIX limit is small
@@ -280,6 +338,13 @@ def _doctor(args: argparse.Namespace) -> int:
     that does not name the constraint. The browser and its profile are reported
     together and checked together, because a profile the browser it names
     cannot open is a pair that looks healthy fact by fact (N184).
+
+    "Which version is it" is three facts, so three lines: the client's release,
+    the build this process started from, and the installed build when it is not
+    the same one. The appliance's release is the fourth and the only one that
+    has to be asked for (D111) — a client speaking a shape the appliance no
+    longer does fails this check rather than warning, because a warning is a
+    line people stop reading.
     """
 
     state = Path(args.state_dir).expanduser()
@@ -288,12 +353,39 @@ def _doctor(args: argparse.Namespace) -> int:
     browser = find_chromium()
     profile = browser_profile_dir(browser)
     refusal = browser_profile_refusal(browser, profile)
+    running = running_build_id()
+    installed = installed_build_id()
 
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
     print(f"host: {sys.platform} {os.uname().machine}")
     print(f"state: {state}")
+    print(f"client: {__version__} ({running or 'no build id'})")
+    if installed and installed != running:
+        # `apt` has replaced the files and this process has not restarted yet.
+        # Two facts, so two lines: an update that did not take effect looks
+        # exactly like one that did until something says which is running.
+        print(f"installed: {installed} (not started yet — the client restarts when idle)")
     print(f"session: {'present' if session.cookie() else 'absent'}")
     print(f"server: {session.server() or 'none stored'}")
+    appliance = _appliance_versions(session.server())
+    mismatch = False
+    if appliance is None:
+        print("appliance: not reachable")
+    elif appliance.get("product") != "neuman":
+        print(f"appliance: not a Neuman appliance ({appliance!r})")
+    else:
+        release = appliance.get("release", "unknown")
+        speaks = appliance.get("rpc_versions")
+        print(f"appliance: {release} (speaks {speaks})")
+        if isinstance(speaks, list) and speaks and RPC_VERSION not in speaks:
+            mismatch = True
+            if RPC_VERSION < min(speaks):
+                print(f"appliance is newer than this client: update it with `{UPDATE_COMMAND}`")
+            else:
+                print(
+                    "this client is newer than the appliance: ask whoever administers "
+                    "the appliance to update it"
+                )
     print(f"browser profile: {profile}")
     print(f"browser: {browser or 'not found'}")
     if refusal:
@@ -314,7 +406,7 @@ def _doctor(args: argparse.Namespace) -> int:
             "LaunchAgent may need Full Disk Access for the same paths"
         )
 
-    if browser is None or socket is None or length >= limit or refusal:
+    if browser is None or socket is None or length >= limit or refusal or mismatch:
         return 1
     return 0
 

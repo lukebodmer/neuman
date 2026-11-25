@@ -19,6 +19,13 @@ A dropped connection cancels what is running, jobs included. A tool that kept
 executing after the core lost sight of it would be an effect with no record and
 no approver waiting on it, so every in-flight dispatch and every job is killed
 when the socket closes and the process is reaped before the daemon reconnects.
+
+**A refusal is not a dropped connection.** The core can turn this client away on
+purpose — it speaks a dispatch shape the appliance no longer does — and backing
+off against that forever is a daemon reconnecting in a journal nobody reads while
+the person's agent quietly has no tools. So the handshake's refusal is terminal:
+it is recorded on the `Link`, the page draws it, and the loop waits for a person
+to act rather than for the next retry (D111).
 """
 
 from __future__ import annotations
@@ -29,11 +36,14 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
+from . import __version__
+from .build import installed_build_id, running_build_id
 from .executor import Executor, Outcome
 from .hosts import HostManager
 from .jobs import Job, JobRegistry, job_kill, job_output
+from .link import Link, rpc_versions
 from .tools import MissingProgram, PathOutsideSurface, ToolHost
-from .transport import Connection, Transport
+from .transport import Connection, LinkClosed, Transport
 
 __all__ = ["RPC_VERSION", "ClientDaemon", "hello_payload"]
 
@@ -43,6 +53,15 @@ RPC_VERSION = 1
 
 _RECONNECT_MIN_S = 1.0
 _RECONNECT_MAX_S = 30.0
+
+
+class Refused(Exception):
+    """The appliance turned this client away on purpose, and will again.
+
+    Distinct from every other failure because the answer does not change on a
+    timer: the loop waits for `retry()` — a login, a click, a new package —
+    instead of backing off into the same refusal (D111).
+    """
 
 
 class _Out:
@@ -149,7 +168,9 @@ class _Sink:
         await self._out.chunk(stream, data)
 
 
-def hello_payload(*, home: str, drops: str, tools: Iterable[str]) -> dict[str, Any]:
+def hello_payload(
+    *, home: str, drops: str, tools: Iterable[str], release: str = ""
+) -> dict[str, Any]:
     """The handshake frame, built in one place.
 
     The daemon sends it, and the VM probe that drives this same path sends it —
@@ -173,6 +194,10 @@ def hello_payload(*, home: str, drops: str, tools: Iterable[str]) -> dict[str, A
         "home": home,
         "drops": drops,
         "tools": sorted(tools),
+        # Optional in the contract, and always sent by this build: it is what an
+        # operator sees per machine before installing a release whose floor
+        # moved, and what a refusal quotes back (D111).
+        "release": release or __version__,
     }
 
 
@@ -189,6 +214,8 @@ class ClientDaemon:
         executor: Executor,
         jobs: JobRegistry | None = None,
         hosts: HostManager | None = None,
+        link: Link | None = None,
+        build_id: str | None = None,
     ) -> None:
         self._transport = transport
         self._home = home
@@ -202,9 +229,56 @@ class ClientDaemon:
         # and the model's `job_output` read the same registry, so the human can
         # stop what the model started (D98).
         self._jobs = jobs if jobs is not None else JobRegistry()
+        # Shared with the UI server: what this daemon knows about its own link,
+        # in the words the page draws. A daemon with no UI (a test, or the VM
+        # probe) keeps one anyway, because a refusal has to end somewhere.
+        self._link = (
+            link
+            if link is not None
+            else Link(client_release=__version__, client_rpc=RPC_VERSION)
+        )
+        # What this process started from. Compared against the file `apt`
+        # rewrites, never against the environment, which cannot change under a
+        # running process (D111).
+        self._build_id = running_build_id() if build_id is None else build_id
+        # Dispatches that have not reached a terminal frame. Read by `idle` so an
+        # update never cuts a tool call in half.
+        self._inflight: dict[str, asyncio.Event] = {}
+        # Set when a person does something that could change the answer — signed
+        # in, or clicked Try again — so a terminal refusal waits for that rather
+        # than for a timer.
+        self._retry = asyncio.Event()
+
+    @property
+    def link(self) -> Link:
+        """What the UI server shows, and what `doctor` reports."""
+
+        return self._link
+
+    @property
+    def idle(self) -> bool:
+        """No tool call and no job in flight, so restarting costs the person nothing.
+
+        A job that outlives its dispatch is still the person's (D98): an update
+        waits for it rather than being the one thing that kills a build someone
+        started.
+        """
+
+        return not self._inflight and not self._jobs.live()
+
+    def retry(self) -> None:
+        """Try the handshake again now, without waiting for a backoff or a timer."""
+
+        self._retry.set()
 
     async def run(self) -> None:
-        """Serve until cancelled, reconnecting with capped backoff."""
+        """Serve until cancelled, reconnecting with capped backoff.
+
+        A refusal is the one failure that does not back off: the appliance has
+        said the same thing and will keep saying it, so retrying would only fill
+        the journal. The loop waits on `retry()` instead — a login, a click, or
+        a new package — which is the only event that can change the answer.
+        """
 
         backoff = _RECONNECT_MIN_S
         while True:
@@ -213,6 +287,12 @@ class ClientDaemon:
                 backoff = _RECONNECT_MIN_S
             except asyncio.CancelledError:
                 raise
+            except Refused as refusal:
+                _log.warning("client refused: %s", refusal)
+                self._retry.clear()
+                await self._retry.wait()
+                backoff = _RECONNECT_MIN_S
+                continue
             except Exception as error:  # noqa: BLE001 - any failure reconnects
                 _log.warning("client connection lost: %s", error)
             await asyncio.sleep(backoff)
@@ -221,7 +301,7 @@ class ClientDaemon:
     async def _serve(self) -> None:
         connection = await self._transport.connect()
         lock = asyncio.Lock()
-        inflight: dict[str, asyncio.Event] = {}
+        inflight = self._inflight
         tasks: set[asyncio.Task[None]] = set()
 
         async def settled(job: Job) -> None:
@@ -245,17 +325,7 @@ class ClientDaemon:
 
         self._jobs.on_settled = settled
         try:
-            await connection.send(
-                hello_payload(
-                    home=self._home,
-                    drops=self._drops,
-                    tools=self._host.names(),
-                )
-            )
-            welcome = await connection.recv()
-            if welcome.get("type") != "welcome":
-                _log.warning("core refused the connection: %s", welcome.get("message", ""))
-                return
+            await self._handshake(connection)
 
             while True:
                 message = await connection.recv()
@@ -291,6 +361,98 @@ class ClientDaemon:
             self._jobs.on_settled = None
             await self._jobs.kill_all()
             await connection.close()
+
+    async def _handshake(self, connection: Connection) -> None:
+        """Say who we are, and read what the appliance answers with.
+
+        Four answers are possible and only one of them is silence-worthy:
+        `welcome` is a link; a `version_mismatch` error names both ends and is
+        terminal; any other `error` is a hello this appliance would not take;
+        and a close before either means an appliance older than the version
+        payload, which can only be reported as "one of these needs updating"
+        (D111). The last is not retried either — a bare `4400` will be a bare
+        `4400` on every attempt.
+        """
+
+        self._link.connecting()
+        await connection.send(
+            hello_payload(
+                home=self._home,
+                drops=self._drops,
+                tools=self._host.names(),
+            )
+        )
+        try:
+            first = await connection.recv()
+        except LinkClosed as closed:
+            if closed.code == 4406:
+                self._link.refused(None)
+                raise Refused(
+                    "the appliance refused this client's protocol version"
+                ) from closed
+            if closed.code == 4400:
+                self._link.refused(None)
+                raise Refused(
+                    "the appliance closed the handshake without saying why"
+                ) from closed
+            if closed.code == 4401:
+                self._link.signed_out()
+                raise Refused("not signed in to the appliance") from closed
+            if closed.code == 4403:
+                self._link.signed_out()
+                raise Refused("the appliance wants this account's password changed") from closed
+            raise
+
+        kind = first.get("type")
+        if kind == "welcome":
+            rpc = first.get("rpc_version")
+            self._link.connected(
+                release=first.get("release") if isinstance(first.get("release"), str) else None,
+                rpc=rpc if isinstance(rpc, int) and not isinstance(rpc, bool) else None,
+                accepted=rpc_versions(first.get("rpc_versions")),
+            )
+            _log.info("connected to the appliance")
+            return
+
+        if kind == "error" and first.get("code") == "version_mismatch":
+            self._link.refused(
+                first.get("versions") if isinstance(first.get("versions"), dict) else None
+            )
+            raise Refused(str(first.get("message") or "the appliance refused this client"))
+
+        self._link.refused(None)
+        raise Refused(str(first.get("message") or "the appliance refused this client's hello"))
+
+    async def watch_build(self, restart: asyncio.Event, *, interval: float = 30.0) -> None:
+        """Exit into a package that was installed under this process (D111).
+
+        `apt` replaces the files; nothing restarts a per-user unit, so without
+        this the new code is installed and not running until the person logs out.
+        The check waits for `idle`: a restart kills every job on the way out
+        (D98), and an update is not a reason to kill a build someone started.
+        """
+
+        if not self._build_id:
+            return
+        # Only an install whose tree can change under it has anything to watch. A
+        # Nix client has no file to compare against — home-manager restarts it
+        # with the session, which is the same outcome by a different route — and
+        # a timer on every laptop is a cost with no benefit.
+        if not installed_build_id():
+            return
+        while True:
+            await asyncio.sleep(interval)
+            installed = installed_build_id()
+            if not installed or installed == self._build_id:
+                continue
+            if not self.idle:
+                continue
+            self._link.updating(installed)
+            # Long enough for the page's poll to see the state before the
+            # process goes; the window reconnects on its own afterwards.
+            await asyncio.sleep(0.5)
+            restart.set()
+            return
 
     async def _run_dispatch(
         self,

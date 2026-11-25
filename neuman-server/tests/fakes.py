@@ -1028,6 +1028,14 @@ class FakeExecution:
     def connected_users(self) -> list[str]:
         return sorted(self.connected_names)
 
+    def connected_clients(self) -> list[dict[str, Any]]:
+        """Who the overview reports as connected now, and what they run."""
+
+        return [
+            {"account": name, "release": "0.1.0", "rpc": 1}
+            for name in sorted(self.connected_names)
+        ]
+
     def available(self, user: str) -> frozenset[str] | None:
         """What `available_value` says; None — no client — by default.
 

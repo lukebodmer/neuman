@@ -25,6 +25,7 @@ import pytest
 
 from neuman_client.drops import GRACE_S, MAX_DROP_BYTES, DropStore
 from neuman_client.jobs import JobRegistry
+from neuman_client.link import Link
 from neuman_client.session import Session
 from neuman_client.ui import UiServer
 
@@ -155,6 +156,95 @@ async def test_the_api_needs_the_local_credential(ui):
     server, _session = ui
     status, _body = await asyncio.to_thread(_get, server, "/api/greet")
     assert status == 401
+
+
+async def test_the_link_state_is_answered_here_and_never_forwarded(tmp_path, core):
+    """The one question the core cannot answer: refused is not absent (D111)."""
+
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<h1>neuman</h1>", encoding="utf-8")
+    link = Link(client_release="0.1.0", client_rpc=1)
+    link.refused(
+        {
+            "server": {"release": "0.2.0", "rpc": 2},
+            "client": {"release": "0.1.0", "rpc": 1},
+            "accepted": [2],
+        }
+    )
+    server = UiServer(
+        web_root=web,
+        server_url=core,
+        session=Session(tmp_path / "session.json"),
+        token=TOKEN,
+        port=0,
+        link=link,
+    )
+    await server.start()
+    try:
+        status, body = await asyncio.to_thread(
+            _get, server, "/api/local", cookie=f"neuman_client={TOKEN}"
+        )
+    finally:
+        await server.stop()
+
+    assert status == 200
+    payload = json.loads(body)
+    assert payload["state"] == "refused"
+    assert payload["visible"] is True
+    assert payload["command"] == (
+        "sudo apt update && sudo apt install --only-upgrade neuman-client"
+    )
+    assert "0.2.0" in payload["body"]
+
+
+async def test_try_again_asks_the_daemon_to_reconnect(tmp_path, core):
+    """The button skips a wait; it does not decide anything itself."""
+
+    web = tmp_path / "web"
+    web.mkdir()
+    (web / "index.html").write_text("<h1>neuman</h1>", encoding="utf-8")
+    asked: list[int] = []
+    server = UiServer(
+        web_root=web,
+        server_url=core,
+        session=Session(tmp_path / "session.json"),
+        token=TOKEN,
+        port=0,
+        link=Link(client_release="0.1.0", client_rpc=1),
+        retry=lambda: asked.append(1),
+    )
+
+    def post() -> int:
+        request = Request(
+            f"http://127.0.0.1:{server.port}/api/local/retry",
+            data=b"",
+            headers={"Cookie": f"neuman_client={TOKEN}"},
+            method="POST",
+        )
+        with urlopen(request, timeout=10) as response:
+            return response.status
+
+    await server.start()
+    try:
+        status = await asyncio.to_thread(post)
+    finally:
+        await server.stop()
+
+    assert status == 204
+    assert asked == [1]
+
+
+async def test_a_ui_with_no_daemon_says_so_rather_than_inventing_a_link(ui):
+    """`--ui-only` has no executor: a banner about one would be a lie."""
+
+    server, _session = ui
+    status, body = await asyncio.to_thread(
+        _get, server, "/api/local", cookie=f"neuman_client={TOKEN}"
+    )
+
+    assert status == 200
+    assert json.loads(body) == {"state": "ui_only", "visible": False}
 
 
 async def test_a_request_without_the_local_cookie_names_itself(ui):

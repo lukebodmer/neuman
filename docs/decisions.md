@@ -3117,6 +3117,74 @@ Final until explicitly reversed here, with a new entry.
   free-software browser is the one with an extra step, which the postinst and
   `platforms.md` say rather than hide.
 
+- **D111 — The appliance speaks a set and declares a floor; the client updates
+  itself.** Two halves are installed on different machines, by different people,
+  on different days. A release that can strand a client makes every appliance
+  update a coordinated one, and coordination at every release is what makes a
+  self-hosted appliance feel fragile. So the wire version is negotiated, not
+  compared: `hello` says which dispatch shape the client speaks, the server
+  answers with one of `SUPPORTED_RPC_VERSIONS`, and every frame on that socket
+  carries the shape the connection settled on. `welcome` carries the appliance's
+  release, every shape it speaks and the oldest client it accepts; `/versions`
+  says the same without a session, for `doctor`.
+
+  **A refusal is a sentence with a command in it.** When the intersection is
+  empty the server sends an `error` frame with `code: version_mismatch` naming
+  both releases and both shapes, then closes `4406` — a code the daemon treats as
+  terminal. It is recorded on a `Link` the UI server hands to the page, so the
+  person sees *"Neuman needs an update on this computer"*, the two versions, and
+  `sudo apt update && sudo apt install --only-upgrade neuman-client` with a copy
+  button. The same module's wording is what `doctor` prints. Without this the
+  page is served by the client and works while the client's socket is refused,
+  so the agent simply has no tools: the person reads that as permissions being
+  taken away, which is the wrong diagnosis in the wrong place (D50, N184's
+  lesson about a healthy-looking pair).
+
+  **The half without a schema updates itself.** A client update has no
+  migration and no database — `session.json`, a UI token and `spill/`, with a
+  rollback that is one `apt install`. So the client package ships
+  `/etc/apt/apt.conf.d/51neuman-client` adding `Neuman:stable` to
+  `Unattended-Upgrade::Allowed-Origins`, and the server package ships
+  `51neuman-server` blacklisting `^neuman$`. Ubuntu then installs client releases
+  on its own and never the server, which is the asymmetry stated as a rule: the
+  half with an irreversible step is manual. Because `apt` replaces files and a
+  user unit is not restarted by anything, the running client compares its build
+  id with `/usr/share/neuman-client/build-id` and exits `75` into the new code at
+  its next idle moment — never mid-job, because a restart kills every job on the
+  way out (D98).
+
+  **Ship the message before the break.** The clients that must keep working are
+  already installed, so a release that first refuses an old shape cannot explain
+  itself to a client built before the explanation existed. The order is: this
+  release adds the versions, the banner and the set `{1}` and refuses nobody;
+  the first real shape change makes the set `{2, 1}`, so nobody is stranded; the
+  set drops `1` only once the clients in the field can speak. The server also
+  reports each connected client's release in the Overview, so an operator can see
+  the fleet before installing a release whose floor moved — Kubernetes' skew
+  policy, at the scale of a handful of machines.
+
+  **Rejected: exact-match versions plus a good banner.** It is the same
+  coordination problem with better words. **Rejected: VS Code Remote's model**, a
+  client that downloads the server it matches, because the appliance is shared
+  by everyone and one client's version cannot be the appliance's.
+  **Rejected: the appliance as the clients' update server.** It would remove the
+  internet dependency and make air-gapped installs work, but it turns the
+  appliance into the source of the code that enforces the client's path
+  surfaces: today a compromised appliance can ask for a permitted tool, and it
+  cannot replace the binary that decides what is permitted. **Rejected: a button
+  that runs `apt`**, which needs a privileged helper on the person's machine
+  triggered from the window a model's output renders in — the worst place for a
+  root path, and against D108's no-root-component rule.
+
+  **The costs.** Two shapes live in the server for a release, with tests for
+  both, though only when a shape genuinely breaks: additive fields need no bump
+  at all, because every shipped client ignores what it does not know. A bad
+  client release now reaches everyone overnight; the blast radius is the tools on
+  each machine, no data, and the rollback is one `apt install`. `session.json` is
+  a compatibility surface from here. And the first client below a raised floor
+  sees the banner as the first it hears of it — which is why the floor is raised
+  in a release whose notes say so, not in the quiet one.
+
 ## Platform ground truth
 
 Facts about Linux, Postgres, Python, and Nix that the design must assume.

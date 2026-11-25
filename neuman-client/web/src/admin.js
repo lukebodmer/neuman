@@ -556,7 +556,24 @@ function paintNow(now) {
     "People",
     now.active.length ? `${now.active.length} active · ${now.active.join(", ")}` : "nobody active"
   );
-  fact("Clients", now.clients.length ? now.clients.join(", ") : "none connected");
+  // `client_versions` is the same list with what each machine runs; a server
+  // older than this page sends only the names, so a string row is drawn as the
+  // name it is (D111). Reading the version is how an operator sees a client that
+  // is behind *before* installing a release whose floor moved.
+  const clients = now.client_versions || now.clients || [];
+  fact(
+    "Clients",
+    clients.length
+      ? clients
+          .map((client) =>
+            typeof client === "string"
+              ? client
+              : client.release
+                ? `${client.account} (${client.release})`
+                : client.account)
+          .join(", ")
+      : "none connected"
+  );
   fact(
     "Turns",
     now.turns.length

@@ -293,6 +293,27 @@ def test_health_fails_closed_when_the_database_is_gone(surface, client):
     assert response.json()["ok"] is False
 
 
+def test_versions_names_the_product_without_a_session(client):
+    """What `doctor` can ask when the session is the thing that is broken (D111).
+
+    Unauthenticated, so it carries nothing about this deployment: not the bind,
+    not the build id, not a count. The product, the shapes it speaks and the
+    floor — the three facts a person needs to know which half to install.
+    """
+
+    from neuman_server import __version__
+
+    response = client.get("/versions")
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "product": "neuman",
+        "release": __version__,
+        "rpc_versions": [1],
+        "minimum_client": {"release": "0.1.0", "rpc": 1},
+    }
+
+
 # -- login ------------------------------------------------------------------
 
 

@@ -8,6 +8,14 @@ NEUMAN_CLIENT_MANIFESTS=${NEUMAN_CLIENT_MANIFESTS:-/usr/share/neuman-client/regi
 NEUMAN_CLIENT_BIN=${NEUMAN_CLIENT_BIN:-/usr/lib/neuman-client/bin}
 NEUMAN_CLIENT_WEB=${NEUMAN_CLIENT_WEB:-/usr/share/neuman-client/web}
 export NEUMAN_CLIENT_MANIFESTS NEUMAN_CLIENT_BIN NEUMAN_CLIENT_WEB
+# Which build this process started from, so `doctor` can tell it from the one
+# `apt` has since put on disk. The file is the installed id and the environment
+# is the running one: after an upgrade they disagree until the client restarts
+# itself (D111).
+if [ -z "${NEUMAN_CLIENT_BUILD_ID:-}" ] && [ -r /usr/share/neuman-client/build-id ]; then
+    NEUMAN_CLIENT_BUILD_ID=$(cat /usr/share/neuman-client/build-id)
+    export NEUMAN_CLIENT_BUILD_ID
+fi
 PYTHONPATH="/opt/neuman-client/lib${PYTHONPATH:+:$PYTHONPATH}"
 export PYTHONPATH
 exec python3 -m neuman_client "$@"

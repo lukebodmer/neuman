@@ -5,11 +5,14 @@ what makes the UI same-origin with the executor, and it is why the server's
 session surface — TLS, cookies, CSRF, Origin — is not part of this leg at all:
 the client holds the session, and the browser holds nothing the core cares about.
 
-`/api/*` is forwarded to the core with the session cookie, with two exceptions
+`/api/*` is forwarded to the core with the session cookie, with three exceptions
 answered here: `/api/jobs` and `/api/jobs/{id}/stop`, because the background
-jobs they name exist in this process and nowhere else (D98), and `/api/drops`,
+jobs they name exist in this process and nowhere else (D98); `/api/drops`,
 because a dropped file is written to this machine and its bytes never go to the
-core (D102). `/api/login` also
+core (D102); and `/api/local`, which says whether this client's own dispatch
+socket is connected, refused or waiting — the one fact the core cannot answer,
+because to the core a refused client and an absent one are both "no client"
+(D111). `/api/login` also
 captures the cookie the core set, because that is the one credential the daemon
 needs and the browser should not have it; the response to the browser carries no
 `Set-Cookie` of the core's. `/ws/*` is upgraded on both sides and the bytes are
@@ -31,11 +34,13 @@ import json
 import logging
 import secrets
 import ssl
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 from .drops import MAX_DROP_BYTES, DropStore
 from .jobs import Job, JobRegistry
+from .link import Link
 from .session import COOKIE as SESSION_COOKIE
 from .session import Session, unreachable
 
@@ -118,6 +123,7 @@ def _response(
     body: bytes = b"",
     cookies: list[str] | None = None,
     location: str | None = None,
+    headers: dict[str, str] | None = None,
 ) -> bytes:
     head = [
         f"HTTP/1.1 {status} {reason}",
@@ -128,6 +134,8 @@ def _response(
     ]
     if location is not None:
         head.append(f"location: {location}")
+    for name, value in (headers or {}).items():
+        head.append(f"{name.lower()}: {value}")
     for cookie in cookies or []:
         head.append(f"set-cookie: {cookie}")
     return ("\r\n".join(head) + "\r\n\r\n").encode("latin-1") + body
@@ -201,6 +209,8 @@ class UiServer:
         host: str = "127.0.0.1",
         jobs: JobRegistry | None = None,
         drops: DropStore | None = None,
+        link: Link | None = None,
+        retry: Callable[[], None] | None = None,
     ) -> None:
         self._web_root = Path(web_root)
         self._server = server_url.rstrip("/")
@@ -216,6 +226,14 @@ class UiServer:
         # beside it: nothing would report the directory to the core, so a path
         # in it could never be attached.
         self._drops = drops
+        # What the daemon knows about its own link, so the page can say why the
+        # agent has no tools instead of showing a working chat with a silent
+        # executor behind it (D111). None for a UI with no daemon: the page then
+        # learns nothing and shows no banner.
+        self._link = link
+        # Ask the daemon to try again now. Called when a login stores a session,
+        # because the most common refusal a retry can fix is "not signed in yet".
+        self._retry = retry
         self._sweeping: asyncio.Task[None] | None = None
         self._server_socket: asyncio.AbstractServer | None = None
 
@@ -311,6 +329,12 @@ class UiServer:
             # never cross to the core (D102). Everything else goes to the core.
             if request.path == "/api/drops":
                 await self._api_drops(request, writer)
+                return
+            # Local because the core cannot answer it: a client it refused and a
+            # client that never started are the same fact from over there
+            # (D111).
+            if request.path == "/api/local" or request.path == "/api/local/retry":
+                await self._api_local(request, writer)
                 return
             if request.path.startswith("/api/"):
                 await self._proxy_api(request, writer)
@@ -545,6 +569,51 @@ class UiServer:
         host = request.headers.get("host")
         return origin is None or (host is not None and origin == f"http://{host}")
 
+    async def _api_local(self, request: _Request, writer: asyncio.StreamWriter) -> None:
+        """What this client knows about its own link, and the way to retry it.
+
+        Served here rather than forwarded because the core cannot answer it: a
+        client it refused and a client that never started are the same fact from
+        its side, and the person's window is the one place the difference is
+        visible (D111). No credential is involved beyond the loopback cookie the
+        rest of `/api` already needs — the answer names versions, never a secret.
+        """
+
+        if not self._authorised(request):
+            writer.write(_not_this_client())
+            return
+
+        if request.path == "/api/local/retry":
+            if request.method != "POST":
+                writer.write(_response(405, "Method Not Allowed"))
+                return
+            if not self._same_origin(request):
+                writer.write(_response(403, "Forbidden", body=b"origin_not_allowed"))
+                return
+            if self._retry is not None:
+                self._retry()
+            writer.write(_response(204, "No Content"))
+            return
+
+        if request.method != "GET":
+            writer.write(_response(405, "Method Not Allowed"))
+            return
+        if self._link is None:
+            # A UI with no executor beside it: nothing to report, and a banner
+            # about a daemon that was never started would be a lie.
+            body = json.dumps({"state": "ui_only", "visible": False}).encode("utf-8")
+        else:
+            body = json.dumps(self._link.to_json()).encode("utf-8")
+        writer.write(
+            _response(
+                200,
+                "OK",
+                content_type="application/json",
+                body=body,
+                headers={"Cache-Control": "no-store"},
+            )
+        )
+
     async def _proxy_api(self, request: _Request, writer: asyncio.StreamWriter) -> None:
         if not self._authorised(request):
             writer.write(_not_this_client())
@@ -558,6 +627,11 @@ class UiServer:
             name, _, rest = value.partition("=")
             if name.strip() == SESSION_COOKIE:
                 self._session.store(server=self._server, cookie=rest.split(";", 1)[0])
+                # A daemon refused for want of a session can stop waiting now;
+                # the person just supplied the one thing that could change the
+                # answer.
+                if self._retry is not None:
+                    self._retry()
 
         writer.write(
             _response(

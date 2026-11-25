@@ -342,6 +342,11 @@ def _now(
     return {
         "active": active,
         "clients": services.execution.connected_users(),
+        # The same list with what each client runs, beside the names rather than
+        # replacing them: a page older than this build reads `clients` and keeps
+        # working, and a page newer than the server falls back to the names it
+        # already knew how to draw (D111).
+        "client_versions": services.execution.connected_clients(),
         "turns": turns,
         "awaiting": awaiting,
         "loaded": loaded,

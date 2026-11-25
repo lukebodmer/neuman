@@ -47,6 +47,12 @@ contents:
   - src: "@STAGE@/etc/neuman/server.env"
     dst: /etc/neuman/server.env
     type: config
+  # The server is never taken by unattended-upgrades, because a migration is
+  # forward-only and the undo needs an administrator account (D111). A conffile,
+  # because an operator may have a reason to override it.
+  - src: "@STAGE@/etc/apt/apt.conf.d/51neuman-server"
+    dst: /etc/apt/apt.conf.d/51neuman-server
+    type: config
 scripts:
   postinstall: "@HERE@/scripts/postinst"
   preremove: "@HERE@/scripts/prerm"

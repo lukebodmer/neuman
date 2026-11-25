@@ -37,6 +37,10 @@ from ..decision.harness.ports import DispatchOutcome
 from ..foundation.logging import get_logger
 
 __all__ = [
+    "MIN_CLIENT_RELEASE",
+    "MIN_CLIENT_RPC_VERSION",
+    "RPC_VERSION",
+    "SUPPORTED_RPC_VERSIONS",
     "Channel",
     "ClientConnection",
     "ClientError",
@@ -48,7 +52,24 @@ __all__ = [
 
 _log = get_logger("neuman.server.adapters.clients")
 
+# The dispatch shape this build writes, and every older one it still reads and
+# can still produce. A set rather than a number because the two halves update on
+# different days: an appliance update must not strand a client that has not been
+# updated yet (D111). The handshake settles on one per connection and every
+# frame on that socket carries it, so a client one shape behind keeps working
+# instead of reconnecting forever against a close it cannot read.
 RPC_VERSION = 1
+SUPPORTED_RPC_VERSIONS = frozenset({RPC_VERSION})
+
+# The oldest client this build accepts. It moves with the set — dropping a shape
+# is what raises the floor — and the release beside it is the same fact in the
+# words a person is told to install. Keep the pair in step: a release that
+# speaks a shape this build no longer accepts is below the floor whatever its
+# number says. It is a literal rather than this build's version because the
+# floor names the release that *first* spoke the minimum shape, which outlives
+# the build that raised it.
+MIN_CLIENT_RPC_VERSION = min(SUPPORTED_RPC_VERSIONS)
+MIN_CLIENT_RELEASE = "0.1.0"
 
 # How many unclaimed settlements to hold. One is the race this exists for; a
 # handful covers a batch of jobs that all ended as their dispatches landed, and
@@ -138,10 +159,21 @@ class ClientConnection:
         tools: frozenset[str],
         home: str,
         drops: str,
+        rpc_version: int = RPC_VERSION,
+        release: str | None = None,
     ) -> None:
         self._channel = channel
         self.account = account
         self.tools = tools
+        # The shape this connection settled on in the handshake, out of
+        # `SUPPORTED_RPC_VERSIONS`. Every frame written down this socket carries
+        # it, so one build can serve a client one shape behind without guessing
+        # what that client can read (D111).
+        self.rpc_version = rpc_version
+        # The client's release, when it said. None is "too old to say", which is
+        # reported as unknown rather than refused: the gate is the shape, and a
+        # reporting gap is not a reason to strand a working client.
+        self.release = release
         # Where `~` means on the machine at the other end. Reported rather than
         # looked up: the account's home on this host is a different directory as
         # soon as the client is not on this host (N145).
@@ -352,7 +384,7 @@ class ClientConnection:
 
     async def cancel(self, dispatch_id: str) -> None:
         await self.send(
-            {"type": "cancel", "rpc_version": RPC_VERSION, "dispatch_id": dispatch_id}
+            {"type": "cancel", "rpc_version": self.rpc_version, "dispatch_id": dispatch_id}
         )
 
 
@@ -412,11 +444,34 @@ class ClientHub:
             await connection.close()
 
     def connected_users(self) -> list[str]:
-        """Every account with a client connected now, by name."""
+        """Every account with a client connected now, by name.
 
-        return sorted(
-            user for user, connection in self._clients.items() if not connection.closed
-        )
+        Kept beside `connected_clients` because the administration page's shape
+        shipped: a client older than this build renders this list, and a server
+        that replaced it with objects would show that page `[object Object]`
+        exactly when someone was looking for the versions (D111).
+        """
+
+        return [client["account"] for client in self.connected_clients()]
+
+    def connected_clients(self) -> list[dict[str, Any]]:
+        """Every account with a client connected now, and what that client is.
+
+        The versions are here rather than in a second call because the question
+        an operator asks before installing a release whose floor moved is
+        exactly "which machines are behind" (D111), and the answer is this one
+        snapshot.
+        """
+
+        return [
+            {
+                "account": user,
+                "release": connection.release,
+                "rpc": connection.rpc_version,
+            }
+            for user, connection in sorted(self._clients.items())
+            if not connection.closed
+        ]
 
     def connected(self, user: str) -> bool:
         """Whether a dispatch for `user` has anywhere to go."""
@@ -490,7 +545,7 @@ class ClientHub:
 
         request: dict[str, Any] = {
             "type": "dispatch",
-            "rpc_version": RPC_VERSION,
+            "rpc_version": connection.rpc_version,
             "dispatch_id": dispatch_id,
             "tool": tool,
             "args": args,

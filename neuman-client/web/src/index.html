@@ -490,6 +490,31 @@
 </aside>
 
 <div id="log" class="hidden"></div>
+
+<!-- The client's own link to the appliance (D111).
+
+     The page is served by the client, so it works while the client's dispatch
+     socket does not — the person can sign in, send a message, and the model
+     simply has no tools, because the core offers only what a connected client
+     advertised. That reads as "my permissions were taken away", which is the
+     wrong diagnosis and sends people to the wrong place. So the client says it
+     here, in its own words, with the one command that fixes it.
+
+     Filled from `GET /api/local`, which is answered by this process and never
+     forwarded; the words come from `link.py` so `doctor` prints the same
+     sentence. Empty and hidden when there is nothing to say. -->
+<div id="link-banner" class="hidden" role="status" aria-live="polite">
+  <div class="link-text">
+    <strong id="link-title"></strong>
+    <span id="link-body"></span>
+  </div>
+  <div class="link-actions">
+    <code id="link-command" class="hidden"></code>
+    <button id="link-copy" class="hidden" type="button">Copy</button>
+    <button id="link-retry" type="button">Try again</button>
+  </div>
+</div>
+
 <!-- The task view, in the transcript's place, and its bar in the composer's:
      Run now where Send is, Save while editing. Both are drawn by `tasks.js`. -->
 <main id="tasks-view" class="hidden" aria-label="Tasks"><div id="tasks-content"></div></main>

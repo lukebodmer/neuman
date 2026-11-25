@@ -9,6 +9,7 @@ store paths answers "why did nothing happen" with silence.
 
 from __future__ import annotations
 
+import asyncio
 import http.server
 import json
 import socket
@@ -102,7 +103,19 @@ def test_ui_url_is_written_only_after_the_ui_binds(tmp_path, monkeypatch):
 
     class _Daemon:
         def __init__(self, **_kwargs) -> None:
+            from neuman_client import __version__
+            from neuman_client.link import Link
+
+            # The UI server reads the daemon's own link state; this fake has no
+            # socket, so its link says nothing rather than something untrue.
+            self.link = Link(client_release=__version__, client_rpc=1)
+
+        def retry(self) -> None:
             pass
+
+        async def watch_build(self, _restart, **_kwargs) -> None:
+            # Only a package installed under the process makes this finish.
+            await asyncio.Event().wait()
 
         async def run(self) -> None:
             # The UI is bound and the file is written before the daemon starts,
@@ -214,6 +227,36 @@ def test_doctor_fails_on_a_profile_the_browser_cannot_open(tmp_path, capsys, mon
     out = capsys.readouterr().out
     assert code == 1, out
     assert "browser profile unreachable: snap-confined" in out, out
+
+
+def test_doctor_fails_when_the_appliance_speaks_a_newer_shape(tmp_path, capsys, monkeypatch):
+    """The acceptance check names the command, not the version to look up (D111)."""
+
+    (tmp_path / "session.json").write_text(
+        json.dumps({"server": "https://core.example:8443", "cookie": "SECRET"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(cli, "browse_socket", lambda: tmp_path / "browse.sock")
+    monkeypatch.setattr(cli, "find_chromium", lambda: "/usr/bin/google-chrome")
+    monkeypatch.setattr(cli, "browser_profile_dir", lambda _browser=None: tmp_path / "profile")
+    monkeypatch.setattr(
+        cli,
+        "_appliance_versions",
+        lambda _server: {
+            "product": "neuman",
+            "release": "0.2.0",
+            "rpc_versions": [2],
+            "minimum_client": {"release": "0.2.0", "rpc": 2},
+        },
+    )
+
+    code = cli.main(["--state-dir", str(tmp_path), "doctor"])
+
+    out = capsys.readouterr().out
+    assert code == 1, out
+    assert "appliance: 0.2.0" in out, out
+    assert "appliance is newer than this client" in out, out
+    assert "--only-upgrade neuman-client" in out, out
 
 
 def test_login_names_the_account_on_the_core(tmp_path, capsys):

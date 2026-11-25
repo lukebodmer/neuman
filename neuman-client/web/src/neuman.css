@@ -71,9 +71,10 @@
        never squeezes the transcript (see `#sessions`). */
     display: grid;
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: 1fr auto;
+    grid-template-rows: 1fr auto auto;
     grid-template-areas:
       "log"
+      "banner"
       "composer";
   }
   /* The login page predates the grid and is a single centred card: it has no
@@ -1584,6 +1585,54 @@
      box floated in the measure reads as part of the conversation, which is what
      it is. Same radius as a tool card and a message bubble, because they are
      the same kind of object. */
+  /* The client's own link, when it is not working (D111).
+
+     A row between the transcript and the composer rather than a toast or a line
+     in the log: it is a fact about the whole window that lasts until it is
+     fixed, and a message in the transcript would scroll away exactly when a
+     person is looking for why the agent stopped using tools. Above the composer
+     because that is where the action it asks for happens, and because the
+     transcript keeps its full height.
+
+     It is drawn by the page from `/api/local`; the words come from the client's
+     `link.py`, so `doctor` prints the same sentence. Nothing here uses colour
+     to carry the meaning — the warning tint is a background, and every state
+     also names itself in text, which is what a reader with no colour vision
+     gets. */
+  #link-banner {
+    grid-area: banner;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin: 0 16px 8px;
+    padding: 9px 12px;
+    border: 1px solid var(--edge-warn);
+    border-radius: 8px;
+    background: var(--tint-warn);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  #link-banner .link-text { min-width: 0; }
+  #link-banner strong { display: block; color: var(--warn); font-size: 13.5px; }
+  #link-banner .link-actions {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  #link-banner code {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    background: var(--surface-inset);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 3px 7px;
+    overflow-wrap: anywhere;
+  }
+  /* The banner is about the chat window, so it is not drawn over the login
+     card: the password form would fail the same way whatever it said, and the
+     page says that in its own words (N183). */
+  body:has(#login:not(.hidden)) #link-banner { display: none; }
+
   #context {
     grid-area: composer;
     max-width: 88ch;

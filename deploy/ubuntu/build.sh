@@ -64,12 +64,13 @@ install -m 0644 "$ROOT"/tools/packages/*.toml "$STAGE/usr/share/neuman/registry/
 
 # 5. The rest of the tree.
 install -d "$STAGE/usr/bin" "$STAGE/usr/lib/systemd/system" "$STAGE/usr/lib/tmpfiles.d"
-install -d "$STAGE/usr/share/neuman" "$STAGE/etc/neuman"
+install -d "$STAGE/usr/share/neuman" "$STAGE/etc/neuman" "$STAGE/etc/apt/apt.conf.d"
 install -m 0755 "$HERE"/bin/neuman-server "$HERE"/bin/neuman-admin \
     "$HERE"/bin/neuman-runtime "$HERE"/bin/neuman-fetch "$STAGE/usr/bin/"
 install -m 0644 "$HERE/neuman-server.service" "$STAGE/usr/lib/systemd/system/"
 install -m 0644 "$HERE/neuman.tmpfiles" "$STAGE/usr/lib/tmpfiles.d/neuman.conf"
 install -m 0644 "$HERE/server.env" "$STAGE/etc/neuman/server.env"
+install -m 0644 "$HERE/apt-server.conf" "$STAGE/etc/apt/apt.conf.d/51neuman-server"
 printf 'deb %s\n' "$VERSION" > "$STAGE/usr/share/neuman/build-id"
 
 # 6. Package it.

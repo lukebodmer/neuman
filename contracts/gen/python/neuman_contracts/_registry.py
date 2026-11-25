@@ -573,7 +573,8 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
       "internal",
       "unavailable",
       "outside_surface",
-      "missing_program"
+      "missing_program",
+      "version_mismatch"
      ]
     },
     "dispatch_id": {
@@ -592,6 +593,10 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
     },
     "type": {
      "const": "error"
+    },
+    "versions": {
+     "$ref": "#/$defs/versionReport",
+     "description": "Present on `version_mismatch` and nowhere else. The client cannot derive it: the numbers it needs are the appliance's, and the refusal is the last frame it will get."
     }
    },
    "required": [
@@ -613,6 +618,10 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
     "home": {
      "$ref": "common.schema.json#/$defs/absPath",
      "description": "The home directory on the machine this client runs on \u2014 what `~` means there. The core expands `$HOME` and `$HOME/<path>` policy entries against it and must not use the account's home on *its* host: a client on another machine has a different one, and a dispatch checked against the wrong home refuses paths the account can read (N145). A dishonest value cannot widen anything \u2014 `shell` and `python` are unchecked, so a client wanting more reach would not ask \u2014 but it decides which directories those entries name, and that is a question only the client can answer."
+    },
+    "release": {
+     "$ref": "#/$defs/release",
+     "description": "The Neuman release this client is. Optional because a client too old to say still has a hello the core can use, and refusing it would turn a reporting gap into an outage (D111). Absent means \"unknown\", not \"unacceptable\": the gate is `rpc_version`. It is what an operator sees per machine, and what a refusal quotes back to the person."
     },
     "rpc_version": {
      "$ref": "#/$defs/rpcVersion"
@@ -696,6 +705,30 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
    ],
    "type": "object"
   },
+  "minimumClient": {
+   "additionalProperties": false,
+   "properties": {
+    "release": {
+     "$ref": "#/$defs/release",
+     "description": "The oldest client release this appliance accepts, named so a refusal can end in an install command rather than a version number to look up."
+    },
+    "rpc": {
+     "$ref": "#/$defs/rpcVersion",
+     "description": "The dispatch shape that release speaks. This is the gate; `release` is the same fact spelled for a person. They move together, because a release that speaks a shape the appliance no longer accepts is below the floor whatever its number says."
+    }
+   },
+   "required": [
+    "release",
+    "rpc"
+   ],
+   "type": "object"
+  },
+  "release": {
+   "description": "A product release, as its package version spells it (`0.1.0`). Not a build id: the build id answers \"which code served this turn\" (D69) and may be a store path, which is not comparable between two machines. This is the number a person is told to install.",
+   "maxLength": 64,
+   "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.+_-]+)?$",
+   "type": "string"
+  },
   "result": {
    "additionalProperties": false,
    "properties": {
@@ -767,7 +800,10 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
    "type": "object"
   },
   "rpcVersion": {
-   "const": 1
+   "description": "Every shape this contract knows how to write. It is a set rather than a constant because the two halves update on different days and an appliance update must not strand a client that has not been updated yet (D111): the handshake picks one of these per connection, and every frame on that connection carries the one it picked. Adding a value is the append-only case; removing one is what raises the appliance's floor.",
+   "enum": [
+    1
+   ]
   },
   "sequence": {
    "description": "Monotonic per dispatch, with no gaps: started=0, then each stdout/stderr chunk, then result or detached. Required on every streamed message because it is the only way the reader can tell a dropped chunk from a chunk that was never sent \u2014 the difference between truncated output and complete output, which a model cannot be allowed to confuse.",
@@ -870,11 +906,74 @@ RESOURCES["dispatch-rpc.schema.json"] = json.loads(r"""
    "pattern": "^[a-z_][a-z0-9_]*$",
    "type": "string"
   },
+  "versionFacts": {
+   "additionalProperties": false,
+   "description": "What one end said about itself. Null rather than absent for a fact it could not state, so a refusal can name which end it is talking about without guessing.",
+   "properties": {
+    "release": {
+     "maxLength": 64,
+     "type": [
+      "string",
+      "null"
+     ]
+    },
+    "rpc": {
+     "minimum": 0,
+     "type": [
+      "integer",
+      "null"
+     ]
+    }
+   },
+   "type": "object"
+  },
+  "versionReport": {
+   "additionalProperties": false,
+   "description": "Both ends of a handshake that could not agree, so the client can say what to do without a second request.",
+   "properties": {
+    "accepted": {
+     "description": "The shapes the appliance speaks right now. A client below the smallest of them is the one to update; one above the largest is talking to an appliance that needs updating \u2014 which is the only way a refusal can say which half to install.",
+     "items": {
+      "$ref": "#/$defs/rpcVersion"
+     },
+     "minItems": 1,
+     "type": "array",
+     "uniqueItems": true
+    },
+    "client": {
+     "$ref": "#/$defs/versionFacts"
+    },
+    "server": {
+     "$ref": "#/$defs/versionFacts"
+    }
+   },
+   "required": [
+    "accepted"
+   ],
+   "type": "object"
+  },
   "welcome": {
    "additionalProperties": false,
    "properties": {
+    "minimum_client": {
+     "$ref": "#/$defs/minimumClient",
+     "description": "The oldest client this appliance accepts. Nothing below it completes a handshake, so a client that got this far is at or above it; it is stated for the quiet notice and for `doctor`, not as a condition."
+    },
+    "release": {
+     "$ref": "#/$defs/release",
+     "description": "The appliance's release, for the quiet fact \"a newer client exists\" and for `doctor` to print beside the client's own. Optional so a server older than this field can still complete a handshake."
+    },
     "rpc_version": {
-     "$ref": "#/$defs/rpcVersion"
+     "$ref": "#/$defs/rpcVersion",
+     "description": "The shape this connection settled on. Not necessarily the appliance's newest: a client that speaks only an older one is answered in that one, so every frame on this socket is a shape the client can read (D111)."
+    },
+    "rpc_versions": {
+     "description": "Every shape the appliance speaks, newest last. Advertised rather than inferred so a client can tell an appliance that dropped its shape from one that never accepted it, and say which half needs updating.",
+     "items": {
+      "$ref": "#/$defs/rpcVersion"
+     },
+     "type": "array",
+     "uniqueItems": true
     },
     "type": {
      "const": "welcome"

@@ -14,8 +14,8 @@ from jsonschema import Draft202012Validator
 from referencing import Registry, Resource
 
 # Raise these when fixtures are added; never lower them to make a run pass.
-MINIMUM_VALID = 40
-MINIMUM_INVALID = 37
+MINIMUM_VALID = 43
+MINIMUM_INVALID = 38
 
 HERE = Path(__file__).resolve().parent
 SCHEMAS = HERE.parent / "schemas"

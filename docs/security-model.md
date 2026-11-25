@@ -287,6 +287,14 @@ more.
 - **Local models keep conversations on site; hosted ones do not.** A local model
   is served on loopback by `neuman-runtime`, so the conversation never leaves
   the machine. Anything sent to a hosted provider goes to that provider.
+- **Two facts about the server are public.** `/healthz` and `/versions` answer
+  without a session, because the callers that need them — a probe, and `doctor`
+  on a machine whose session may be exactly what is broken — cannot present
+  one. They name the product, its release, the dispatch shapes it speaks and the
+  oldest client it accepts; never the bind, the build id, the schema or an
+  account. Anyone who can reach the port therefore learns which release the
+  appliance runs, which is the cost of an update story that works without an
+  administrator carrying messages between machines (D111).
 - **Cloud file connectors are deliberately out of scope.** They would be a
   separate, clearly labelled tier (API scopes plus audit), not part of this one.
 

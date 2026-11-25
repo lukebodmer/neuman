@@ -45,6 +45,13 @@ the module makes for them.
 - **CSRF and `Origin`** are re-checked on every unsafe request and on the
   WebSocket upgrade, because browsers do not apply CORS to WebSockets. This is
   why the surface can be on loopback and still be treated as hostile.
+- **Two routes need no credential.** `/healthz` is liveness and the tool count;
+  `/versions` is the product release, the dispatch shapes this build speaks and
+  the oldest client it accepts (D111). They exist for the two callers that
+  cannot sign in — a probe and `neuman-client doctor`, whose session may be
+  exactly what is broken — and neither says anything about this deployment: no
+  bind, no build id, no schema, no count of accounts. Everything else,
+  including `/admin/status`, is behind the session.
 
 On the same machine as the server, loopback plus a `Secure` cookie works: a
 browser treats `http://127.0.0.1:8443` as a secure context, and so does a

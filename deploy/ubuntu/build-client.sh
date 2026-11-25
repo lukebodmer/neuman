@@ -89,12 +89,19 @@ make_tool blender.py neuman-blender-tool
 cp "$ROOT/tools/bin/blender_host.py" "$stage_lib/blender_host.py"
 make_tool blender_host.py neuman-blender-host
 
+# What the running client compares itself against, so an `apt` upgrade is
+# noticed and the process restarts into it (D111).
+install -d "$STAGE/usr/share/neuman-client"
+printf 'deb %s\n' "$VERSION" > "$STAGE/usr/share/neuman-client/build-id"
+
 # The wrappers, the user units and the desktop entry.
 install -d "$STAGE/usr/bin" "$STAGE/usr/lib/systemd/user" "$STAGE/usr/share/applications"
+install -d "$STAGE/etc/apt/apt.conf.d"
 install -m 0755 "$HERE"/bin/neuman-client "$HERE"/bin/neuman-browser "$STAGE/usr/bin/"
 install -m 0644 "$HERE/neuman-client.service" "$HERE/neuman-browser.service" \
     "$STAGE/usr/lib/systemd/user/"
 install -m 0644 "$HERE/neuman.desktop" "$STAGE/usr/share/applications/"
+install -m 0644 "$HERE/apt-client.conf" "$STAGE/etc/apt/apt.conf.d/51neuman-client"
 
 sed -e "s|@VERSION@|$VERSION|g" -e "s|@STAGE@|$STAGE|g" -e "s|@HERE@|$HERE|g" \
     "$HERE/nfpm-client.yaml" > "$WORK/nfpm-client.yaml"

@@ -218,6 +218,7 @@ def test_now_reports_people_turns_approvals_and_the_gpu(monkeypatch, make):
     now = _overview(monkeypatch, surface)["now"]
     assert "bob" in now["active"] and "carol" not in now["active"], now
     assert now["clients"] == ["bob"]
+    assert now["client_versions"] == [{"account": "bob", "release": "0.1.0", "rpc": 1}]
     assert now["turns"] == [{"branch_id": "s1", "account": "bob"}]
     assert now["awaiting"] == [{"branch_id": "s1", "account": "bob", "calls": 1}]
     assert now["loaded"] == ["q"]

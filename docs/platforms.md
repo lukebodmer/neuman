@@ -26,16 +26,35 @@ operator group.
 
 ### Ubuntu 24.04
 
-The same server as a `.deb`, from the download page. The package carries the
-same systemd unit as the NixOS module, so the sandbox is not something the
-installer chooses, and its Python dependencies are pinned to the versions the
-suite runs against (D107).
+The same server as a `.deb`, installed and updated from the Neuman apt
+repository — or, on a machine that cannot reach it, from the download page. The
+package carries the same systemd unit as the NixOS module, so the sandbox is not
+something the installer chooses, and its Python dependencies are pinned to the
+versions the suite runs against (D107).
 
 ```bash
-sudo apt install ./neuman_<version>_amd64.deb
+# once: the key, then the source. The fingerprint must match the one the
+# release notes publish; a key fetched from the same host as the packages is a
+# starting point, not a check.
+curl -fsSL https://<host>/neuman/neuman-archive-keyring.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/neuman-archive-keyring.gpg
+sudo install -m 0644 /dev/stdin /etc/apt/sources.list.d/neuman.sources <<'EOF'
+Types: deb
+URIs: https://<host>/neuman
+Suites: stable
+Components: main
+Signed-By: /usr/share/keyrings/neuman-archive-keyring.gpg
+EOF
+
+sudo apt update && sudo apt install neuman
 sudo usermod -aG neuman "$USER"     # then log out and back in
 neuman-admin bootstrap --name you
 ```
+
+`deploy/ubuntu/repo.sh` writes that repository from the built `.debs`. It is
+also the rollback archive: every release stays in its pool, so
+`apt install neuman=<version> --allow-downgrades` names the way back without a
+file to find.
 
 - 24.04 only, for now: the package is built for its Python 3.12 and depends
   on `python3 (<< 3.13)`. 22.04 ships 3.10, and releases since 25.04 ship 3.13
@@ -53,6 +72,31 @@ neuman-admin bootstrap --name you
   the prompt are settings of the appliance, made in the administration page.
 - Local models are not in the package: `neuman-runtime` needs
   `NEUMAN_LLAMA_SERVER`, which means a `llama-server` the distribution supplies.
+
+**Upgrading.** `apt` is the whole mechanism (D111); the two commands above
+already installed it.
+
+```bash
+neuman-admin backup /var/lib/neuman/backups/pre-<version>-$(date +%F)
+sudo apt update && sudo apt install --only-upgrade neuman
+neuman-admin status
+```
+
+`status` prints the build and the schema pair, and `applied == expected` is the
+check. The new release applies the migrations it carries as the server starts —
+one transaction each, forward-only (D103) — so a migration that fails leaves the
+schema exactly as it was and the previous package starts again with nothing to
+restore. A release that *did* migrate is a different case: install the old
+package and it refuses to start against a schema it does not know, so the way
+back is the backup first and the package second. That refusal is deliberate; it
+is the sentence that replaces a silent mismatch.
+
+The server is **not** taken by unattended-upgrades, and the package says so in
+`/etc/apt/apt.conf.d/51neuman-server`. The undo for a migration needs a backup, a
+backup needs a Neuman administrator account, and root is not one — so an
+appliance that migrated at 3am to a release with a bug would need a person,
+awake, holding an account. The cost is that Neuman's own fixes arrive when the
+operator installs them. The client is the other half of that rule.
 
 ## Client hosts
 
@@ -74,11 +118,12 @@ neuman-admin bootstrap --name you
 
 #### Ubuntu 24.04
 
-The client as a `.deb`, from the download page. Per user, with no root
-component and no bundled browser (D108):
+The client as a `.deb`, from the same repository as the server (or the download
+page, on a machine that cannot reach it). Per user, with no root component and
+no bundled browser (D108):
 
 ```bash
-sudo apt install ./neuman-client_<version>_amd64.deb
+sudo apt install neuman-client
 neuman-client login --server https://appliance.example:8443 --user you
 systemctl --user daemon-reload
 systemctl --user enable --now neuman-client.service
@@ -101,8 +146,26 @@ systemctl --user enable --now neuman-browser.service
 - The DevTools endpoint is loopback TCP with no authentication. The `0600`
   socket gates the tool, not the machine's other local accounts, so this
   assumes every account on the machine is trusted as the user is.
-- `neuman-client doctor` reports the interpreter, the session, the browser, the
-  profile and the socket length; a clean exit is the first acceptance check.
+- `neuman-client doctor` reports the interpreter, the client's release and
+  build id, the appliance's release, the session, the browser, the profile and
+  the socket length; a clean exit is the first acceptance check.
+
+**Updating.** The client updates itself, and nobody has to coordinate it
+(D111). `apt` installs a new `neuman-client` through unattended upgrades — the
+package adds `Neuman:stable` to `Unattended-Upgrade::Allowed-Origins` in
+`/etc/apt/apt.conf.d/51neuman-client`, and the server package blacklists itself
+in the file beside it. Nothing needs to be run: the files are replaced, the
+running client notices its build id changed and exits into the new code at its
+next idle moment — never mid-job — and the window reconnects on its own.
+
+When the appliance refuses this client because it speaks a shape the appliance
+no longer does, the window says so: the two versions, which one is older, and
+`sudo apt update && sudo apt install --only-upgrade neuman-client` with a copy
+button. It is the same sentence `doctor` prints.
+
+A machine installed from a downloaded `.deb` with no repository configured does
+not update itself; the banner and `doctor` still name the command, and the
+download page is the way to a newer file.
 
 ### macOS
 

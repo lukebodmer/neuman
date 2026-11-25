@@ -418,6 +418,7 @@ def create_app(settings: Settings | None = None, services: Services | None = Non
 
     routes: list[Any] = [
         Route("/healthz", _healthz, methods=["GET"]),
+        Route("/versions", _versions, methods=["GET"]),
         *http_routes(),
         *admin_routes(),
     ]
@@ -506,6 +507,42 @@ async def load_runtime(services: Services) -> None:
                 f"{name}: {conflict_detail(found)}" for name, found in conflicts.items()
             )
             raise RuntimeError(f"baseline has conflicting roles: {detail}")
+
+
+async def _versions(request: Any) -> Any:
+    """What this appliance is, for a client that cannot get a session yet.
+
+    Unauthenticated for the same reason `/healthz` is: the question is asked by
+    `neuman-client doctor` on a machine whose session may be exactly what is
+    broken, and the answer is what turns "it doesn't work" into one sentence and
+    one command (D111).
+
+    It names the product, not the deployment: no bind, no TLS, no schema, no
+    counts. The build id is deliberately absent because it may be a store path,
+    which says which code a turn ran under and nothing a person can install.
+    """
+
+    from starlette.responses import JSONResponse
+
+    from .. import __version__
+    from ..adapters.clients import (
+        MIN_CLIENT_RELEASE,
+        MIN_CLIENT_RPC_VERSION,
+        SUPPORTED_RPC_VERSIONS,
+    )
+
+    return JSONResponse(
+        {
+            "product": "neuman",
+            "release": __version__,
+            "rpc_versions": sorted(SUPPORTED_RPC_VERSIONS),
+            "minimum_client": {
+                "release": MIN_CLIENT_RELEASE,
+                "rpc": MIN_CLIENT_RPC_VERSION,
+            },
+        },
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 async def _healthz(request: Any) -> Any:

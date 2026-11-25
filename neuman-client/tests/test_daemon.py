@@ -11,9 +11,12 @@ import asyncio
 import base64
 from pathlib import Path
 
-from neuman_client.daemon import ClientDaemon
+import pytest
+
+from neuman_client.daemon import ClientDaemon, Refused
 from neuman_client.executor import Executor
 from neuman_client.tools import ToolHost
+from neuman_client.transport import LinkClosed
 
 
 class FakeConnection:
@@ -85,13 +88,14 @@ async def _until(predicate, *, timeout: float = 10.0) -> None:
             await asyncio.sleep(0.01)
 
 
-def _daemon(tmp_path: Path, host: ToolHost, transport: FakeTransport) -> ClientDaemon:
+def _daemon(tmp_path: Path, host: ToolHost, transport: FakeTransport, **kwargs) -> ClientDaemon:
     return ClientDaemon(
         transport=transport,
         home="/home/alice",
         drops="/home/alice/.local/state/neuman/drops",
         host=host,
         executor=Executor(spill_dir=tmp_path / "spill"),
+        **kwargs,
     )
 
 
@@ -125,6 +129,10 @@ async def test_the_handshake_carries_the_home_and_the_tool_names(tmp_path):
         "home": "/home/alice",
         "drops": "/home/alice/.local/state/neuman/drops",
         "tools": ["echoer", "sleeper"],
+        # What an operator sees per machine, and what a refusal quotes back
+        # (D111). Optional in the contract; a build that knows its release
+        # always sends it.
+        "release": "0.1.0",
     }
 
 
@@ -240,3 +248,112 @@ async def test_a_package_tool_without_its_program_is_refused_by_name(tmp_path, m
     assert (
         "Studio" in error["message"] and "https://studio.example/download" in error["message"]
     )
+
+
+# -- a refusal, which is not a dropped connection (D111) ---------------------
+
+
+def _refusal(accepted: list[int], *, server: str = "0.2.0", client: str = "0.1.0") -> dict:
+    return {
+        "type": "error",
+        "rpc_version": max(accepted),
+        "dispatch_id": None,
+        "code": "version_mismatch",
+        "message": "this appliance speaks dispatch protocol 2; update the client.",
+        "versions": {
+            "server": {"release": server, "rpc": max(accepted)},
+            "client": {"release": client, "rpc": 1},
+            "accepted": accepted,
+        },
+    }
+
+
+async def test_a_version_mismatch_is_recorded_as_refused_not_as_lost(tmp_path):
+    """The state the page draws, and the reason it exists.
+
+    A refused client that treated this like a dropped connection would reconnect
+    forever, and the person would see a chat whose agent has quietly lost its
+    tools — the confusing failure this whole path is for (D111).
+    """
+
+    transport = FakeTransport()
+    daemon = _daemon(tmp_path, _host(tmp_path), transport)
+    transport.connection.incoming.put_nowait(_refusal([2]))
+
+    with pytest.raises(Refused):
+        await daemon._serve()
+
+    link = daemon.link
+    assert link.state == "refused"
+    assert link.direction() == "client"
+    assert link.visible is True
+    assert "0.2.0" in link.body()
+    assert link.command() == "sudo apt update && sudo apt install --only-upgrade neuman-client"
+
+
+async def test_a_close_before_the_welcome_is_a_refusal_too(tmp_path):
+    """An appliance older than the payload says nothing, and must still not loop."""
+
+    class _Closed(FakeConnection):
+        async def recv(self) -> dict:
+            raise LinkClosed(4400, "")
+
+    class _ClosedTransport:
+        def __init__(self) -> None:
+            self.connection = _Closed()
+
+        async def connect(self) -> _Closed:
+            return self.connection
+
+    daemon = _daemon(tmp_path, _host(tmp_path), _ClosedTransport())
+    with pytest.raises(Refused):
+        await daemon._serve()
+
+    assert daemon.link.state == "refused"
+    assert daemon.link.direction() is None, "a bare close cannot say which end is older"
+
+
+async def test_a_refused_daemon_waits_for_a_person_rather_than_a_timer(tmp_path):
+    """One hello, then nothing until something that could change the answer."""
+
+    transport = FakeTransport()
+    daemon = _daemon(tmp_path, _host(tmp_path), transport)
+    task = asyncio.create_task(daemon.run())
+    try:
+        await _until(lambda: transport.connection.sent)
+        transport.connection.incoming.put_nowait(_refusal([2]))
+        await _until(lambda: daemon.link.state == "refused")
+
+        # No backoff can produce a different answer, so there is no second
+        # hello while it waits.
+        await asyncio.sleep(0.2)
+        assert len(transport.connection.sent) == 1
+
+        # A person signing in, or pressing Try again, is the event.
+        daemon.retry()
+        await _until(lambda: len(transport.connection.sent) == 2)
+        assert transport.connection.sent[1]["type"] == "hello"
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+async def test_an_idle_daemon_restarts_into_a_new_package(tmp_path, monkeypatch):
+    """`apt` replaces the files; this process is what has to notice (D111)."""
+
+    from neuman_client import daemon as daemon_module
+
+    transport = FakeTransport()
+    daemon = _daemon(tmp_path, _host(tmp_path), transport, build_id="deb 0.1.0")
+    monkeypatch.setattr(daemon_module, "installed_build_id", lambda: "deb 0.2.0")
+
+    restart = asyncio.Event()
+    task = asyncio.create_task(daemon.watch_build(restart, interval=0.01))
+    try:
+        await asyncio.wait_for(restart.wait(), timeout=5)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert daemon.link.state == "updating"
+    assert "0.2.0" in daemon.link.body()

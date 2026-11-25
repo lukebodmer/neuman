@@ -135,18 +135,97 @@ def test_a_good_hello_registers_the_client_and_is_answered(surface, client):
     The hub is faked here, so what this checks is the route's half: the
     connection it hands over carries the account the *session* resolved to, the
     tools the client advertised and the home it reported — and it is withdrawn
-    when the socket closes, so a dead client is not left dispatchable.
+    when the socket closes, so a dead client is not left dispatchable. The
+    welcome also says what the appliance is, because a client has no other way
+    to learn it (D111).
     """
+
+    from neuman_contracts import dispatch_rpc
+
+    from neuman_server import __version__
 
     _login(surface, client)
     with client.websocket_connect("/client") as socket:
         socket.send_json(_hello())
         welcome = socket.receive_json()
+        # The shape the contract describes, not only the fields this test names:
+        # both halves ship `contracts/`, and a frame the schema would refuse is
+        # one an older client may refuse too.
+        dispatch_rpc.validate(welcome)
 
-        assert welcome == {"type": "welcome", "rpc_version": 1, "user": "alice"}
+        assert welcome == {
+            "type": "welcome",
+            "rpc_version": 1,
+            "user": "alice",
+            "release": __version__,
+            "rpc_versions": [1],
+            "minimum_client": {"release": "0.1.0", "rpc": 1},
+        }
         (connection,) = surface.services.execution.connections
         assert connection.account == "alice"
         assert connection.tools == frozenset({"fs_read", "shell"})
         assert connection.home == "/home/alice"
+        assert connection.rpc_version == 1
+        assert connection.release is None, "a hello that did not say is unknown, not empty"
 
     assert surface.services.execution.connections == []
+
+
+def test_a_hello_that_names_its_release_is_recorded(surface, client):
+    """It is what an operator sees per machine before installing a floor (D111)."""
+
+    _login(surface, client)
+    with client.websocket_connect("/client") as socket:
+        socket.send_json(_hello(release="0.2.0"))
+        socket.receive_json()
+        (connection,) = surface.services.execution.connections
+        assert connection.release == "0.2.0"
+
+
+def test_a_shape_this_build_does_not_speak_is_refused_with_both_ends(surface, client):
+    """The refusal a daemon can act on, rather than a close code it retries.
+
+    Three facts have to travel or the client cannot say which half to update:
+    what the appliance is, what the client said it is, and the shapes that would
+    have been accepted. A bare `4400` is the reconnect loop this replaces.
+    """
+
+    from neuman_contracts import dispatch_rpc
+    from starlette.websockets import WebSocketDisconnect
+
+    from neuman_server import __version__
+
+    _login(surface, client)
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/client") as socket:
+            socket.send_json(_hello(rpc_version=99, release="0.1.0"))
+            message = socket.receive_json()
+            dispatch_rpc.validate(message)
+            assert message["type"] == "error"
+            assert message["code"] == "version_mismatch"
+            assert "99" in message["message"], message
+            assert message["versions"]["accepted"] == [1]
+            assert message["versions"]["server"] == {
+                "release": __version__,
+                "rpc": 1,
+            }
+            assert message["versions"]["client"] == {"release": "0.1.0", "rpc": 99}
+            socket.receive_json()
+    assert caught.value.code == 4406
+    assert surface.services.execution.connections == []
+
+
+def test_a_hello_with_no_shape_at_all_is_refused_the_same_way(surface, client):
+    """A string where a number belongs is not a protocol this build speaks."""
+
+    from starlette.websockets import WebSocketDisconnect
+
+    _login(surface, client)
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/client") as socket:
+            socket.send_json(_hello(rpc_version="one"))
+            message = socket.receive_json()
+            assert message["code"] == "version_mismatch"
+            assert message["versions"]["client"]["rpc"] is None
+            socket.receive_json()
+    assert caught.value.code == 4406

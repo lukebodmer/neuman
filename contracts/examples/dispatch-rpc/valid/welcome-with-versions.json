@@ -1,0 +1,1 @@
+{"type": "welcome", "rpc_version": 1, "user": "alice", "release": "0.2.0", "rpc_versions": [1], "minimum_client": {"release": "0.1.0", "rpc": 1}}

@@ -16,13 +16,31 @@ import json
 from collections.abc import Callable
 from typing import Any, Protocol
 
-__all__ = ["Connection", "Transport", "WebSocketTransport"]
+__all__ = ["Connection", "LinkClosed", "Transport", "WebSocketTransport"]
 
 # One message. Generous, because a dispatch's stdout rides base64-encoded and is
 # therefore ~4/3 its size.
 MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 
 COOKIE = "neuman_session"
+
+
+class LinkClosed(Exception):
+    """The socket closed, with the code and reason the other end gave.
+
+    The daemon needs the code to tell a refusal it must not retry (4406, and
+    the older 4400 an appliance that predates the version payload still sends)
+    from a connection that simply went away. `websockets` raises this itself;
+    translating it here keeps the daemon free of the transport library and the
+    protocol above the socket free of close codes.
+    """
+
+    def __init__(self, code: int | None, reason: str = "") -> None:
+        super().__init__(
+            f"connection closed ({code}): {reason}" if reason else f"connection closed ({code})"
+        )
+        self.code = code
+        self.reason = reason
 
 
 class Connection(Protocol):
@@ -45,7 +63,14 @@ class _WebSocketConnection:
         await self._websocket.send(json.dumps(message, separators=(",", ":")))
 
     async def recv(self) -> dict[str, Any]:
-        return json.loads(await self._websocket.recv())
+        import websockets
+
+        try:
+            return json.loads(await self._websocket.recv())
+        except websockets.exceptions.ConnectionClosed as error:
+            raise LinkClosed(
+                getattr(error, "code", None), getattr(error, "reason", "") or ""
+            ) from error
 
     async def close(self) -> None:
         await self._websocket.close()

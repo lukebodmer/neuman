@@ -53,7 +53,9 @@ What needs you, and what is happening. **Needs attention** lists problems you
 can fix right now (a provider with no key, a model whose weights are missing,
 a model that failed to load), each with a link to the page that fixes it.
 Below it: who is active and what is running now, today's usage, and the most
-recent configuration changes.
+recent configuration changes. The same card lists the computers with a client
+connected and the release each one runs — the line to read before installing a
+release whose client floor moved (D111).
 
 ### Accounts
 
@@ -206,6 +208,13 @@ downloaded again. A restore re-verifies the audit chain before it finishes.
 neuman-admin backup /var/lib/neuman/backups/2026-11-16
 neuman-admin restore /var/lib/neuman/backups/2026-11-16
 ```
+
+**Update the appliance.** `apt` from the Neuman repository, after a backup
+([platforms.md](platforms.md#ubuntu-2404)). The server is deliberately not
+updated by unattended upgrades; the client on each person's computer is, so a
+server release never has to be coordinated with the people using it (D111).
+When a release raises the oldest client it accepts, the Overview's client list
+names the machines still behind before the server moves.
 
 **Keep configuration in version control.** Export roles, defaults, providers and
 models (never keys) as one file, and load it back on another appliance:

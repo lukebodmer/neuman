@@ -56,6 +56,12 @@ contents:
     dst: /usr/lib/systemd/user/neuman-browser.service
   - src: "@STAGE@/usr/share/applications/neuman.desktop"
     dst: /usr/share/applications/neuman.desktop
+  # The client is the half that may update itself (D111): no schema, no
+  # database, and a rollback is one `apt install`. A conffile, because an
+  # operator may have a reason to override it.
+  - src: "@STAGE@/etc/apt/apt.conf.d/51neuman-client"
+    dst: /etc/apt/apt.conf.d/51neuman-client
+    type: config
 scripts:
   # Says what the chromium snap needs, and only when the machine has it (N184).
   postinstall: "@HERE@/scripts/postinst-client"

@@ -54,6 +54,16 @@ client, so until one connects the server is administered with `neuman-admin`
 over the socket. Local models are not packaged either: `neuman-runtime` needs
 `NEUMAN_LLAMA_SERVER`, which a distribution has to supply.
 
+**The repository is the update channel** (D111). `ubuntu/repo.sh OUTDIR *.deb`
+writes a static apt tree — `pool/`, `Packages`, `Release`, and `InRelease` /
+`Release.gpg` when `NEUMAN_REPO_KEY` names a signing key — plus a
+`neuman.sources` template. It needs `dpkg-dev` for `dpkg-scanpackages` and
+`gpg` to sign, and it writes files only; hosting them is a static host's job.
+The `Origin: Neuman` / `Suite: stable` fields are load-bearing: the client
+package's `51neuman-client` names `Neuman:stable` so unattended upgrades may
+install a client and never a server. Every release stays in the pool, which is
+what makes `apt install neuman=<version> --allow-downgrades` a way back.
+
 ## ubuntu client
 
 `ubuntu/build-client.sh` produces `neuman-client_<version>_amd64.deb`, the
@@ -78,6 +88,14 @@ The user's steps after installing:
 
 `login` stores the server in `session.json`, so neither unit needs a per-user
 config file. `neuman-client doctor` is the acceptance check.
+
+The package writes `/usr/share/neuman-client/build-id` (`deb <version>`) and the
+wrapper exports it as `NEUMAN_CLIENT_BUILD_ID` (D111). The running client
+compares the two: when `apt` has replaced the files, it exits `75` at its next
+idle moment and the user unit restarts it into the new code. That is the whole
+reason no root component is needed for a client update — and why
+`/etc/apt/apt.conf.d/51neuman-client` lets unattended upgrades install one while
+`51neuman-server` keeps the server out of them.
 
 **Not yet proven on its target**, and more so than the server: a container can
 prove install, login, the daemon and a tool dispatch, but `browse` and the app

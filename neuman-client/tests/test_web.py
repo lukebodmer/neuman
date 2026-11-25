@@ -63,6 +63,44 @@ def test_the_client_does_not_mark_an_approval_it_could_not_send():
     )
 
 
+def test_the_window_can_say_why_the_agent_has_no_tools():
+    """A refused client must not look like an agent that lost its permissions (D111).
+
+    The page is served by the client, so it is up whether or not the dispatch
+    socket is: without a banner the person signs in, says something, and the
+    model simply has no tools because the core offers only what a connected
+    client advertised. The banner is drawn from `/api/local`, which is answered
+    here rather than forwarded — and every string in it is set with
+    `textContent`, because two of them are versions that came off the wire.
+    """
+
+    html = (WEB / "index.html").read_text()
+    assert 'id="link-banner"' in html, "the banner element is gone"
+    assert 'aria-live="polite"' in html and 'role="status"' in html, (
+        "a banner nobody announces is invisible to a screen reader"
+    )
+
+    css = (WEB / "neuman.css").read_text()
+    assert "#link-banner" in css, "the banner has no styles"
+    assert '"banner"' in css, (
+        "the banner needs its own grid row; positioned over the transcript it "
+        "would cover the first line of a conversation"
+    )
+
+    source = (WEB / "neuman.js").read_text()
+    assert '"/api/local"' in source, "the page never asks the client about its link"
+    assert "function renderLink(state)" in source, "renderLink() is gone"
+
+    match = re.search(r"function renderLink\(state\)\s*\{(.*?)\n\}", source, re.S)
+    assert match, "renderLink() not found; this test would pass vacuously"
+    body = match.group(1)
+    assert "textContent" in body, body
+    assert not re.search(r"\.innerHTML\s*=", body), (
+        "the banner builds DOM from the appliance's strings; a version is not a "
+        "place to discover a markup bug"
+    )
+
+
 def test_the_client_reconnects_a_dropped_socket():
     """A session waiting on approval is exactly when a socket idles out.
 
