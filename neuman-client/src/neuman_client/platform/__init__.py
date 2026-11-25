@@ -20,6 +20,7 @@ from pathlib import Path
 from . import _darwin, _linux
 
 __all__ = [
+    "BROWSER_PROFILE_ENV",
     "BROWSE_SOCKET_ENV",
     "HOST_PROGRAM_ENV",
     "HOST_SOCKET_ENV",
@@ -27,6 +28,7 @@ __all__ = [
     "browse_socket",
     "browser_copy_source",
     "browser_profile_dir",
+    "browser_profile_refusal",
     "display_args",
     "find_chromium",
     "home_dir",
@@ -39,6 +41,12 @@ __all__ = [
 # The environment the client uses to hand the browser bridge's location to the
 # `browse` tool. One spelling, read and written in one place.
 BROWSE_SOCKET_ENV = "NEUMAN_BROWSE_SOCKET"
+
+# Where the browser's profile goes, when the package's unit cannot be edited.
+# The unit that starts `neuman-browser` is the package's, so an operator's
+# change has to arrive through the environment, exactly as the browser's name
+# does (N184).
+BROWSER_PROFILE_ENV = "NEUMAN_BROWSER_PROFILE"
 
 # What the client names to a tool package's host and to that package's tools:
 # the socket the host answers on, and the program it found for the host to run
@@ -107,10 +115,30 @@ def host_socket(package: str) -> Path | None:
     return runtime / f"neuman-{package}.sock" if runtime else None
 
 
-def browser_profile_dir() -> Path:
-    """The Chromium profile Neuman owns (`--profile own`)."""
+def browser_profile_dir(chromium: str | None = None) -> Path:
+    """The Chromium profile Neuman owns (`--profile own`).
 
-    return _host.browser_profile_dir()
+    The browser decides which paths it can open, so the browser is an argument
+    rather than an assumption (N184). `NEUMAN_BROWSER_PROFILE` overrides both:
+    the package owns the unit that starts the browser, so a path change an
+    operator needs has to reach it through the environment.
+    """
+
+    override = os.environ.get(BROWSER_PROFILE_ENV)
+    if override:
+        return Path(override).expanduser()
+    return _host.browser_profile_dir(chromium)
+
+
+def browser_profile_refusal(chromium: str | None, profile: Path) -> str | None:
+    """Why this browser cannot open this profile, or None when it can.
+
+    One implementation, two callers: `neuman-browser` refuses to start on it
+    and `doctor` reports it, so a host cannot pass the acceptance check with a
+    profile its browser could never open (D108, N184).
+    """
+
+    return _host.browser_profile_refusal(chromium, profile)
 
 
 def browser_copy_source() -> Path:

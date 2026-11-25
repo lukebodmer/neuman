@@ -104,3 +104,48 @@ def test_a_package_host_answers_in_the_runtime_directory(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
 
     assert platform.host_socket("blender") == tmp_path / "neuman-blender.sock"
+
+
+def test_the_profile_follows_the_browser_that_will_open_it(monkeypatch, tmp_path):
+    """A confined browser can open only some of the paths its twin can (N184).
+
+    Ubuntu's Chromium is a snap, and a snap reaches only non-hidden paths under
+    `$HOME`. A profile under `~/.local` is therefore one it can never open, and
+    the browser's own message about a lock file names neither the confinement
+    nor the fix — so the profile moves instead.
+    """
+
+    monkeypatch.setattr(_linux, "home_dir", lambda: tmp_path)
+    monkeypatch.delenv("NEUMAN_BROWSER_PROFILE", raising=False)
+
+    assert _linux.browser_profile_dir("/usr/bin/google-chrome-stable") == (
+        tmp_path / ".local" / "share" / "neuman" / "browser"
+    )
+    for snap in ("/snap/bin/chromium", "/usr/bin/chromium-browser"):
+        assert _linux.browser_profile_dir(snap) == (
+            tmp_path / "snap" / "chromium" / "common" / "neuman-browser"
+        )
+
+
+def test_a_confined_browser_refuses_a_profile_it_cannot_open(monkeypatch, tmp_path):
+    monkeypatch.setattr(_linux, "home_dir", lambda: tmp_path)
+    hidden = tmp_path / ".local" / "share" / "neuman" / "browser"
+
+    for snap in ("/snap/bin/chromium", "/usr/bin/chromium-browser"):
+        refusal = _linux.browser_profile_refusal(snap, hidden)
+        assert refusal and "hidden" in refusal, refusal
+
+    assert _linux.browser_profile_refusal("/usr/bin/google-chrome", hidden) is None
+    assert _linux.browser_profile_refusal("/snap/bin/chromium", tmp_path / "browser") is None
+
+    outside = _linux.browser_profile_refusal("/snap/bin/chromium", Path("/var/lib/browser"))
+    assert outside and "outside" in outside, outside
+
+
+def test_the_profile_override_wins(monkeypatch, tmp_path):
+    """The package owns the unit, so an operator changes the path here (N184)."""
+
+    monkeypatch.setenv("NEUMAN_BROWSER_PROFILE", str(tmp_path / "profile"))
+    monkeypatch.setattr(platform, "_host", _linux)
+
+    assert platform.browser_profile_dir("/snap/bin/chromium") == tmp_path / "profile"

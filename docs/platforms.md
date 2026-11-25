@@ -61,8 +61,11 @@ neuman-admin bootstrap --name you
 - State: `~/.local/share/neuman/client`.
 - Browser bridge: `$XDG_RUNTIME_DIR/neuman-browse.sock`, mode `0600` in the
   user's `0700` runtime directory.
-- Browser profile: `~/.local/share/neuman/browser`; `--profile copy` seeds from
-  the user's own profile — `~/.config/chromium`, the Chromium snap's
+- Browser profile: `~/.local/share/neuman/browser`, or
+  `~/snap/chromium/common/neuman-browser` when the browser is Ubuntu's snap,
+  which reaches only non-hidden paths under `$HOME` (D110); either can be
+  overridden with `NEUMAN_BROWSER_PROFILE`. `--profile copy` seeds from the
+  user's own profile — `~/.config/chromium`, the Chromium snap's
   `~/snap/chromium/common/chromium`, or `~/.config/google-chrome`, the first
   that exists, or `--copy-source`.
 - Service hint: `systemctl --user status neuman-client`.
@@ -89,7 +92,12 @@ systemctl --user enable --now neuman-browser.service
 - The browser is the person's: `chromium`, `chromium-browser`, `google-chrome`
   or `google-chrome-stable` on `PATH`, or `NEUMAN_BROWSER_CHROMIUM`. Only the
   `browse` tool needs it, so it is a `Recommends`. `chromium` on Ubuntu is the
-  snap; `--profile copy` reads the snap's profile path.
+  snap, which reads only non-hidden paths under `$HOME` and opens no DevTools
+  port until `network-bind` is connected: Neuman puts that browser's profile
+  inside the snap's own directory (D110), and the postinst names
+  `sudo snap connect chromium:network-bind` because `browse` cannot work
+  without it. Google Chrome's `.deb` needs neither step, and is what the
+  documentation suggests where the snap is not already connected.
 - The DevTools endpoint is loopback TCP with no authentication. The `0600`
   socket gates the tool, not the machine's other local accounts, so this
   assumes every account on the machine is trusted as the user is.

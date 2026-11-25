@@ -31,8 +31,16 @@ def runtime_dir() -> Path | None:
     return Path(value) if value else None
 
 
-def browser_profile_dir() -> Path:
+def browser_profile_dir(browser: str | None = None) -> Path:
+    # macOS confines an app rather than a path: TCC withholds a folder until
+    # the user consents, and then prompts, so a profile is never unopenable in
+    # the way snap confinement makes it. `doctor` reports the consent it needs.
     return home_dir() / "Library" / "Application Support" / "Neuman" / "browser"
+
+
+def browser_profile_refusal(browser: str | None, profile: Path) -> str | None:
+    # No path is unopenable here for a packaging reason; see browser_profile_dir.
+    return None
 
 
 def browser_copy_source() -> Path:

@@ -29,6 +29,7 @@ from .jobs import JobRegistry
 from .platform import (
     browse_socket,
     browser_profile_dir,
+    browser_profile_refusal,
     find_chromium,
     home_dir,
     runtime_hint,
@@ -276,14 +277,17 @@ def _doctor(args: argparse.Namespace) -> int:
     No secret is printed: the session file's server is useful, its cookie is
     not. The socket length check is here because macOS's AF_UNIX limit is small
     and a path that is a few bytes too long fails at bind time with an error
-    that does not name the constraint.
+    that does not name the constraint. The browser and its profile are reported
+    together and checked together, because a profile the browser it names
+    cannot open is a pair that looks healthy fact by fact (N184).
     """
 
     state = Path(args.state_dir).expanduser()
     session = Session(state / "session.json")
     socket = browse_socket()
     browser = find_chromium()
-    profile = browser_profile_dir()
+    profile = browser_profile_dir(browser)
+    refusal = browser_profile_refusal(browser, profile)
 
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
     print(f"host: {sys.platform} {os.uname().machine}")
@@ -292,6 +296,8 @@ def _doctor(args: argparse.Namespace) -> int:
     print(f"server: {session.server() or 'none stored'}")
     print(f"browser profile: {profile}")
     print(f"browser: {browser or 'not found'}")
+    if refusal:
+        print(f"browser profile unreachable: {refusal}")
 
     limit = 104 if sys.platform == "darwin" else 108
     length = 0
@@ -308,7 +314,7 @@ def _doctor(args: argparse.Namespace) -> int:
             "LaunchAgent may need Full Disk Access for the same paths"
         )
 
-    if browser is None or socket is None or length >= limit:
+    if browser is None or socket is None or length >= limit or refusal:
         return 1
     return 0
 

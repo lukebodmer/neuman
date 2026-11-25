@@ -1,0 +1,23 @@
+#!/bin/sh
+# Runs as root on install and on upgrade of the client package. It changes
+# nothing: it says what the `chromium` this package recommends actually needs,
+# at the one moment the person installing is looking at a terminal.
+set -e
+
+if [ -e /snap/bin/chromium ]; then
+    cat <<'NOTE'
+Neuman's browser is the Chromium on this machine, which is Ubuntu's snap.
+
+The snap may write only where its own confinement lets it, so Neuman keeps the
+profile it opens in ~/snap/chromium/common/neuman-browser rather than under
+~/.local. It also has to be allowed to open the DevTools port `browse` uses:
+
+  sudo snap connect chromium:network-bind
+
+Without that the browser starts and `browse` cannot reach it, and the browser
+unit will say so. Google Chrome's .deb needs neither step and is what the
+Neuman documentation recommends where the snap is not already connected.
+NOTE
+fi
+
+exit 0

@@ -131,6 +131,14 @@ The profile is the security-relevant choice: `own` (the default) belongs to
 Neuman, so a page that injects the model acts with none of the user's logins;
 `copy` seeds it from their real profile once at startup.
 
+The profile's *location* follows the browser, because a confined browser cannot
+open every path an unconfined one can: Chromium from Ubuntu's snap reaches only
+non-hidden paths under `$HOME`, so its profile is
+`~/snap/chromium/common/neuman-browser`, while a browser installed from a
+package keeps `~/.local/share/neuman/browser`. A pairing that cannot work is
+refused with a sentence, and `doctor` fails on it, rather than surfacing as the
+browser's exit 21 (D110).
+
 The client sets `NEUMAN_BROWSE_SOCKET` on every tool it runs, so `browse` and
 the bridge come from one value rather than two defaults that drift.
 
@@ -161,6 +169,7 @@ The wrapper sets what the package knows; the rest is a flag.
 | `NEUMAN_CLIENT_STATE` | Where the state lives, when `--state-dir` is not given |
 | `NEUMAN_BROWSE_SOCKET` | The browser bridge's socket; set on every tool the client runs |
 | `NEUMAN_BROWSER_CHROMIUM`, `NEUMAN_BROWSER_RSYNC` | Substituted into `neuman-browser` at build time |
+| `NEUMAN_BROWSER_PROFILE` | The profile `neuman-browser` opens, where the default for its browser is not wanted |
 
 ## macOS development payload
 

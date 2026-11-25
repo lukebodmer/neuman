@@ -3,6 +3,12 @@ Description=Neuman browser
 After=graphical-session.target neuman-client.service
 PartOf=graphical-session.target
 
+# A browser that cannot start is not going to start on the fifth attempt
+# either. Five tries name a failed unit; without a limit this unit reached 174
+# restarts in ten minutes with one bare exit status to show for it (N184).
+StartLimitIntervalSec=30
+StartLimitBurst=5
+
 [Service]
 # A leftover `ui-url` names a URL nothing is listening on; a present file and a
 # listening server are different facts, and only the 303 the token bootstrap

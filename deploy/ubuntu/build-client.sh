@@ -96,7 +96,7 @@ install -m 0644 "$HERE/neuman-client.service" "$HERE/neuman-browser.service" \
     "$STAGE/usr/lib/systemd/user/"
 install -m 0644 "$HERE/neuman.desktop" "$STAGE/usr/share/applications/"
 
-sed -e "s|@VERSION@|$VERSION|g" -e "s|@STAGE@|$STAGE|g" \
+sed -e "s|@VERSION@|$VERSION|g" -e "s|@STAGE@|$STAGE|g" -e "s|@HERE@|$HERE|g" \
     "$HERE/nfpm-client.yaml" > "$WORK/nfpm-client.yaml"
 nfpm package --config "$WORK/nfpm-client.yaml" --packager deb \
     --target "$OUT/neuman-client_${VERSION}_amd64.deb"

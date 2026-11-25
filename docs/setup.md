@@ -404,7 +404,10 @@ Grant `browse` by adding it to a role.
 (the default) is a profile belonging to Neuman, so a page that injects the model
 acts with none of your logins. `"copy"` copies your real profile in once at
 startup, so Neuman can read pages you are signed into — and a page that injects
-the model then acts with your identity.
+the model then acts with your identity. Where it lives follows the browser: an
+unconfined one keeps it under `~/.local/share/neuman`, and Chromium from
+Ubuntu's snap gets `~/snap/chromium/common/neuman-browser`, the only kind of
+path its confinement can open (D110).
 
 **There is no headless mode.** Measured against live sites, headless Chromium is
 blocked unpredictably, and a capability that fails per-site after you have come
@@ -529,7 +532,8 @@ the service.
 
 The server comes up empty, and the first account is the bootstrap again (§3). On
 the client machine, remove `~/.local/share/neuman/client` (`session.json`,
-`ui-token`, `spill/`) for a clean login; the browser profile beside it is just
+`ui-token`, `spill/`) for a clean login; the browser profile — beside it, or
+under `~/snap/chromium/common` when the browser is Ubuntu's snap — is just
 Chromium's and can stay.
 
 ## When something fails

@@ -4451,3 +4451,63 @@ readiness probe is one extra 303 request per launch.
 signal has to be answered by the thing that is supposed to be ready, and a 401
 from the local proxy is not a credential failure from the core — the page must
 know which layer refused it before it can say anything true about why.
+
+### N184 — A snap-confined Chromium cannot open a profile under `~/.local`, and exit 21 is all it says
+
+**What happened.** The first install of the client package on a clean Ubuntu
+24.04 host put `browse` out of reach. `neuman-browser.service` restarted 174
+times in ten minutes, each attempt ending `code=exited, status=21/n/a`, and
+`/run/user/1000/neuman-browse.sock` never appeared. Run by hand, the same
+wrapper printed the cause: `Failed to create
+~/.local/share/neuman/browser/SingletonLock: Permission denied (13)`. The
+directory was `0700` and owned by that user, so permissions were not the
+answer — the browser was. `apt install ./neuman-client.deb` had taken the
+package's `Recommends: chromium`, which on 24.04 resolves to
+`chromium-browser`, a wrapper whose whole content is "install the Chromium
+snap". The snap's `home` interface grants *non-hidden* paths under `$HOME`, so
+`~/.local/share/...` is a directory it can never open; and `find_chromium()`
+prefers the name `chromium` to `google-chrome-stable`, so installing Chrome's
+deb afterwards changed nothing either. `neuman-client doctor` printed the two
+facts on adjacent lines — `browser profile: ~/.local/share/neuman/browser`,
+`browser: /snap/bin/chromium` — and exited 0. The same machine had a second,
+quieter confinement: the snap opens no DevTools port until `network-bind` is
+connected, so fixing only the profile would have left a browser that runs and
+cannot be driven.
+
+**Why.** Three assumptions were each true alone and false together: that the
+profile's path is a constant, that the browser found on `PATH` can open it, and
+that a unit which is running has a browser behind it. The code already knew the
+snap existed — `browser_copy_source()` reads `~/snap/chromium/common/chromium`,
+added for exactly this reason — but the knowledge went to where the snap
+*keeps* a profile and not to where it can *write* one. The exit code hid the
+rest: `neuman-browser` returns the browser's own status, so systemd reported
+Chromium's `RESULT_CODE_PROFILE_IN_USE` as a number that names nothing, and the
+bridge binds after `Popen` and sees `stop` already set, so the socket was
+created and unlinked in the same pass.
+
+**Fix.** The profile's default follows the browser: a confined one gets
+`~/snap/chromium/common/neuman-browser`, inside its writable area and an
+ordinary directory an unconfined browser can use too, and
+`NEUMAN_BROWSER_PROFILE` or `--user-data-dir` overrides it (D110). A pairing
+that still cannot work is refused with a sentence before a browser starts, and
+`doctor` fails its acceptance check on the same call, so the two facts cannot
+be reported side by side as healthy again. `neuman-browser` waits for the
+DevTools port to answer before binding the socket, and says what a browser's
+exit code means. The unit's `StartLimitBurst` turns a restart loop into a
+failed unit, and the package's postinst names `snap connect
+chromium:network-bind` at the moment the snap is installed.
+
+**The lesson:** a capability that crosses a packaging boundary has to be tested
+with the packaging, not with the browser the build machine happens to have —
+the Nix package pins an unconfined Chromium, so every test passed. And an exit
+status is not a diagnosis: a unit whose only report of a failure is a number
+will be diagnosed over a chat, one restart at a time.
+
+**The cost:** "where is Neuman's browser profile" now has a conditional answer,
+and a profile inside the snap's `common` directory goes with `snap remove
+--purge`. The DevTools wait spends up to 20 seconds before it declares a
+browser failed, which is a slower first `browse` after login on a loaded
+machine. And the free-software browser on Ubuntu is the one that still needs a
+root-run `snap connect`; the package recommends it anyway, because the
+alternative on a machine with no third-party apt source is no browser at all.
+

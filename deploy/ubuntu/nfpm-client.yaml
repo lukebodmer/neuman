@@ -30,7 +30,12 @@ depends:
 recommends:
   # `browse` drives a Chromium the person already has; the package does not
   # bundle one, because owning a browser's security updates is a worse deal
-  # than using the distribution's (D108). Google Chrome's deb is accepted too.
+  # than using the distribution's (D108). Google Chrome's deb is accepted too,
+  # and on 24.04 it is the one that needs nothing else: `chromium` there is the
+  # snap, which reaches only non-hidden paths under `$HOME` and needs
+  # `network-bind` connected before `browse` can reach it (N184). The postinst
+  # says both, and the choice stays the person's — the alternative is a machine
+  # with no browser at all, which is worse than one that needs a second step.
   - chromium | google-chrome-stable
   # Only `--profile copy` uses it.
   - rsync
@@ -51,3 +56,6 @@ contents:
     dst: /usr/lib/systemd/user/neuman-browser.service
   - src: "@STAGE@/usr/share/applications/neuman.desktop"
     dst: /usr/share/applications/neuman.desktop
+scripts:
+  # Says what the chromium snap needs, and only when the machine has it (N184).
+  postinstall: "@HERE@/scripts/postinst-client"

@@ -184,7 +184,7 @@ def test_doctor_reports_the_host_without_printing_the_cookie(tmp_path, capsys, m
     )
     monkeypatch.setattr(cli, "browse_socket", lambda: tmp_path / "browse.sock")
     monkeypatch.setattr(cli, "find_chromium", lambda: "/Applications/Google Chrome")
-    monkeypatch.setattr(cli, "browser_profile_dir", lambda: tmp_path / "profile")
+    monkeypatch.setattr(cli, "browser_profile_dir", lambda _browser=None: tmp_path / "profile")
 
     code = cli.main(["--state-dir", str(tmp_path), "doctor"])
 
@@ -192,6 +192,28 @@ def test_doctor_reports_the_host_without_printing_the_cookie(tmp_path, capsys, m
     assert code == 0, out
     assert "https://core.example:8443" in out, out
     assert "SECRET" not in out, "doctor printed the session cookie"
+
+
+def test_doctor_fails_on_a_profile_the_browser_cannot_open(tmp_path, capsys, monkeypatch):
+    """The acceptance check has to fail for the pair, not for each fact (N184).
+
+    A host whose browser and profile were reported side by side as two healthy
+    lines, where the browser could never open the profile, is what sent an
+    install to a chat instead of to an error message.
+    """
+
+    monkeypatch.setattr(cli, "browse_socket", lambda: tmp_path / "browse.sock")
+    monkeypatch.setattr(cli, "find_chromium", lambda: "/snap/bin/chromium")
+    monkeypatch.setattr(cli, "browser_profile_dir", lambda _browser=None: tmp_path / "browser")
+    monkeypatch.setattr(
+        cli, "browser_profile_refusal", lambda _browser, _profile: "snap-confined"
+    )
+
+    code = cli.main(["--state-dir", str(tmp_path), "doctor"])
+
+    out = capsys.readouterr().out
+    assert code == 1, out
+    assert "browser profile unreachable: snap-confined" in out, out
 
 
 def test_login_names_the_account_on_the_core(tmp_path, capsys):

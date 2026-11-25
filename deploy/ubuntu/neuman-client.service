@@ -9,6 +9,10 @@ PartOf=graphical-session.target
 ExecStart=/usr/bin/neuman-client run --ui-port 8642 --browse-socket %t/neuman-browse.sock
 Restart=on-failure
 RestartSec=2
+# Exit 2 is a refusal, not a crash: `login` has not run yet, so there is no
+# session to serve. Retrying cannot fix that, and eight identical failures
+# followed by a failed unit is a worse answer than one (N184).
+RestartPreventExitStatus=2
 
 [Install]
 WantedBy=default.target

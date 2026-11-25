@@ -148,6 +148,9 @@ in
         ExecStart = clientExec;
         Restart = "on-failure";
         RestartSec = 2;
+        # Exit 2 is `login` not having run yet, which retrying cannot fix; the
+        # package's unit says the same thing at greater length (N184).
+        RestartPreventExitStatus = 2;
       };
       Install.WantedBy = [ "default.target" ];
     };
@@ -160,6 +163,11 @@ in
           "neuman-client.service"
         ];
         PartOf = [ "graphical-session.target" ];
+        # A browser that cannot start will not start on the fifth attempt
+        # either; the package's unit says the same thing at greater length
+        # (N184).
+        StartLimitIntervalSec = 30;
+        StartLimitBurst = 5;
       };
       Service = {
         # The daemon writes the UI's URL — token included — once its port is

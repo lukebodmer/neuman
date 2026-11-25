@@ -3031,7 +3031,8 @@ Final until explicitly reversed here, with a new entry.
   logins — a silent change in whose identity a page acts as. It fails closed
   now, and `browser_copy_source()` knows the Chromium snap's profile under
   `~/snap/chromium/common`, which `~/.config/chromium` alone never found on a
-  stock Ubuntu desktop. Second, the readiness check the browser unit runs moved
+  stock Ubuntu desktop. Where the profile Neuman *opens* can live depends on
+  the same packaging, which is D110. Second, the readiness check the browser unit runs moved
   out of the home-manager module's shell script into
   `neuman-client wait-for-ui`, so the module and the deb run one implementation
   of N183.
@@ -3076,6 +3077,46 @@ Final until explicitly reversed here, with a new entry.
   release, and a person on the newest Ubuntu waits for its build. That is the
   honest state until there is a reason to support more than the LTS.
 
+- **D110 — The browser's profile is decided with the browser, and a pairing
+  that cannot work is refused.** A snap-confined Chromium reaches only
+  non-hidden paths under `$HOME`, so `~/.local/share/neuman/browser` is a
+  directory Ubuntu's Chromium can never open — and what it says instead is exit
+  21 and a message about a lock file (N184). `browser_profile_dir()` therefore
+  takes the browser: a confined one defaults to
+  `~/snap/chromium/common/neuman-browser`, inside the snap's writable area and
+  an ordinary directory an unconfined browser can use too, while an unconfined
+  one keeps the documented path. `NEUMAN_BROWSER_PROFILE` overrides both,
+  through the environment for the reason `NEUMAN_BROWSER_CHROMIUM` is: the
+  package owns the unit an operator would otherwise have to edit.
+
+  **Refused, not degraded.** `browser_profile_refusal()` answers whether a
+  given browser can open a given profile, and has two callers so the answer
+  cannot drift: `neuman-browser` refuses to start on a pairing that cannot
+  work, and `doctor` fails its acceptance check on the same call. The browser
+  host also waits for the DevTools port to answer before it binds the browse
+  socket, because a Chromium running with nothing on that port is a
+  healthy-looking unit serving a socket nobody can use — which is the snap's
+  second confinement, `network-bind` not being connected by default.
+
+  **Rejected: refusing the snap outright.** It is what the package's own
+  `Recommends` installs on a stock 24.04 desktop, so a person whose only
+  browser is the snap would lose `browse` with no path forward. **Rejected:
+  keeping one profile path and requiring an override for the snap**, which
+  leaves the default install broken and moves the diagnosis to whoever hits it
+  first. **Rejected: detecting the snap by resolving the executable**, which
+  finds `/usr/bin/snap` and loses the fact; the two spellings that reach the
+  snap are named instead, and a false positive costs only an oddly-placed
+  profile.
+
+  **The cost:** "where is Neuman's browser profile" now has a conditional
+  answer, and a profile inside the snap's `common` directory goes with `snap
+  remove --purge`. The DevTools wait spends up to 20 seconds before declaring
+  a browser failed, which is a slower first `browse` after login on a loaded
+  machine. And the snap still needs a root-run `snap connect
+  chromium:network-bind`, which no client can do for the user: on Ubuntu the
+  free-software browser is the one with an extra step, which the postinst and
+  `platforms.md` say rather than hide.
+
 ## Platform ground truth
 
 Facts about Linux, Postgres, Python, and Nix that the design must assume.
@@ -3118,6 +3159,18 @@ hits one of these, add the encounter to `docs/gotchas.md`.
 - ASGI servers (uvicorn) leak ANSI codes and chatter into JSON log streams
   unless quieted explicitly.
 - Secure cookies need an https base URL even in tests.
+
+**Browsers**
+
+- A snap-confined Chromium reaches only non-hidden paths under `$HOME`. A
+  profile under `~/.local` is unopenable, and the browser reports it as exit 21
+  and a `SingletonLock` error that names neither (N184).
+- The chromium snap has no `network-bind` connection by default, so a browser
+  started with `--remote-debugging-port` runs and opens nothing until
+  `snap connect chromium:network-bind` (N184).
+- Ubuntu's `chromium` is `chromium-browser`, whose whole content is the snap;
+  `find_chromium()` preferring the name `chromium` therefore prefers the snap
+  to an installed `google-chrome-stable` (D110).
 
 **Nix and process**
 
