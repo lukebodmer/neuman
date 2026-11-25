@@ -40,7 +40,7 @@ from ...decision.harness.inbox import InboxMessage
 from ...decision.identity import resolve_session
 from ...decision.policy.ops import preview_policy
 from ...foundation import get_logger
-from .deps import COOKIE_NAME, acting_home
+from .deps import COOKIE_NAME, machine_facts
 
 if TYPE_CHECKING:  # pragma: no cover
     from starlette.websockets import WebSocket
@@ -254,6 +254,24 @@ async def _run_turn(
         grants = GrantStore(conn)
         source = services.policy_source()
 
+        # Where this turn runs. A branch names its machine (D112); a branch
+        # written before machines existed names none, and adopts the one this
+        # person is connected from now — once, pinned from then on. That is the
+        # migration path as well as the rule: it is what the appliance did
+        # before the noun existed, and it stops being ambiguous the first time
+        # the conversation is used.
+        machine = branch.machine
+        if machine is None:
+            machine = services.execution.newest_machine(principal.name)
+            if machine is not None:
+                await BranchStore(conn).set_machine(branch_id, machine)
+
+        # One read for the home, the drops and what the operator says is
+        # installed on that machine. Live where it can be, the last hello where
+        # it cannot, so a sleeping laptop composes the same policy as an awake
+        # one.
+        facts = await machine_facts(conn, services, principal, machine)
+
         async def policy_for(name: str):
             # Re-composed on every call, so a revocation lands mid-turn.
             return await preview_policy(
@@ -293,7 +311,9 @@ async def _run_turn(
             actor=Actor(
                 account_id=principal.account_id,
                 name=principal.name,
-                home=acting_home(services, principal),
+                machine=machine or "",
+                machine_notes=facts.notes,
+                home=facts.home,
             ),
             message=content,
             model=model,

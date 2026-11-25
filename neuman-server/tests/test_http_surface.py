@@ -309,8 +309,8 @@ def test_versions_names_the_product_without_a_session(client):
     assert response.json() == {
         "product": "neuman",
         "release": __version__,
-        "rpc_versions": [1],
-        "minimum_client": {"release": "0.1.0", "rpc": 1},
+        "rpc_versions": [2],
+        "minimum_client": {"release": "0.1.1", "rpc": 2},
     }
 
 

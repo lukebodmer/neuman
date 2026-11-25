@@ -14,7 +14,7 @@
 
 stdenvNoCC.mkDerivation {
   pname = "neuman-web-client";
-  version = "0.1.0";
+  version = "0.1.1";
   src = ./src;
 
   dontBuild = true;

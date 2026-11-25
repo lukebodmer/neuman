@@ -8,12 +8,14 @@ from .audit import AuditStore
 from .harness import EventStore, UsageStore
 from .identity import AccountStore, SessionStore
 from .images import ImageStore
+from .machines import CLIENT, MachineRow, MachineStore
 from .policy import GenerationStore, GrantStore
 from .sessions import SESSION_SORTS, AgentSessionStore, BranchStore
 from .settings import SettingsStore
 from .tasks import TaskRow, TaskRunRow, TaskRunStore, TaskStore
 
 __all__ = [
+    "CLIENT",
     "SESSION_SORTS",
     "AccountStore",
     "AgentSessionStore",
@@ -23,6 +25,8 @@ __all__ = [
     "GenerationStore",
     "GrantStore",
     "ImageStore",
+    "MachineRow",
+    "MachineStore",
     "SessionStore",
     "SettingsStore",
     "TaskRow",

@@ -44,6 +44,7 @@ async def _connected(hub: ClientHub) -> tuple[ClientConnection, FakeChannel]:
     connection = ClientConnection(
         channel,
         account="alice",
+        machine="ernest",
         tools=frozenset({"shell"}),
         home="/home/alice",
         drops="/home/alice/.local/state/neuman/drops",
@@ -61,7 +62,7 @@ async def _sent(channel: FakeChannel, count: int = 1) -> None:
 def _detached(dispatch_id: str, job_id: str = "7f3a9c") -> dict:
     return {
         "type": "detached",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "dispatch_id": dispatch_id,
         "sequence": 1,
         "job_id": job_id,
@@ -90,7 +91,7 @@ async def _detach(hub: ClientHub, connection: ClientConnection, channel: FakeCha
     connection.deliver(
         {
             "type": "started",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "dispatch_id": "d1c0ffee01",
             "sequence": 0,
             "pid": 7,
@@ -159,7 +160,7 @@ async def test_a_settled_frame_reaches_the_recorder_once():
 
     settled = {
         "type": "job_settled",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "job_id": "7f3a9c",
         "dispatch_id": "d1c0ffee01",
         "exit_code": 0,
@@ -210,7 +211,7 @@ async def test_a_settlement_read_before_its_detached_frame_is_not_lost():
     connection.deliver(
         {
             "type": "started",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "dispatch_id": "d1c0ffee01",
             "sequence": 0,
             "pid": 7,
@@ -222,7 +223,7 @@ async def test_a_settlement_read_before_its_detached_frame_is_not_lost():
     connection.deliver(
         {
             "type": "job_settled",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "job_id": "7f3a9c",
             "dispatch_id": "d1c0ffee01",
             "exit_code": 0,
@@ -265,7 +266,7 @@ async def test_ending_a_sessions_jobs_cancels_them_by_their_dispatch():
     other = await hub.end_session_jobs(user="alice", session_id="sess2")
 
     assert ended == ["7f3a9c"] and other == []
-    assert channel.sent[-1] == {"type": "cancel", "rpc_version": 1, "dispatch_id": "d1c0ffee01"}
+    assert channel.sent[-1] == {"type": "cancel", "rpc_version": 2, "dispatch_id": "d1c0ffee01"}
 
 
 # -- the harness: whether a call may become a job --------------------------------

@@ -88,6 +88,17 @@
           },
           "uniqueItems": true
         },
+        "machines": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "common.schema.json#/$defs/machineLabel"
+          },
+          "uniqueItems": true,
+          "description": "The machines this layer may dispatch to, by label. An empty or absent list is not a refusal: enrolment is the grant, so naming machines *narrows* to the ones a role should use and never widens past a machine the account's own client logged in from. A non-empty list is a ceiling checked at the gate like any other reach."
+        },
         "models": {
           "type": [
             "array",

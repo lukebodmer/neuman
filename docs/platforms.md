@@ -150,6 +150,33 @@ systemctl --user enable --now neuman-browser.service
   build id, the appliance's release, the session, the browser, the profile and
   the socket length; a clean exit is the first acceptance check.
 
+#### A machine work happens on, not a place to sit
+
+A client does not have to be beside a person. `programs.neuman-client.headless`
+(Nix) or `neuman-client run --no-ui` (the package) runs the executor with no
+window, and in the module's case untied from the graphical session, so it keeps
+running with nobody logged in at a screen. A lab server, a GPU box and a build
+host are then ordinary machines: sessions on them are started and watched from
+the computer their owner is at, and each person's client on the shared box runs
+as their own account, so the box's own permissions stay the boundary (D112).
+
+- **`loginctl enable-linger <user>` is required** on a machine that is meant to
+  stay on. Without it the user unit stops at logout and an always-on computer
+  becomes one that is only sometimes on — the failure looks like "the DGX is
+  offline" at the hour nobody is logged in. The module cannot set it: linger is
+  a property of the account, not of the client.
+- **A headless machine advertises no `browse` and no Blender.** `hello` lists
+  the tools that installation can run, and the core intersects it with the
+  grant, so the model is never offered a browser on a computer that has none.
+- **`--machine <name>`** names the computer on the appliance (`dgx`, `ernest`).
+  It defaults to the hostname, is recorded in the state directory and kept, so a
+  hostname change is not a new machine. Two computers with one name are one
+  machine to Neuman — which is the honest reading of a name and cheaper than a
+  second identifier nobody types.
+- **Jobs die with the client.** A restart, a crash or a reboot kills whatever
+  the machine was running (D98). Long work on an always-on box belongs to that
+  box's scheduler, not to a socket.
+
 **Updating.** The client updates itself, and nobody has to coordinate it
 (D111). `apt` installs a new `neuman-client` through unattended upgrades — the
 package adds `Neuman:stable` to `Unattended-Upgrade::Allowed-Origins` in

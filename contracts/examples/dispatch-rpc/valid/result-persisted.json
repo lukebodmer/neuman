@@ -1,1 +1,1 @@
-{"type": "result", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "sequence": 3, "exit_code": 137, "wall_ms": 200, "timed_out": true, "cancelled": false, "truncated": true, "persisted_out": "/home/alice/.local/share/neuman/client/spill/fs_read-x.out", "persisted_err": null}
+{"type": "result", "rpc_version": 2, "dispatch_id": "d1c0ffee12345678", "sequence": 3, "exit_code": 137, "wall_ms": 200, "timed_out": true, "cancelled": false, "truncated": true, "persisted_out": "/home/alice/.local/share/neuman/client/spill/fs_read-x.out", "persisted_err": null}

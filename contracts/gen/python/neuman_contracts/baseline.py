@@ -52,6 +52,17 @@ SCHEMA = json.loads(r"""
      ],
      "uniqueItems": true
     },
+    "machines": {
+     "description": "The machines this layer may dispatch to, by label. An empty or absent list is not a refusal: enrolment is the grant, so naming machines *narrows* to the ones a role should use and never widens past a machine the account's own client logged in from. A non-empty list is a ceiling checked at the gate like any other reach.",
+     "items": {
+      "$ref": "common.schema.json#/$defs/machineLabel"
+     },
+     "type": [
+      "array",
+      "null"
+     ],
+     "uniqueItems": true
+    },
     "max_iterations": {
      "description": "Model/tool steps one turn may take before the harness stops.",
      "minimum": 1,

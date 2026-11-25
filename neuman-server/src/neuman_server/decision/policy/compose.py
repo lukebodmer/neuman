@@ -33,6 +33,14 @@ class EffectivePolicy:
     files_read: tuple[str, ...] = ()
     files_write: tuple[str, ...] = ()
     models: tuple[str, ...] = ()
+    # The machines this policy may dispatch to, by label. Empty is not a
+    # refusal, unlike an empty `tools`: a tool is a capability the appliance
+    # holds and may withhold, while a machine is a place this person's own
+    # client logged in from, so enrolment is already the grant. Naming machines
+    # therefore *narrows* a role to the places its work belongs — a laptop-only
+    # role, a DGX-and-laptop role — and an absent list narrows nothing. See
+    # `gate.check_machine`.
+    machines: tuple[str, ...] = ()
     network: str = SCALAR_DEFAULTS["network"]
     auto_accept: str = SCALAR_DEFAULTS["auto_accept"]
     auto_accept_max: str = SCALAR_DEFAULTS["auto_accept_max"]
@@ -102,6 +110,7 @@ class EffectivePolicy:
             "files_read": list(self.files_read),
             "files_write": list(self.files_write),
             "models": list(self.models),
+            "machines": list(self.machines),
             "network": self.network,
             "auto_accept": self.auto_accept,
             "auto_accept_max": self.auto_accept_max,
@@ -131,6 +140,7 @@ def compose(layers: Iterable[tuple[str, PolicyFragment]]) -> EffectivePolicy:
         files_read=lists["files_read"],
         files_write=lists["files_write"],
         models=lists["models"],
+        machines=lists["machines"],
         network=scalars["network"],
         auto_accept=scalars["auto_accept"],
         auto_accept_max=scalars["auto_accept_max"],

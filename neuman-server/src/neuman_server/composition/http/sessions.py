@@ -25,6 +25,7 @@ from ...adapters.persistence import (
     GrantStore,
     ImageStore,
 )
+from ...adapters.persistence.machines import MACHINE_LABEL
 from ...decision.harness import PROJECTION_KINDS, project
 from ...decision.ops import fork as fork_op
 from ...decision.policy import gate
@@ -33,9 +34,8 @@ from ...decision.policy.ops import preview_policy
 from ...decision.policy.paths import attachable, within_reach
 from .deps import (
     Unauthorized,
-    acting_drops,
-    acting_home,
     connection,
+    machine_facts,
     require_csrf,
     require_principal,
     services_of,
@@ -157,6 +157,7 @@ def _branch_json(row: Any) -> dict[str, Any]:
         "forked_from": row.forked_from,
         "forked_from_seq": row.forked_from_seq,
         "inherited_event_count": row.inherited_event_count,
+        "machine": row.machine,
         "working_dir": row.working_dir,
         "attachments": list(row.attachments),
         # `None` rather than a list when the user has not narrowed, so the client
@@ -370,8 +371,22 @@ async def _create_session(request: Request) -> Response:
         if title is not None and (not isinstance(title, str) or len(title) > _MAX_TITLE):
             return JSONResponse({"error": "invalid_request"}, status_code=400)
 
+        # Where the conversation starts. The window names it — a session made on
+        # the laptop begins on the laptop — and a window too old to say gets the
+        # machine it is talking through, which is what the appliance did before
+        # machines existed. Never a guess between two computers: a session
+        # created while both are connected and with nobody naming one is the
+        # ambiguity this feature exists to remove, so the fallback is the
+        # *connected* one and there is no other candidate.
+        machine = body.get("machine") if isinstance(body, dict) else None
+        if machine is not None:
+            if not isinstance(machine, str) or not MACHINE_LABEL.fullmatch(machine):
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+        else:
+            machine = services_of(request).execution.newest_machine(principal.name)
+
         session, branch = await AgentSessionStore(conn).create(
-            account_id=principal.account_id, title=title
+            account_id=principal.account_id, title=title, machine=machine
         )
 
     # The session is the resource the caller created; its root branch rides
@@ -638,6 +653,7 @@ async def _patch_branch(request: Request) -> Response:
         except ValueError:
             return JSONResponse({"error": "invalid_request"}, status_code=400)
         named = (
+            "machine",
             "working_dir",
             "attachments",
             "tool_selection",
@@ -660,6 +676,54 @@ async def _patch_branch(request: Request) -> Response:
             grants=GrantStore(conn),
         )
 
+        if "machine" in body:
+            wanted = body["machine"]
+            if not isinstance(wanted, str) or not MACHINE_LABEL.fullmatch(wanted):
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+            if wanted != branch.machine:
+                allowed = gate.check_machine(wanted, policy)
+                if not allowed.allowed:
+                    return JSONResponse(
+                        {"error": "machine_not_granted", "detail": allowed.detail},
+                        status_code=403,
+                    )
+                # A move is safe exactly while nothing has run. Once a tool has
+                # returned anything, this branch's transcript holds output from
+                # one filesystem, and carrying it to another would make every
+                # path in the conversation mean two things with nothing saying
+                # which. The answer for that case is a fork, which keeps the
+                # history true by giving the move its own branch.
+                if await EventStore(conn).last_of_kind(branch_id, "tool_result") is not None:
+                    return JSONResponse(
+                        {
+                            "error": "branch_has_run",
+                            "detail": (
+                                "this branch has already run tools, so moving it would "
+                                "leave one transcript describing two computers. Fork it "
+                                "onto the other machine instead."
+                            ),
+                        },
+                        status_code=409,
+                    )
+                # The paths go with the machine, because a path on one computer
+                # is not a path on another. Cleared rather than reinterpreted:
+                # the same spelling existing in both places is the silent
+                # wrong-files case, and retyping a directory is the cheap half
+                # of that trade.
+                await branches.set_machine(branch_id, wanted)
+                await branches.set_working_dir(branch_id, None)
+                await branches.set_attachments(branch_id, [])
+                branch = await branches.visible_to(branch_id, principal.account_id)
+                if branch is None:  # pragma: no cover - removed mid-request
+                    return JSONResponse({"error": "not_found"}, status_code=404)
+
+        # Where this branch runs, and therefore which filesystem `$HOME`
+        # expands against and which directory a drop may come from. Read from the
+        # machine rather than from whoever happens to be connected: the two
+        # differed whenever a person had two computers, which is the whole
+        # reason this parameter exists.
+        facts = await machine_facts(conn, services, principal, branch.machine)
+
         if "working_dir" in body:
             working_dir = body["working_dir"]
             if working_dir is not None:
@@ -669,7 +733,7 @@ async def _patch_branch(request: Request) -> Response:
                 if not within_reach(
                     working_dir,
                     policy,
-                    home=acting_home(services, principal),
+                    home=facts.home,
                 ):
                     # Named rather than a bare 400: the user picked a real
                     # directory and the answer is that policy does not reach it,
@@ -705,8 +769,8 @@ async def _patch_branch(request: Request) -> Response:
                 if not attachable(
                     entry,
                     policy,
-                    home=acting_home(services, principal),
-                    drops=acting_drops(services, principal),
+                    home=facts.home,
+                    drops=facts.drops,
                 ):
                     return JSONResponse(
                         {
@@ -857,10 +921,41 @@ async def _fork_branch(request: Request) -> Response:
             directory=services.directory,
             grants=GrantStore(conn),
         )
-        home = acting_home(services, principal)
+        # Where the fork runs. Default the source's machine, because "continue
+        # this conversation" means the conversation's place unless somebody says
+        # otherwise; a request may name another, which is the one-click way to
+        # carry a conversation to the computer its work belongs on (D112).
+        machine = source.machine
+        if "machine" in body and body["machine"] is not None:
+            wanted = body["machine"]
+            if not isinstance(wanted, str) or not MACHINE_LABEL.fullmatch(wanted):
+                return JSONResponse({"error": "invalid_request"}, status_code=400)
+            allowed = gate.check_machine(wanted, policy)
+            if not allowed.allowed:
+                return JSONResponse(
+                    {"error": "machine_not_granted", "detail": allowed.detail},
+                    status_code=403,
+                )
+            machine = wanted
+
+        facts = await machine_facts(conn, services, principal, machine)
 
         warnings: list[str] = []
         working_dir = source.working_dir
+        if machine != source.machine:
+            # The inherited history is kept — it is what the fork is for — but
+            # its paths are not carried: a directory named on one computer is
+            # not that directory on another, and the two existing in both
+            # places is the silent wrong-files case.
+            if working_dir or source.attachments:
+                warnings.append(
+                    f"Continued on {machine}, so the working directory and "
+                    "attachments from the other computer were left behind."
+                )
+            working_dir = None
+
+        home = facts.home
+        drops = facts.drops
         if working_dir and not within_reach(working_dir, policy, home=home):
             warnings.append(
                 f"{working_dir} is outside what policy now reaches; "
@@ -869,8 +964,7 @@ async def _fork_branch(request: Request) -> Response:
             working_dir = None
 
         attachments = []
-        drops = acting_drops(services, principal)
-        for entry in source.attachments:
+        for entry in [] if machine != source.machine else source.attachments:
             if attachable(
                 entry,
                 policy,
@@ -880,7 +974,7 @@ async def _fork_branch(request: Request) -> Response:
                 attachments.append(entry)
             else:
                 warnings.append(f"{entry} is outside what policy now reaches and was dropped.")
-        if len(attachments) != len(source.attachments):
+        if len(attachments) != len(source.attachments) and machine == source.machine:
             warnings.append(
                 f"{len(source.attachments) - len(attachments)} attachment(s) dropped."
             )
@@ -900,6 +994,7 @@ async def _fork_branch(request: Request) -> Response:
                 source=source,
                 at_seq=at_seq,
                 side=side,
+                machine=machine,
                 working_dir=working_dir,
                 attachments=tuple(attachments),
                 tool_selection=tool_selection,

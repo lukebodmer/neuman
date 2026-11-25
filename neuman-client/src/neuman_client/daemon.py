@@ -49,7 +49,11 @@ __all__ = ["RPC_VERSION", "ClientDaemon", "hello_payload"]
 
 _log = logging.getLogger("neuman.client.daemon")
 
-RPC_VERSION = 1
+RPC_VERSION = 2
+
+# The one machine kind this build is. `ssh` is in the contract for a target the
+# client dials and is not built yet, so this build claims only what it is.
+MACHINE_KIND = "client"
 
 _RECONNECT_MIN_S = 1.0
 _RECONNECT_MAX_S = 30.0
@@ -169,13 +173,18 @@ class _Sink:
 
 
 def hello_payload(
-    *, home: str, drops: str, tools: Iterable[str], release: str = ""
+    *, machine: str, home: str, drops: str, tools: Iterable[str], release: str = ""
 ) -> dict[str, Any]:
     """The handshake frame, built in one place.
 
     The daemon sends it, and the VM probe that drives this same path sends it —
     a second hand-constructed copy is how the core came to refuse a probe the
     client had already moved past (N145).
+
+    `machine` is the named place this connection runs dispatches for (D112). It
+    is what a branch records and what a later turn reads, so a conversation
+    created on one computer and reopened on another is pointed at the filesystem
+    it was actually about.
 
     `home` is where `~` means on the machine this process runs on. It is reported
     rather than looked up by the core, which can only see its own host's answer
@@ -191,6 +200,7 @@ def hello_payload(
     return {
         "type": "hello",
         "rpc_version": RPC_VERSION,
+        "machine": {"label": machine, "kind": MACHINE_KIND},
         "home": home,
         "drops": drops,
         "tools": sorted(tools),
@@ -208,6 +218,7 @@ class ClientDaemon:
         self,
         *,
         transport: Transport,
+        machine: str,
         home: str,
         drops: str,
         host: ToolHost,
@@ -218,6 +229,11 @@ class ClientDaemon:
         build_id: str | None = None,
     ) -> None:
         self._transport = transport
+        # What this computer is called (D112). Stable across restarts: it is
+        # recorded in the state directory, because a hostname change is not a
+        # new computer and becoming a second machine would strand every
+        # conversation pointed at the first.
+        self._machine = machine
         self._home = home
         self._drops = drops
         self._host = host
@@ -377,6 +393,7 @@ class ClientDaemon:
         self._link.connecting()
         await connection.send(
             hello_payload(
+                machine=self._machine,
                 home=self._home,
                 drops=self._drops,
                 tools=self._host.names(),
@@ -406,6 +423,22 @@ class ClientDaemon:
         kind = first.get("type")
         if kind == "welcome":
             rpc = first.get("rpc_version")
+            # What the core recorded, echoed back. A disagreement is worth a line
+            # in the log rather than a refusal: the record is the core's, and a
+            # client that argued with it would be asserting an identity the
+            # appliance does not check anyway (D112). But two answers to "which
+            # computer is this" is exactly the kind of quiet split that makes a
+            # record untrustworthy, so it is said out loud.
+            recorded = first.get("machine")
+            if isinstance(recorded, dict) and recorded.get("label") not in (
+                None,
+                self._machine,
+            ):
+                _log.warning(
+                    "the appliance recorded this computer as %s, not %s",
+                    recorded.get("label"),
+                    self._machine,
+                )
             self._link.connected(
                 release=first.get("release") if isinstance(first.get("release"), str) else None,
                 rpc=rpc if isinstance(rpc, int) and not isinstance(rpc, bool) else None,
@@ -470,6 +503,19 @@ class ClientDaemon:
         arguments = args if isinstance(args, dict) else {}
         session = message.get("session_id")
         session_id = session if isinstance(session, str) and session else None
+        addressed = message.get("machine")
+        if isinstance(addressed, str) and addressed != self._machine:
+            # The core aimed this at another computer and it arrived here. That
+            # is a routing bug on the core's side, and the one thing this
+            # connection must not do with it is run the command: an `rm` meant
+            # for `dgx` executed on a laptop is the failure the machine field
+            # exists to make impossible, so it stops here instead.
+            await out.error(
+                "wrong_machine",
+                f"this dispatch is for {addressed!r}; this computer is {self._machine!r}",
+            )
+            inflight.pop(dispatch_id, None)
+            return
         try:
             daemon_tool = self._host.daemon_tool(tool)
             if daemon_tool is not None:

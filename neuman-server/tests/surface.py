@@ -40,6 +40,7 @@ from fakes import (
     FakeGateway,
     FakeGrants,
     FakeImages,
+    FakeMachines,
     FakePasswords,
     FakeRegistry,
     FakeRuntime,
@@ -131,6 +132,7 @@ class FakeBranchRow:
     forked_from_seq: int | None = None
     inherited_event_count: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    machine: str | None = None
     working_dir: str | None = None
     attachments: tuple[str, ...] = ()
     tool_selection: tuple[str, ...] | None = None
@@ -216,6 +218,9 @@ class FakeBranches:
     async def set_inherited(self, branch_id: str, inherited: int) -> bool:
         return await self._set(branch_id, inherited_event_count=inherited)
 
+    async def set_machine(self, branch_id: str, machine: str) -> bool:
+        return await self._set(branch_id, machine=machine)
+
     async def set_working_dir(self, branch_id: str, working_dir: str | None) -> bool:
         return await self._set(branch_id, working_dir=working_dir)
 
@@ -280,13 +285,18 @@ class FakeAgentSessions:
         return row
 
     async def create(
-        self, *, account_id: str, title: str | None = None, task_run_id: str | None = None
+        self,
+        *,
+        account_id: str,
+        title: str | None = None,
+        machine: str | None = None,
+        task_run_id: str | None = None,
     ):
         row = FakeAgentSessionRow(
             id=uuid.uuid4().hex, account_id=account_id, title=title, task_run_id=task_run_id
         )
         self.rows[row.id] = row
-        branch = FakeBranchRow(id=uuid.uuid4().hex, session_id=row.id)
+        branch = FakeBranchRow(id=uuid.uuid4().hex, session_id=row.id, machine=machine)
         self.branches[branch.id] = branch
         row.open_branch_id = branch.id
         row.branch_id = branch.id
@@ -919,6 +929,7 @@ class Surface:
     agent_sessions: FakeAgentSessions
     events: FakeEvents
     images: FakeImages
+    machines: FakeMachines
     audit: FakeAudit
     grants: FakeGrants
     usage: FakeUsage
@@ -1016,6 +1027,7 @@ def build_surface(
     task_run_store = FakeTaskRunStore()
     events = FakeEvents()
     images = FakeImages()
+    machines = FakeMachines()
     audit = FakeAudit()
     grants = FakeGrants()
     usage = FakeUsage()
@@ -1050,6 +1062,7 @@ def build_surface(
         "BranchStore": lambda conn: branch_store,
         "EventStore": lambda conn: events,
         "ImageStore": lambda conn: images,
+        "MachineStore": lambda conn: machines,
         "AuditStore": lambda conn: audit,
         "GrantStore": lambda conn: grants,
         "UsageStore": lambda conn: usage,
@@ -1167,6 +1180,7 @@ def build_surface(
         agent_sessions=agent_sessions,
         events=events,
         images=images,
+        machines=machines,
         audit=audit,
         grants=grants,
         usage=usage,

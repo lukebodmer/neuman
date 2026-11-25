@@ -104,11 +104,18 @@ this document.
 - Cancellation is a server→client message; the client kills the process tree.
 - The RPC is `contracts/schemas/dispatch-rpc.schema.json`, carried by one
   WebSocket at `/client` on the session surface (see §4a).
-- **AGREED:** one client per account — the connection the hub holds for the
-  account owns every one of its sessions' calls, and a second connection
-  replaces the first (`ClientHub.register`), so dispatches never race between
-  two machines. No `target` field: a field nothing reads is forbidden, and the
-  schema is extensible if a fleet ever exists.
+- **AGREED:** one client per **(account, machine)** — the connection the hub
+  holds for a machine owns that machine's calls, and a second connection *for the
+  same machine* replaces the first (`ClientHub.register`), so a reconnecting
+  socket cannot race the one it replaced. A connection from a different machine
+  is a second channel and is kept: the machine is a named place dispatches run,
+  and a branch names one (`session_branches.machine`, D112).* There is still no
+  field on the wire by which a *client* asks for work another client can see: the
+  caller dispatches to a machine, and the hub either has that machine or answers
+  `unavailable`. The pre-D112 note read "no `target` field: a field nothing reads
+  is forbidden, and the schema is extensible if a fleet ever exists" — the fleet
+  arrived, and what it needed was one field, on `dispatch`, read by the client to
+  refuse work aimed at another computer.
 
 ### 4a. The transport shape
 
@@ -153,8 +160,12 @@ surface (keys, `Match` blocks, forwarding) for a channel that already has one.
   problem. This belongs in `security-model.md`'s "does not cover".
 - **The audit is reported, not attested.** The chain is still tamper-evident as a
   record; it records a claim from a machine the organisation does not control.
-- **The record names the client.** A dispatch entry carries which machine executed
-  it: there is one execution site per turn, but several possible machines.
+- **The record names the client.** A dispatch entry carries which machine
+  executed it: there is one execution site per turn, but several possible
+  machines. `tool.dispatch`, `tool.denied` and `job.detached` carry `machine`
+  (D112). What that records is a claim from the machine, on a connection the
+  login bound to the account — the name is not attested, and cannot be, because
+  the two ends are different computers (D67).
 - **The client is security-critical**, on the operating system it ships for (Linux
   first).
 

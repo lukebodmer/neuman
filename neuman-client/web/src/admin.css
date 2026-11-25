@@ -1813,3 +1813,15 @@ body.admin button.admin-attention-go {
 .admin-tool-head .admin-tile-badges {
   justify-content: flex-start;
 }
+
+/* The machines card: one row per (account, computer), and the notes field an
+   operator writes (D112). A machine is scoped to an account because reach is,
+   so one physical box appears once per person and the label is what groups them
+   — which is why the name is bold and the account beside it is not. */
+.machine-list { display: flex; flex-direction: column; gap: 12px; }
+.machine-row { display: flex; flex-direction: column; gap: 6px; }
+.machine-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.machine-head strong { font-family: ui-monospace, monospace; font-size: 13px; }
+.machine-on { color: var(--accent); font-size: 12px; }
+.machine-notes-row { display: flex; gap: 8px; align-items: center; }
+.machine-notes { flex: 1 1 auto; min-width: 0; font-size: 12px; }

@@ -10,9 +10,10 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ...adapters.persistence import AccountStore, SessionStore
+from ...adapters.persistence import CLIENT, AccountStore, SessionStore
 from ...decision.identity import Principal, resolve_session, tokens
 from ...foundation import bind
 
@@ -21,10 +22,11 @@ if TYPE_CHECKING:  # pragma: no cover
 
 __all__ = [
     "COOKIE_NAME",
+    "MachineFacts",
     "Unauthorized",
-    "acting_drops",
     "acting_home",
     "connection",
+    "machine_facts",
     "require_csrf",
     "require_principal",
     "services_of",
@@ -34,29 +36,79 @@ COOKIE_NAME = "neuman_session"
 CSRF_HEADER = "x-csrf-token"
 
 
-def acting_home(services: Any, principal: Principal) -> str | None:
-    """Where `~` means for the machine that will run the dispatch, if one is connected.
+@dataclass(frozen=True, slots=True)
+class MachineFacts:
+    """What one turn needs to know about the place it runs (D112).
+
+    Assembled once per turn and per route rather than asked for field by field,
+    because the pieces come from two places — the live connection and the last
+    hello the database kept — and a caller that read them separately could
+    describe a machine that is half online.
+    """
+
+    label: str | None
+    kind: str
+    home: str | None
+    drops: str | None
+    # What an operator says is installed here. Told to the model, because the
+    # handshake advertises Neuman tools and says nothing about `PATH`.
+    notes: str = ""
+    online: bool = False
+
+
+def acting_home(services: Any, principal: Principal, machine: str | None = None) -> str | None:
+    """Where `~` means for a machine, if its client is connected.
 
     Policy naming `$HOME` expands into directories under an account's home, and
     only the client knows which directory that is: it reports its home on
     `hello` (N145). With nothing connected there is no answer — an account is
     not a host account (D67), so this server has no home of its own to offer —
-    and a `$HOME` grant reaches nothing until a client says where it is. That is
-    also the only time anything could run.
+    and a `$HOME` grant reaches nothing until a client says where it is.
+
+    `machine` absent asks the hub for the account's most recently connected
+    machine, which is what every caller did before machines existed.
     """
 
-    return services.execution.home(principal.name)
+    return services.execution.home(principal.name, machine)
 
 
-def acting_drops(services: Any, principal: Principal) -> str | None:
-    """The connected client's drops directory, if one is connected (D102).
+async def machine_facts(
+    conn: Any, services: Any, principal: Principal, machine: str | None
+) -> MachineFacts:
+    """What a named machine is and where `~` means there, online or not.
 
-    Reported on `hello` like the home, and for the same reason: it is a path on
-    the client's machine. With nothing connected a dropped file cannot be
-    attached, which is also when nothing could read it.
+    Live first, then the machine's last hello. The fallback is the point: a
+    branch names a machine, and policy for that branch has to compose the same
+    way whether the computer is awake or asleep, or the session's reach would
+    change shape when a lid closed. A home directory does not move, so the last
+    answer stays right until the machine says otherwise.
+
+    A machine with no row has never connected on this account, so every field
+    is empty: `$HOME` then names nothing, which is the same answer as a machine
+    that is merely away and never a directory on the wrong computer.
+
+    One read for four fields rather than four helpers, because they are four
+    answers about one row and the routes that ask want more than one of them.
     """
 
-    return services.execution.drops(principal.name)
+    from ...adapters.persistence import MachineStore
+
+    row = None
+    if machine is not None:
+        row = await MachineStore(conn).get(principal.account_id, machine)
+
+    live_home = services.execution.home(principal.name, machine)
+    live_drops = services.execution.drops(principal.name, machine)
+    return MachineFacts(
+        label=machine,
+        kind=row.kind if row is not None else CLIENT,
+        home=live_home if live_home is not None else (row.home if row is not None else None),
+        drops=(
+            live_drops if live_drops is not None else (row.drops if row is not None else None)
+        ),
+        notes=row.notes if row is not None else "",
+        online=services.execution.connected(principal.name, machine),
+    )
 
 
 class Unauthorized(Exception):

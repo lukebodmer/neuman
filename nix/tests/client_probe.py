@@ -39,6 +39,7 @@ from pathlib import Path
 
 async def run(request: dict) -> int:
     from neuman_client.daemon import hello_payload
+    from neuman_client.machine import default_label
     from neuman_client.session import Session, SessionError
     from neuman_client.transport import COOKIE, WebSocketTransport
 
@@ -70,6 +71,11 @@ async def run(request: dict) -> int:
     try:
         await connection.send(
             hello_payload(
+                # The probe is a client on this machine, and says so: a hello
+                # without a machine is refused now, because a dispatch has to
+                # land somewhere nameable (D112). Naming this host is the truth
+                # about where the probe's dispatches would run.
+                machine=default_label(),
                 # The client asks the account database on its own host; a probe
                 # is not the client, and what this proves is the core's side of
                 # the handshake, so this process's own home is answer enough.

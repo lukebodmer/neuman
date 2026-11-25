@@ -55,7 +55,30 @@ a model that failed to load), each with a link to the page that fixes it.
 Below it: who is active and what is running now, today's usage, and the most
 recent configuration changes. The same card lists the computers with a client
 connected and the release each one runs — the line to read before installing a
-release whose client floor moved (D111).
+release whose client floor moved (D111). One row per **(account, computer)**, so
+on a shared box it answers "who is on the dgx" rather than "somebody is".
+
+### Machines
+
+Every computer any account's client has connected from, what it runs, and
+whether it is online now (D112). A machine is a named place dispatches execute;
+it is scoped to an account, because what each person can read there differs, so
+one physical box appears once per person and the label is what groups them.
+
+- **Notes** is the only field you write, and it is the one the appliance cannot
+  learn: what is installed there. "FreeSurfer 7.4, ANTs 2.5, CUDA 12, atlas at
+  /data/atlases/MNI152" stops the model discovering a missing toolkit one
+  refused turn at a time, on every conversation. It is told to the model and
+  grants nothing — a note about a GPU does not put a GPU in the tool's reach.
+- Everything else on the row is reported by that machine's client at its
+  handshake: the home directory `$HOME` expands into, the tools it can run, its
+  release. It survives the connection, which is why a `$HOME` grant expands the
+  same way whether the computer is awake or asleep.
+- **A role may name machines**, which narrows where an account's work runs: a
+  laptop-only role, or one that spans a laptop and a lab server. Naming none
+  narrows nothing — a machine is a place the account's own client logged in from,
+  so enrolment is already the grant (see `docs/decisions.md` D112 for why the
+  asymmetry with tools is deliberate).
 
 ### Accounts
 

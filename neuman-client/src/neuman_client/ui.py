@@ -211,6 +211,7 @@ class UiServer:
         drops: DropStore | None = None,
         link: Link | None = None,
         retry: Callable[[], None] | None = None,
+        machine: str = "",
     ) -> None:
         self._web_root = Path(web_root)
         self._server = server_url.rstrip("/")
@@ -234,6 +235,12 @@ class UiServer:
         # Ask the daemon to try again now. Called when a login stores a session,
         # because the most common refusal a retry can fix is "not signed in yet".
         self._retry = retry
+        # What this computer is called on the appliance (D112). The page needs it
+        # to answer "is this conversation running here, or somewhere else?" — the
+        # one comparison a person sitting at the window cannot make for
+        # themselves, because the window is served by the machine they are at and
+        # the branch may name another.
+        self._machine = machine
         self._sweeping: asyncio.Task[None] | None = None
         self._server_socket: asyncio.AbstractServer | None = None
 
@@ -601,9 +608,13 @@ class UiServer:
         if self._link is None:
             # A UI with no executor beside it: nothing to report, and a banner
             # about a daemon that was never started would be a lie.
-            body = json.dumps({"state": "ui_only", "visible": False}).encode("utf-8")
+            body = json.dumps(
+                {"state": "ui_only", "visible": False, "machine": self._machine}
+            ).encode("utf-8")
         else:
-            body = json.dumps(self._link.to_json()).encode("utf-8")
+            body = json.dumps({**self._link.to_json(), "machine": self._machine}).encode(
+                "utf-8"
+            )
         writer.write(
             _response(
                 200,

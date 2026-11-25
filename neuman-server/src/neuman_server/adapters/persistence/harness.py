@@ -316,6 +316,8 @@ class EventStore:
         through_seq: int,
         at_seq: int | None,
         side: str | None,
+        machine: str | None = None,
+        from_machine: str | None = None,
     ) -> int:
         """Copy one branch's projected prefix into another; return the row count.
 
@@ -327,7 +329,12 @@ class EventStore:
         copy of a 13 MB transcript does not become 26 MB.
 
         The marker is seq 1 and records the source, the boundary and how many
-        rows were copied. The copied rows follow, renumbered from 2, so a
+        rows were copied. It also records the machine this branch runs on and
+        the one the copied prefix ran on, because a fork may continue a
+        conversation on another computer (D112): the inherited events name paths
+        on the old one, and the marker is where a later reader — a person, or a
+        model reading its own transcript — learns where the break is.
+        The copied rows follow, renumbered from 2, so a
         branch's log starts at 1 and is contiguous. `ts`, `message_id` and
         `redactions` are kept verbatim — the transcript is when it was said, not
         when it was copied.
@@ -371,6 +378,8 @@ class EventStore:
                             "at_seq": at_seq,
                             "side": side,
                             "events": copied,
+                            "machine": machine,
+                            "from_machine": from_machine,
                         }
                     ),
                 ),

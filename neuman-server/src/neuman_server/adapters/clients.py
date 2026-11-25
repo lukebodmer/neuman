@@ -7,9 +7,16 @@ the route before the connection is registered here, so the hub itself is
 transport-shaped and holds no authority of its own.
 
 The core is the RPC *client*: it sends dispatches and collects results. It holds
-one connection per account, and a dispatch for an account with no connection is
-`unavailable` — reported as an error, never queued and never run somewhere else,
-because there is nowhere else this architecture runs a tool.
+one connection per **(account, machine)** — a machine being the named place a
+dispatch runs (D112) — and a dispatch for a machine with no connection is
+`unavailable` — reported as an error, never queued and never run somewhere
+else, because there is nowhere else this architecture runs a tool.
+
+It used to hold one per account, and a second connection replaced the first.
+That was right while a person had one computer and wrong the moment they had
+two: opening a laptop disconnected the desktop, killed its jobs and reported
+them as ended, and left a turn mid-dispatch with nowhere to go. Keying by
+machine is what makes two computers two channels instead of one fight.
 
 **Background jobs are tracked here** (D98). A dispatch that ends `detached` is
 a process still running on the client; the connection keeps which session and
@@ -31,6 +38,7 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from time import monotonic
 from typing import Any, Protocol
 
 from ..decision.harness.ports import DispatchOutcome
@@ -58,7 +66,7 @@ _log = get_logger("neuman.server.adapters.clients")
 # updated yet (D111). The handshake settles on one per connection and every
 # frame on that socket carries it, so a client one shape behind keeps working
 # instead of reconnecting forever against a close it cannot read.
-RPC_VERSION = 1
+RPC_VERSION = 2
 SUPPORTED_RPC_VERSIONS = frozenset({RPC_VERSION})
 
 # The oldest client this build accepts. It moves with the set — dropping a shape
@@ -68,8 +76,13 @@ SUPPORTED_RPC_VERSIONS = frozenset({RPC_VERSION})
 # number says. It is a literal rather than this build's version because the
 # floor names the release that *first* spoke the minimum shape, which outlives
 # the build that raised it.
+#
+# 0.1.0 spoke shape 1, which had no machine. There is no installed base to
+# carry, and keeping a shape whose hello cannot name the machine would keep a
+# code path that invents one — which is the ambiguity this release removes. So
+# the set has one member and the floor is the release that speaks it.
 MIN_CLIENT_RPC_VERSION = min(SUPPORTED_RPC_VERSIONS)
-MIN_CLIENT_RELEASE = "0.1.0"
+MIN_CLIENT_RELEASE = "0.1.1"
 
 # How many unclaimed settlements to hold. One is the race this exists for; a
 # handful covers a batch of jobs that all ended as their dispatches landed, and
@@ -94,6 +107,10 @@ class Job:
     tool: str
     session_id: str
     branch_id: str | None
+    # The machine whose client holds the process. Carried so the settlement the
+    # core records names the computer the job ran on, and so two machines'
+    # jobs of one session can be told apart in the record.
+    machine: str = ""
     # Where its stdout goes on the client, for the notice when the connection
     # takes the job with it and `job_output` can no longer reach it.
     persisted_out: str | None = None
@@ -156,6 +173,7 @@ class ClientConnection:
         channel: Channel,
         *,
         account: str,
+        machine: str,
         tools: frozenset[str],
         home: str,
         drops: str,
@@ -164,7 +182,15 @@ class ClientConnection:
     ) -> None:
         self._channel = channel
         self.account = account
+        # The named place this socket runs dispatches for (D112). Scoped to the
+        # account by `ClientHub`'s key, so it is a label rather than an identity
+        # claim: the session already named the principal.
+        self.machine = machine
         self.tools = tools
+        # When this socket said hello. The only caller that needs it is the
+        # fallback below, which has to pick one of an account's machines when
+        # nobody named one; "the most recent" has to mean it.
+        self.connected_at = monotonic()
         # The shape this connection settled on in the handshake, out of
         # `SUPPORTED_RPC_VERSIONS`. Every frame written down this socket carries
         # it, so one build can serve a client one shape behind without guessing
@@ -286,6 +312,7 @@ class ClientConnection:
                 tool=str(request["tool"]),
                 session_id=str(request.get("session_id") or ""),
                 branch_id=branch_id,
+                machine=self.machine,
                 persisted_out=outcome.persisted_out,
             )
             early = self._unclaimed.pop(outcome.job_id, None)
@@ -402,46 +429,63 @@ class ClientHub:
     ) -> None:
         self._started_timeout = started_timeout_s
         self._max_output_bytes = max_output_bytes
-        self._clients: dict[str, ClientConnection] = {}
+        # (account, machine) -> the connection for that pair. The machine is part
+        # of the key because a person may be at more than one computer at once,
+        # and a channel per account meant the second one evicted the first.
+        self._clients: dict[tuple[str, str], ClientConnection] = {}
         # Set by the composition, which owns the stores a job's end is
         # recorded in. Unset, a job's end goes unrecorded — tests that do not
         # care, and nothing else.
         self.on_job_settled: JobSettled | None = None
 
     async def register(self, connection: ClientConnection) -> None:
-        """Take over an account's channel. One client per account."""
+        """Take over a machine's channel. One client per (account, machine).
 
-        previous = self._clients.get(connection.account)
+        A second connection *for the same machine* still replaces the first:
+        that is a reconnect whose old socket the network has not noticed yet,
+        and leaving dispatches to race between two sockets of one computer is
+        how a result arrives on the wrong one. A connection from a *different*
+        machine is a second channel and is kept.
+        """
+
+        key = (connection.account, connection.machine)
+        previous = self._clients.get(key)
         connection.on_job_settled = self.on_job_settled
-        self._clients[connection.account] = connection
+        self._clients[key] = connection
         if previous is not None:
-            # A second connection replaces the first rather than leaving
-            # dispatches to race between them.
             previous.disconnect()
             await previous.close()
         _log.info(
             "client connected",
-            fields={"account": connection.account, "tools": len(connection.tools)},
+            fields={
+                "account": connection.account,
+                "machine": connection.machine,
+                "tools": len(connection.tools),
+            },
         )
 
     def unregister(self, connection: ClientConnection) -> None:
         """Drop a connection that closed, if it is still the live one."""
 
-        if self._clients.get(connection.account) is connection:
-            del self._clients[connection.account]
+        key = (connection.account, connection.machine)
+        if self._clients.get(key) is connection:
+            del self._clients[key]
 
     async def drop(self, user: str) -> None:
-        """Close an account's channel now.
+        """Close every channel this account holds, on every machine.
 
         Called when the account is disabled or its password is reset: a
         long-lived socket authenticated before the change must not keep
-        receiving dispatches after it.
+        receiving dispatches after it. Every machine, because the revocation is
+        the account's and leaving one computer's socket open would be the hole
+        the revocation was made against.
         """
 
-        connection = self._clients.pop(user, None)
-        if connection is not None:
-            connection.disconnect()
-            await connection.close()
+        for key in [key for key in self._clients if key[0] == user]:
+            connection = self._clients.pop(key, None)
+            if connection is not None:
+                connection.disconnect()
+                await connection.close()
 
     def connected_users(self) -> list[str]:
         """Every account with a client connected now, by name.
@@ -452,49 +496,84 @@ class ClientHub:
         exactly when someone was looking for the versions (D111).
         """
 
-        return [client["account"] for client in self.connected_clients()]
+        return sorted({connection.account for connection in self._live()})
 
     def connected_clients(self) -> list[dict[str, Any]]:
-        """Every account with a client connected now, and what that client is.
+        """Every machine connected now, and what that machine is.
 
-        The versions are here rather than in a second call because the question
-        an operator asks before installing a release whose floor moved is
-        exactly "which machines are behind" (D111), and the answer is this one
-        snapshot.
+        One row per (account, machine) rather than one per account, because the
+        question an operator asks of a shared box — "who is on the dgx" — is
+        unanswerable from a list of names once a person may be on two computers
+        at once. The versions travel for D111's reason: the question before an
+        update whose floor moved is which machines are behind.
         """
 
         return [
             {
-                "account": user,
+                "account": connection.account,
+                "machine": connection.machine,
                 "release": connection.release,
                 "rpc": connection.rpc_version,
             }
-            for user, connection in sorted(self._clients.items())
-            if not connection.closed
+            for connection in sorted(self._live(), key=lambda c: (c.account, c.machine))
         ]
 
-    def connected(self, user: str) -> bool:
-        """Whether a dispatch for `user` has anywhere to go."""
+    def _live(self) -> list[ClientConnection]:
+        return [c for c in self._clients.values() if not c.closed]
 
-        connection = self._clients.get(user)
-        return connection is not None and not connection.closed
+    def _connection(self, user: str, machine: str | None) -> ClientConnection | None:
+        """The channel for a machine, or — for a caller that names none — the newest.
 
-    def available(self, user: str) -> frozenset[str] | None:
+        The `None` branch is a fallback for callers that predate machines and
+        still have not named one: a task run, and a browse request that names no
+        branch. It is exactly the old rule (the most recently connected client),
+        it is what those callers did before, and it disappears as each is given
+        a machine of its own. Nothing on the branch path uses it — a branch
+        always names its machine, because a branch that guessed would be the
+        bug this table exists to end.
+        """
+
+        if machine is not None:
+            connection = self._clients.get((user, machine))
+            return connection if connection is not None and not connection.closed else None
+        candidates = [c for c in self._live() if c.account == user]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda c: c.connected_at)
+
+    def newest_machine(self, user: str) -> str | None:
+        """The machine this account most recently connected from, if any.
+
+        Two callers need it, and both are transitional: a branch written before
+        machines existed adopts it once on its next turn, and a browse request
+        that names no branch asks the machine the person is sitting at. Nothing
+        on the branch path guesses — a branch always names its machine.
+        """
+
+        connection = self._connection(user, None)
+        return None if connection is None else connection.machine
+
+    def connected(self, user: str, machine: str | None = None) -> bool:
+        """Whether a dispatch for this user — and machine, if named — has anywhere to go."""
+
+        return self._connection(user, machine) is not None
+
+    def available(self, user: str, machine: str | None = None) -> frozenset[str] | None:
         """The tools the connected client advertised, or None with no client.
 
         Used to narrow the advertisement, so the other direction of the
         handshake is closed too: the client already tells the core what it can
         run, and a model should not be offered a tool the machine in front of it
-        has no program for.
+        has no program for. A headless machine is the ordinary case: it runs
+        `shell` and `fs_read` and has no browser, and this is what says so
+        without a policy of its own.
         """
 
-        connection = self._clients.get(user)
-        if connection is None or connection.closed:
-            return None
-        return connection.tools
+        connection = self._connection(user, machine)
+        return None if connection is None else connection.tools
 
-    def home(self, user: str) -> str | None:
-        """Where `~` means for the connected client, or None with no client.
+    def home(self, user: str, machine: str | None = None) -> str | None:
+        """Where `~` means on that machine, or None with no client.
 
         None is not an error: the HTTP surfaces stay reachable while a daemon is
         reconnecting. There is no fallback, because an account is not a host
@@ -502,18 +581,14 @@ class ClientHub:
         `$HOME` grant reaches nothing until a client says where it is.
         """
 
-        connection = self._clients.get(user)
-        if connection is None or connection.closed:
-            return None
-        return connection.home
+        connection = self._connection(user, machine)
+        return None if connection is None else connection.home
 
-    def drops(self, user: str) -> str | None:
-        """The connected client's drops directory, or None with no client (D102)."""
+    def drops(self, user: str, machine: str | None = None) -> str | None:
+        """That machine's drops directory, or None with no client (D102)."""
 
-        connection = self._clients.get(user)
-        if connection is None or connection.closed:
-            return None
-        return connection.drops
+        connection = self._connection(user, machine)
+        return None if connection is None else connection.drops
 
     async def dispatch(
         self,
@@ -523,15 +598,17 @@ class ClientHub:
         tool: str,
         args: dict[str, Any],
         wait_ms: int,
+        machine: str | None = None,
         lifetime_ms: int | None = None,
         working_dir: str | None = None,
         surfaces: dict[str, list[str]] | None = None,
         session_id: str | None = None,
         branch_id: str | None = None,
     ) -> DispatchOutcome:
-        connection = self._clients.get(user)
-        if connection is None or connection.closed:
-            raise ClientUnavailable(f"no client connected for {user}")
+        connection = self._connection(user, machine)
+        if connection is None:
+            where = f"{machine!r}" if machine else "any machine"
+            raise ClientUnavailable(f"{user} has no client connected on {where}")
         if tool not in connection.tools:
             # The handshake's whole purpose: asking would be a round trip that
             # ends in the same answer, and the core is the one that should have
@@ -547,6 +624,10 @@ class ClientHub:
             "type": "dispatch",
             "rpc_version": connection.rpc_version,
             "dispatch_id": dispatch_id,
+            # The machine the core believes this socket is. The client refuses
+            # a dispatch naming another one, so a routing bug here is a refusal
+            # at the far end rather than a command run on the wrong computer.
+            "machine": connection.machine,
             "tool": tool,
             "args": args,
             "wait_ms": wait_ms,
@@ -566,23 +647,27 @@ class ClientHub:
             branch_id=branch_id,
         )
 
-    async def cancel(self, *, user: str, dispatch_id: str) -> None:
-        connection = self._clients.get(user)
+    async def cancel(self, *, user: str, dispatch_id: str, machine: str | None = None) -> None:
+        connection = self._connection(user, machine)
         if connection is not None:
             await connection.cancel(dispatch_id)
 
     async def end_session_jobs(self, *, user: str, session_id: str) -> list[str]:
-        """Kill every job a session started, returning their ids.
+        """Kill every job a session started, on every machine, returning their ids.
 
         For a session that is over and cannot follow them — a task's agent
         step. The client kills each by the dispatch it began as, and each end
-        is recorded as it arrives, as any other job's is.
+        is recorded as it arrives, as any other job's is. Every machine because
+        one conversation can have left work running on more than one computer,
+        and a job that outlives its session is an effect with nobody watching.
         """
 
-        connection = self._clients.get(user)
-        if connection is None or connection.closed:
-            return []
-        ended = [job for job in connection.jobs.values() if job.session_id == session_id]
-        for job in ended:
-            await connection.cancel(job.dispatch_id)
-        return [job.job_id for job in ended]
+        ended: list[str] = []
+        for connection in self._live():
+            if connection.account != user:
+                continue
+            jobs = [job for job in connection.jobs.values() if job.session_id == session_id]
+            for job in jobs:
+                await connection.cancel(job.dispatch_id)
+                ended.append(job.job_id)
+        return ended

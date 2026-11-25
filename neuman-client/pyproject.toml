@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuman-client"
-version = "0.1.0"
+version = "0.1.1"
 description = "Run Neuman's tools on the user's own machine"
 requires-python = ">=3.12"
 dependencies = ["websockets"]

@@ -6,6 +6,6 @@ model sees and does, and what lands in the audit chain. It never enforces — th
 kernel does that — and it never runs as root.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = ["__version__"]

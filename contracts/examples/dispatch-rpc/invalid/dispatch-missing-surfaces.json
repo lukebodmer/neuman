@@ -1,1 +1,1 @@
-{"type": "dispatch", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "tool": "fs_read", "args": {"path": "/home/alice/notes.txt"}, "wait_ms": 5000, "lifetime_ms": 5000}
+{"type": "dispatch", "rpc_version": 2, "dispatch_id": "d1c0ffee12345678", "tool": "fs_read", "args": {"path": "/home/alice/notes.txt"}, "wait_ms": 5000, "lifetime_ms": 5000}

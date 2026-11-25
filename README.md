@@ -243,9 +243,9 @@ contract version. Today the appliance:
   Python, git, the web, a real browser, and Blender as the first tool package;
 - serves open-weight models from its own GPU, downloaded at a pinned,
   hash-checked version, beside any hosted provider an operator adds;
-- holds conversations with forks, a working directory, files dropped on the
-  window and images for vision models, and keeps long-running commands as
-  background jobs the person can follow and stop;
+- holds conversations with forks, a **machine they run on**, a working directory,
+  files dropped on the window and images for vision models, and keeps long-running
+  commands as background jobs the person can follow and stop;
 - runs **tasks**, which are recipes of commands and agent steps on a schedule, each agent
   step inside the narrower of its envelope and the owner's live policy;
 - records every governed decision in a verifiable chain, and can be backed up

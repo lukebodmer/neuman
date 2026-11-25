@@ -3185,6 +3185,113 @@ Final until explicitly reversed here, with a new entry.
   sees the banner as the first it hears of it — which is why the floor is raised
   in a release whose notes say so, not in the quiet one.
 
+- **D112 — A machine is a named place dispatches run, and a branch names
+  one.** The appliance held one client connection per account and replaced it
+  on the next connect. With one computer that is the whole of a client; with
+  two it is the wrong shape, and it failed in four ways at once. Opening a
+  laptop disconnected the desktop, killed its jobs and recorded them as
+  `disconnected`. A branch's `working_dir` was an absolute path with no machine
+  attached, so a conversation created on one computer and reopened on another
+  was launched into a directory belonging to the other — or worse, to a
+  directory that exists on both and holds different files. The prompt said
+  "on their machine" and never which. And `SPEC.md` §5 promised that a dispatch
+  entry carries which machine executed it, which nothing did.
+
+  **The noun.** A *machine* is a named place dispatches execute: a client's
+  host today, an ssh target later. The row is what a socket used to be — last
+  home, drops, tools, release — so the facts survive the connection. The
+  invariant everything else rests on:
+
+      A machine is the unit of a filesystem. Everything that names a path
+      belongs to one — a working directory, an attachment, a drop, `$HOME`,
+      a dispatch's surfaces, a job's spill files.
+
+  **Scoped to the account, not global.** `machines` is keyed
+  `(account_id, label)`, because reach differs per person: Alice's `dgx` and
+  Bob's `dgx` are one physical box and two machines, since the files each can
+  read there differ. That is also why the label needs no attestation — the
+  connection is already bound to an account by the login that produced it, so a
+  name can only ever point at one of that account's own places, and a dishonest
+  one widens nothing (`shell` and `python` are unchecked, and a client wanting
+  more would not ask). **The cost:** the machine on a dispatch entry is a claim,
+  like every other client-reported fact, and the record is of the report.
+
+  **A branch names its machine, and the window is somewhere else.** A session's
+  root branch records the machine it was created from; a turn reads it and
+  dispatches there. The window may be on any computer at any time — that is the
+  roaming case, and it works because the window is a viewer and the branch is
+  the address. The model never chooses: it is told the machine, exactly as it is
+  told a working directory, because a targeting decision that lands on the
+  wrong computer is silent wrong data rather than an error.
+
+  **Moving is a fork, unless nothing has run.** `PATCH` a branch's machine is
+  allowed while the branch has no `tool_result` — nothing in the transcript
+  names a filesystem yet — and refused with `branch_has_run` after that. The
+  remedy is a fork, which keeps the old branch true to its own machine and marks
+  the move in its first event. Either way `working_dir` and `attachments` are
+  cleared: they are paths on a computer, and reinterpreting them elsewhere is the
+  failure this entry exists to end. A fork may name a different machine, which is
+  the one-click "continue this on the DGX".
+
+  **`$HOME` becomes deterministic.** Expansion already used the client's reported
+  home (N145), so it was right while exactly one client was connected and a
+  function of connection order otherwise. It now expands against the branch's
+  machine, live or from its last hello, so composing policy twice gives the same
+  answer whether a lid is open.
+
+  **The record names it.** `tool.dispatch`, `tool.denied` and `job.detached`
+  carry the machine, which is the promise `SPEC.md` §5 made and the footnote in
+  `docs/security-model.md` repeated while nothing implemented it.
+
+  **Policy may narrow to a set of machines; an empty list is not a refusal.**
+  A tool is something the appliance holds and hands out, so `tools: []` grants
+  none. A machine is a place this person's own client logged in from, so
+  enrolment is already the grant and naming machines can only subtract. Refusing
+  an empty list would make every existing role unusable the day the field
+  arrived and would say "you may not use the computer you are typing on".
+  **The cost:** a role that forgets to list machines confines nobody, so an
+  operator who wants a laptop-only role must say so.
+
+  **The shape change, against D111's order.** D111 prescribes `{1}` → `{2, 1}` →
+  `{2}` so that no installed client is stranded. This release goes straight to
+  `{2}`, and the reason is that there is no installed fleet: the only clients
+  are on one person's own two computers and are rebuilt together. A `machine` on
+  `hello` is **required** rather than optional, which is why this is not the
+  additive case D111 exempts — defaulting it is the ambiguity being removed, and
+  a server that invented a label would write a record saying a dispatch ran
+  somewhere it did not. When the second deployment arrives, the next shape change
+  follows D111's order. **The cost:** an unrebuilt 0.1.0 client is refused with a
+  sentence rather than tolerated, which is correct here and would not be once
+  strangers are running it.
+
+  **Rejected: giving the model `ssh` and letting it hop.** It solves the
+  complaint without solving the problem, and it is a prompt solution to a
+  targeting one: a forgotten `ssh` does not fail, it registers the images on the
+  laptop. `shell` is deliberately unchecked (D57), so the target would be inside
+  an opaque string — no machine in the record, no per-target grant, and ten
+  machines' reach behind one ungranted tool. SSH belongs *behind* a machine kind,
+  dialled by the client with the client's own key, which is D105's principle one
+  layer up: reaching across machines is a transport question.
+  **Rejected: a globally unique machine id.** It buys an attested label for a
+  problem that does not have one — the account is already attested, and the
+  label's only authority is within it.
+  **Rejected: a machine per dispatch, chosen by the model.** Same category as a
+  model-chosen working directory, and worse: a task *author* may name a machine
+  per step, because that is a human writing a recipe.
+  **Rejected: a `person` table.** One account is one person here, and a second
+  noun for the same thing would be an indirection nothing reads.
+  **Rejected: the machine on the session rather than the branch.** A fork is
+  exactly "the same conversation, now over there", and the branch is what a turn
+  reads.
+
+  **The costs, in one place.** A second noun and a table to administer, though a
+  personal machine enrols itself on first login and needs no ceremony. A column
+  on the most-written table and a read on every turn. A branch written before
+  this migration has no machine and adopts one on its next turn, which is the
+  old behaviour happening once rather than a property. And a prompt that names a
+  machine is a new way to be wrong if the name is stale — which is why the
+  record, not the prompt, is the authority.
+
 ## Platform ground truth
 
 Facts about Linux, Postgres, Python, and Nix that the design must assume.

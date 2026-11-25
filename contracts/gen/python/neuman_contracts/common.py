@@ -27,6 +27,11 @@ SCHEMA = json.loads(r"""
    "pattern": "^/",
    "type": "string"
   },
+  "machineLabel": {
+   "description": "A machine's name, within one account. The label is the machine's identity: a branch names it, policy grants it, the record carries it, and a client says it at the handshake. Scoped to an account rather than global, because reach differs per person: Alice's `dgx` and Bob's `dgx` are the same physical box and two different machines. Lower case because people type it and strings compare it, and a name differing only in case would be two machines or one depending on who is asking.",
+   "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+   "type": "string"
+  },
   "network": {
    "description": "Whether the layer grants the network. `none` withholds every tool declaring `needs = [\"network\"]`; `any` admits them; null inherits. There is no host list: those tools run on the acting user's own machine over their network, so Neuman cannot narrow where they connect, and a list nothing enforced would read as a control that does not exist (N146).",
    "enum": [

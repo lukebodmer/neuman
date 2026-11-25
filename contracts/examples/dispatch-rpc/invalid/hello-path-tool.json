@@ -1,1 +1,1 @@
-{"type": "hello", "rpc_version": 1, "tools": ["/usr/bin/env"]}
+{"type": "hello", "rpc_version": 2, "tools": ["/usr/bin/env"], "machine": {"label": "ernest", "kind": "client"}}

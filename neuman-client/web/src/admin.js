@@ -468,6 +468,7 @@ function paintOverview(body) {
   paintAttention(body.attention);
   paintNow(body.now);
   paintToday(body.today);
+  paintMachines();
   paintRecent(body.recent);
   const about = body.about;
   const schema =
@@ -543,8 +544,7 @@ function paintAttention(items) {
   card.append(list);
 }
 
-function paintNow(now) {
-  const card = $("overview-now");
+function paintNow(now) {  const card = $("overview-now");
   card.replaceChildren(element("h2", null, "Now"));
   const lines = element("dl", "admin-facts");
   const fact = (label, value, warn = false) => {
@@ -565,12 +565,14 @@ function paintNow(now) {
     "Clients",
     clients.length
       ? clients
-          .map((client) =>
-            typeof client === "string"
-              ? client
-              : client.release
-                ? `${client.account} (${client.release})`
-                : client.account)
+          .map((client) => {
+            if (typeof client === "string") return client;
+            // `machine` is the computer, and it is what makes two rows of one
+            // person distinguishable — a server older than this page sends only
+            // `account`, which is drawn as the name it is (D111, D112).
+            const who = client.machine ? `${client.account}@${client.machine}` : client.account;
+            return client.release ? `${who} (${client.release})` : who;
+          })
           .join(", ")
       : "none connected"
   );
@@ -619,6 +621,97 @@ function compact(count) {
 
 function dollars(usd) {
   return usd < 0.01 && usd > 0 ? "<$0.01" : `$${usd.toFixed(2)}`;
+}
+
+// The computers any account's client has connected from (D112), and the one
+// field on that row an operator writes.
+//
+// Its own read rather than part of the overview response: the overview is a
+// snapshot with a GPU sample attached and a card that failed to load must not
+// take the rest of the page with it. Re-read on every overview tick — a machine
+// comes and goes — but never while somebody is typing in a notes box, because
+// replacing the input underneath a cursor is how a settings page loses an edit.
+let machinesBusy = false;
+
+async function paintMachines() {
+  const card = $("overview-machines");
+  if (!card || machinesBusy) return;
+  if (card.contains(document.activeElement)) return;
+  machinesBusy = true;
+  try {
+    renderMachines(card, (await api("GET", "/api/admin/machines")).machines || []);
+  } catch {
+    // The next tick tries again. A machine list that cannot be read is not
+    // worth a card saying so, on top of whatever the overview already says.
+  } finally {
+    machinesBusy = false;
+  }
+}
+
+function renderMachines(card, machines) {
+  card.replaceChildren(element("h2", null, "Machines"));
+  if (!machines.length) {
+    card.append(
+      element(
+        "p",
+        "dim",
+        "No computer has connected yet. A client introduces its machine the first time it signs in."
+      )
+    );
+    return;
+  }
+  const list = element("div", "machine-list");
+  for (const machine of machines) {
+    const row = element("div", "machine-row");
+    const head = element("div", "machine-head");
+    head.append(element("strong", null, machine.label));
+    head.append(element("span", "dim", machine.account));
+    head.append(
+      element(
+        "span",
+        machine.connected ? "machine-on" : "dim",
+        machine.connected
+          ? `connected${machine.release ? ` · ${machine.release}` : ""}`
+          : machine.last_seen_at
+            ? `last seen ${machine.last_seen_at.slice(0, 10)}`
+            : "never connected"
+      )
+    );
+    row.append(head);
+
+    // What is installed there, told to the model: `hello` advertises Neuman's
+    // tools and says nothing about PATH, so without this a missing toolkit is
+    // discovered one refused turn at a time, on every conversation.
+    const notes = element("input", "machine-notes");
+    notes.type = "text";
+    notes.value = machine.notes || "";
+    notes.placeholder = "what is installed here — toolchains, versions, data paths";
+    notes.maxLength = 2000;
+    const save = element("button", "admin-button", "Save");
+    save.type = "button";
+    save.onclick = async () => {
+      save.disabled = true;
+      try {
+        await api(
+          "PATCH",
+          `/api/admin/machines/${encodeURIComponent(machine.account)}/${encodeURIComponent(machine.label)}`,
+          { notes: notes.value }
+        );
+        save.textContent = "Saved";
+      } catch (error) {
+        save.textContent = "Refused";
+        notes.title = error.message;
+      } finally {
+        save.disabled = false;
+        setTimeout(() => { save.textContent = "Save"; }, 1500);
+      }
+    };
+    const line = element("div", "machine-notes-row");
+    line.append(notes, save);
+    row.append(line);
+    list.append(row);
+  }
+  card.append(list);
 }
 
 function paintToday(today) {

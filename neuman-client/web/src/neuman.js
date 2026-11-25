@@ -628,9 +628,17 @@ async function api(method, path, body) {
     // A refusal that names several problems (a task the policy cannot
     // support) says all of them; the bare error code would say none.
     const problems = payload && Array.isArray(payload.problems) && payload.problems.join(" ");
-    throw new Error(
+    const failure = new Error(
       (payload && (payload.detail || problems || payload.error)) || `HTTP ${response.status}`
     );
+    // The code as well as the sentence. One caller has to branch on *which*
+    // refusal it got rather than show it: moving a branch that has already run
+    // tools is refused with `branch_has_run`, and the honest response there is
+    // to fork rather than to report a failure (D112). Matching on the message
+    // would be reading a sentence meant for a person.
+    failure.code = payload && payload.error;
+    failure.status = response.status;
+    throw failure;
   }
   return payload;
 }
@@ -1311,6 +1319,11 @@ function makeView(session, branch) {
     detail: "",
     touchedAt: Date.now(),
     workingDir: branch.working_dir ?? null,
+    // Which computer this conversation's tools run on (D112). Held on the view
+    // because it is what the working directory, the file picker and the
+    // machine chip all mean by a path — and it is per branch, since a fork may
+    // continue on another computer.
+    machine: branch.machine ?? null,
     attachments: branch.attachments ?? [],
     toolSelection: branch.tool_selection ?? null,
     model: branch.model ?? null,
@@ -2617,7 +2630,13 @@ function showWorkingDir(value) {
   // the whole of it, and `currentWorkingDir` above is untouched: this is the
   // display of the path, not the path.
   label.textContent = value ? shortPath(value) : "no working directory";
-  label.title = value || "The agent runs from the server's own directory.";
+  // The computer as well as the path. A path on its own was the whole of a
+  // failure: `/data/study` exists on two computers and is two different
+  // directories, and the window used to say neither (D112).
+  const where = currentView && currentView.machine ? ` on ${currentView.machine}` : "";
+  label.title = value
+    ? `${value}${where}`
+    : `The agent runs from the client's own directory${where}.`;
   // Named in full for assistive tech, which does not announce the ellipsis: the
   // shortened text would otherwise be the whole of what the control is called,
   // and the head of the path — the part that was cut — is not on screen to read.
@@ -2982,7 +3001,12 @@ function listDirectory(view, path) {
   if (going) return going;
 
   const files = view.files ? "&files=1" : "";
-  const request = api("GET", `/api/browse?path=${encodeURIComponent(path)}${files}`)
+  // Listed on the branch's machine, not this window's. The chooser is choosing a
+  // directory for *that* computer's tools, and a listing from the laptop offered
+  // to a conversation running on the DGX is how a person picks a path that does
+  // not exist where the work happens (D112).
+  const where = view.machine ? `&machine=${encodeURIComponent(view.machine)}` : "";
+  const request = api("GET", `/api/browse?path=${encodeURIComponent(path)}${files}${where}`)
     .then((answer) => {
       view.inflight.delete(path);
       const entries = answer.entries || [];
@@ -3996,6 +4020,7 @@ function applyBranchChoices(view) {
   $("gpu-model").textContent = model || "no model";
   if (policyState) renderApproval(policyState.policy || {});
   paintBranchChip();
+  paintMachineChip();
   if (view.model && !availableModel(view.model) && !view._missingNoted) {
     view._missingNoted = true;
     note(
@@ -4073,6 +4098,122 @@ function paintBranchChip() {
   chip.title = branches.length > 1
     ? `Branch ${branchLabel(currentView)} of ${branches.length}`
     : "The root branch of this session";
+}
+
+// Which computer this conversation runs on, and the menu that changes it.
+//
+// The one fact a person at the window cannot work out for themselves: the page is
+// served by the client on the machine they are sitting at, and the branch may
+// name another. Without the chip the window looks identical either way, which is
+// exactly how a conversation created on a laptop came to run commands on a
+// desktop with nothing saying so (D112).
+let localMachine = "";
+let machineChoices = [];
+
+function paintMachineChip() {
+  const chip = $("machine-chip");
+  if (!chip) return;
+  const menu = $("machine-menu");
+  if (!currentView || !currentView.machine) {
+    chip.classList.add("hidden");
+    if (menu) menu.classList.add("hidden");
+    return;
+  }
+  chip.classList.remove("hidden");
+  const here = !localMachine || currentView.machine === localMachine;
+  $("machine-label").textContent = currentView.machine;
+  // The one state worth a colour: this conversation's tools are not on the
+  // computer in front of you. Everything else is the ordinary case and reads as
+  // a label rather than a warning.
+  chip.classList.toggle("foreign", !here);
+  chip.title = here
+    ? `Tools run on ${currentView.machine}, this computer`
+    : `Tools run on ${currentView.machine}, not on this computer`;
+}
+
+async function loadMachines() {
+  try {
+    const body = await api("GET", "/api/machines");
+    machineChoices = body.machines || [];
+  } catch {
+    // A machine list that cannot be read is not worth a banner: the chip still
+    // says where this branch runs, which is the question people came with.
+    machineChoices = [];
+  }
+}
+
+function renderMachineMenu() {
+  const box = $("machine-choices");
+  if (!box) return;
+  box.replaceChildren();
+  if (!machineChoices.length) {
+    box.append(el("p", "hint", "No other computer has connected to this account yet."));
+    return;
+  }
+  for (const machine of machineChoices) {
+    const row = el("button", "machine-choice");
+    row.type = "button";
+    row.dataset.machine = machine.label;
+    if (machine.label === (currentView && currentView.machine)) row.classList.add("current");
+    if (!machine.online) row.classList.add("offline");
+    row.append(el("span", "machine-name", machine.label));
+    row.append(
+      el(
+        "span",
+        "machine-state",
+        machine.online ? "connected" : "not connected"
+      )
+    );
+    // Offline is offered rather than disabled: choosing it is how someone says
+    // "this conversation belongs on the DGX" and then goes and starts it. A
+    // disabled row would make the intent impossible to record.
+    row.onclick = () => switchMachine(machine.label);
+    box.append(row);
+  }
+}
+
+// Move this conversation to another computer.
+//
+// A branch that has not run anything is *moved*: nothing in its transcript names
+// a filesystem yet, so the settings that do — the working directory and the
+// attachments — are cleared by the server and the branch keeps its id. A branch
+// that has run tools is *forked*, because its transcript now holds output from
+// one computer and carrying it to another would make every path in it mean two
+// things. The server decides which of those is true (`branch_has_run`); asking it
+// is the only place that answer exists.
+async function switchMachine(label) {
+  $("machine-menu").classList.add("hidden");
+  const view = currentView;
+  if (!view || label === view.machine) return;
+  try {
+    let saved;
+    try {
+      saved = await api("PATCH", `/api/branches/${view.id}`, { machine: label });
+      if (view === currentView) {
+        view.machine = saved.machine ?? label;
+        view.workingDir = saved.working_dir ?? null;
+        view.attachments = saved.attachments ?? [];
+        showWorkingDir(view.workingDir);
+        showAttachments(view.attachments);
+        paintMachineChip();
+        note(`This conversation now runs on ${label}. Its working directory and attachments were cleared.`);
+      }
+      return;
+    } catch (error) {
+      if (error.code !== "branch_has_run") throw error;
+    }
+
+    const made = await api("POST", `/api/branches/${view.id}/fork`, { machine: label });
+    const branch = made.branch;
+    const session = sessions.get(view.sessionId);
+    if (session) session.branches = [...(session.branches || []), branch];
+    await switchBranch(branch.id);
+    note(
+      `Continued on ${label} in a new branch. What was said before is here; the other computer's directories are not.`
+    );
+  } catch (error) {
+    note(error.message);
+  }
 }
 
 // A branch's name outside a view: `main` for the root, the first thing said in
@@ -6773,7 +6914,12 @@ async function startSession() {
   // Creating a session supersedes that choice, so the late answer must not
   // mount a conversation the reader has already left the draft to start.
   viewOpen++;
-  const created = await api("POST", "/api/sessions", {});
+  // The machine this window is on, said explicitly. The server falls back to the
+  // account's most recently connected client, which is the wrong answer exactly
+  // when a person has two computers connected at once — the case this whole
+  // feature is for (D112). A draft's staged working directory then means what it
+  // was chosen against.
+  const created = await api("POST", "/api/sessions", localMachine ? { machine: localMachine } : {});
   const { branch, ...session } = created;
   sessions.set(session.id, { ...session, branches: [branch] });
   const view = makeView(session, {
@@ -9243,6 +9389,7 @@ const CARDS = [
   ["approval-menu", ["approval-chip"]],
   ["reasoning-menu", ["reasoning-chip"]],
   ["branch-menu", ["branch-chip"]],
+  ["machine-menu", ["machine-chip"]],
   ["tools-menu", ["tools-chip"]],
   // The rail's own popover. It is inside the panel it orders rather than
   // parented to `body` like the row menu, so it scrolls with nothing and needs
@@ -9662,6 +9809,20 @@ $("branch-chip").onclick = () => {
   menu.classList.toggle("hidden");
 };
 
+// Which computer the next message runs on. Rebuilt on open because a machine
+// comes and goes — a laptop closes, a DGX is started for the afternoon — and a
+// stale list is one the reader could choose from and not find.
+$("machine-chip").onclick = async () => {
+  const menu = $("machine-menu");
+  const opening = menu.classList.contains("hidden");
+  if (opening) {
+    await loadMachines();
+    renderMachineMenu();
+  }
+  menu.classList.toggle("hidden");
+  $("machine-chip").setAttribute("aria-expanded", String(opening));
+};
+
 // The tool chooser. Repainted on open rather than only on change, because the
 // grant can have been narrowed by an operator since the panel was last drawn
 // and a stale tick is the one thing this panel must not show.
@@ -9838,6 +9999,13 @@ async function loadLink() {
     return;
   }
   lastLink = state;
+  // The window's own computer, for comparing against the branch's. It arrives
+  // on the same poll rather than from a second route: both facts come from this
+  // process and a moment apart would be two answers to one question (D112).
+  if (state && typeof state.machine === "string" && state.machine !== localMachine) {
+    localMachine = state.machine;
+    paintMachineChip();
+  }
   renderLink(state);
 }
 

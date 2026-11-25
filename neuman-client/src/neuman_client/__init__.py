@@ -11,4 +11,4 @@ __all__ = ["__version__"]
 # cut from. Not the build id: that answers "which code served this turn" and may
 # be a store path (`build.py`). This is the number a person is told to install,
 # and the one the appliance compares against its floor (D111).
-__version__ = "0.1.0"
+__version__ = "0.1.1"

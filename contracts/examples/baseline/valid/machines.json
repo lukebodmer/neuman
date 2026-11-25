@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "defaults": {},
+  "roles": {
+    "laptop-only": {"tools": ["fs_read"], "machines": ["laptop"]},
+    "lab": {"tools": ["shell", "fs_read", "fs_write"], "files_read": ["$HOME/study"], "files_write": ["$HOME/study"], "machines": ["laptop", "dgx"]},
+    "unrestricted": {"tools": ["fs_read"]}
+  },
+  "users": [
+    {"name": "alice", "roles": ["lab"]},
+    {"name": "bob", "roles": ["laptop-only"]},
+    {"name": "carol", "roles": ["unrestricted"]}
+  ]
+}

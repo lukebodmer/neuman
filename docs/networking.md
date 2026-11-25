@@ -19,7 +19,7 @@ There are two categories, and they are deliberately different:
 | Link | Address | Who → whom | Protection |
 |---|---|---|---|
 | Session surface | TCP `bind:port`, default `127.0.0.1:8443` | the client, and an operator's tooling → server | TLS (optional at the server, a proxy may terminate), session cookie, CSRF and Origin per unsafe request |
-| Client channel | WebSocket `bind:port/client` | client → server | the same session cookie, re-checked on the upgrade; the account is the session's, and `hello` carries the tools and the client's home |
+| Client channel | WebSocket `bind:port/client`, one per (account, machine) | client → server | the same session cookie, re-checked on the upgrade; the account is the session's, and `hello` names the machine and carries the tools and its home |
 | Client UI | TCP `127.0.0.1:8642`, and one WebSocket per open session through it | the user's browser → client | loopback only, a per-install token cookie, same origin as the executor, and the core's cookie never reaches the browser |
 | Admin | Unix `/run/neuman/admin/admin.sock` | operator CLI → server | mode `0660`, group `neuman`; authority re-checked in the core |
 | Browse / CDP | Unix socket in the user runtime directory: `$XDG_RUNTIME_DIR` on Linux, `$TMPDIR` on macOS | the client's `browse` tool → the user's Chromium | mode `0600` in the user's `0700` runtime directory; both ends are on the user's machine |
@@ -128,21 +128,26 @@ credential covers both, so the core never needs a second way to know who is
 acting (D56).
 
 The upgrade carries the cookie, and the account is the session's. The client's
-`hello` names the tools it can run and the home directory on the machine it runs
-on — the last because the core cannot look it up, and a `$HOME` or
-`$HOME/<path>` policy entry it expanded against the wrong host would name
-directories that do not exist where the tool runs (N145). It carries no account name: the local account that holds
-the process is the executor, not the principal, and it need not be named like the
-account on the appliance (D67). The core intersects the tool list with the
-catalog and the account's grants (D57). Identity is Neuman's — an argon2id
-check against the account row at login — and over this link it travels as a
-session rather than as a uid, because the two ends are on different machines
-now.
+`hello` names **which machine it is** — a label, in the account's own namespace
+(D112) — the tools it can run, and the home directory on the machine it runs
+on. The last is there because the core cannot look it up: a `$HOME` or
+`$HOME/<path>` policy entry expanded against the wrong host would name
+directories that do not exist where the tool runs (N145). The machine is there
+for the same class of reason one layer up: a branch records where its work
+happens, and without a name the core could only guess — which it did, by
+keeping one connection per account and replacing it on the next connect. The
+hub now holds one connection per **(account, machine)**: a reconnect from the
+same computer replaces its own stale socket, and a second computer is a second
+channel rather than an eviction. It carries no account name: the local account
+that holds the process is the executor, not the principal, and it need not be
+named like the account on the appliance (D67). The core intersects the tool
+list with the catalog and the account's grants (D57).
 
 The channel is stateful and sequence-checked: `started`, `stdout`, `stderr` and
 `result` carry a sequence number, and a gap is a bug or an attack rather than
 something to paper over. It is also the only way tools run at all — a dispatch
-with no client connected for that account is refused, not queued (D26).
+to a machine with no connection is refused, not queued (D26), and the refusal
+names the machine so a person can go and start it.
 
 **A task run is dispatches on this same link.** No task socket exists: the
 server's scheduler walks the recipe, sending each run step as a `shell`

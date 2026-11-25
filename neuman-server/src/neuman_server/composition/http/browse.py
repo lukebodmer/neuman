@@ -43,9 +43,16 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from ...adapters.persistence import GrantStore
+from ...adapters.persistence.machines import MACHINE_LABEL
 from ...decision.policy.ops import preview_policy
 from ...decision.policy.paths import expand_paths, within_reach
-from .deps import Unauthorized, acting_home, connection, require_principal, services_of
+from .deps import (
+    Unauthorized,
+    connection,
+    machine_facts,
+    require_principal,
+    services_of,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from starlette.requests import Request
@@ -86,11 +93,24 @@ async def _browse(request: Request) -> Response:
     # eventually disagree about reach.
     files = request.query_params.get("files") == "1"
 
+    # Which computer to list. The picker names the branch's machine, because a
+    # directory named on one computer is a different directory on another — the
+    # whole reason the machine exists (D112). Absent, it is the machine the
+    # person is sitting at, which is what this route did before branches named
+    # one.
+    machine = request.query_params.get("machine")
+    if machine is not None and not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+
     async with connection(request) as conn:
         try:
             principal = await require_principal(request, conn)
         except Unauthorized as exc:
             return JSONResponse({"error": exc.reason}, status_code=exc.status)
+
+        if machine is None:
+            machine = services.execution.newest_machine(principal.name)
+        facts = await machine_facts(conn, services, principal, machine)
 
         # Re-composed per request, not cached, so a revoked grant stops working
         # here at the same moment it stops working everywhere else.
@@ -104,7 +124,7 @@ async def _browse(request: Request) -> Response:
     if not within_reach(
         path,
         policy,
-        home=acting_home(services, principal),
+        home=facts.home,
     ):
         return JSONResponse(
             {
@@ -124,6 +144,7 @@ async def _browse(request: Request) -> Response:
     outcome = await services.execution.dispatch(
         user=principal.name,
         dispatch_id=uuid.uuid4().hex,
+        machine=machine,
         tool=_TOOL,
         # `summarise: False` explicitly. Past its threshold `fs_list` groups
         # entries by name shape and prints `d<TAB>FILE#<TAB>x 2036<TAB>(..)`,
@@ -145,7 +166,7 @@ async def _browse(request: Request) -> Response:
         surfaces={
             "read": expand_paths(
                 policy.files_read,
-                home=acting_home(services, principal),
+                home=facts.home,
             ),
             "write": [],
         },
@@ -209,11 +230,21 @@ async def _environment(request: Request) -> Response:
     if not path or not path.startswith("/"):
         return JSONResponse({"error": "invalid_request"}, status_code=400)
 
+    # The same machine the chooser is listing, so the environment it reports is
+    # the one the turn will actually run in (D112).
+    machine = request.query_params.get("machine")
+    if machine is not None and not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse({"error": "invalid_request"}, status_code=400)
+
     async with connection(request) as conn:
         try:
             principal = await require_principal(request, conn)
         except Unauthorized as exc:
             return JSONResponse({"error": exc.reason}, status_code=exc.status)
+
+        if machine is None:
+            machine = services.execution.newest_machine(principal.name)
+        facts = await machine_facts(conn, services, principal, machine)
 
         policy = await preview_policy(
             principal.name,
@@ -222,7 +253,7 @@ async def _environment(request: Request) -> Response:
             grants=GrantStore(conn),
         )
 
-    home = acting_home(services, principal)
+    home = facts.home
 
     if not within_reach(path, policy, home=home):
         return JSONResponse(
@@ -244,6 +275,7 @@ async def _environment(request: Request) -> Response:
     outcome = await services.execution.dispatch(
         user=principal.name,
         dispatch_id=uuid.uuid4().hex,
+        machine=machine,
         tool=_ENV_TOOL,
         args={"cwd": path},
         wait_ms=min(manifest.wait_ms, services.settings.tool_wait_ms),

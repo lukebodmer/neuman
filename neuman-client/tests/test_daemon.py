@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from neuman_client import __version__
 from neuman_client.daemon import ClientDaemon, Refused
 from neuman_client.executor import Executor
 from neuman_client.tools import ToolHost
@@ -72,7 +73,7 @@ def _host(tmp_path: Path) -> ToolHost:
 def _dispatch(dispatch_id: str, tool: str, args: dict, wait_ms: int = 30000) -> dict:
     return {
         "type": "dispatch",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "dispatch_id": dispatch_id,
         "tool": tool,
         "args": args,
@@ -91,6 +92,7 @@ async def _until(predicate, *, timeout: float = 10.0) -> None:
 def _daemon(tmp_path: Path, host: ToolHost, transport: FakeTransport, **kwargs) -> ClientDaemon:
     return ClientDaemon(
         transport=transport,
+        machine="ernest",
         home="/home/alice",
         drops="/home/alice/.local/state/neuman/drops",
         host=host,
@@ -125,14 +127,18 @@ async def test_the_handshake_carries_the_home_and_the_tool_names(tmp_path):
     hello = transport.connection.sent[0]
     assert hello == {
         "type": "hello",
-        "rpc_version": 1,
+        "rpc_version": 2,
+        # Which computer this is (D112). Required, not optional: a dispatch has
+        # to land somewhere nameable, and a default would be a record that says
+        # a command ran on a machine it did not.
+        "machine": {"label": "ernest", "kind": "client"},
         "home": "/home/alice",
         "drops": "/home/alice/.local/state/neuman/drops",
         "tools": ["echoer", "sleeper"],
         # What an operator sees per machine, and what a refusal quotes back
         # (D111). Optional in the contract; a build that knows its release
         # always sends it.
-        "release": "0.1.0",
+        "release": __version__,
     }
 
 
@@ -143,7 +149,12 @@ async def test_a_dispatch_runs_and_reports_started_output_and_result(tmp_path):
     try:
         await _until(lambda: transport.connection.sent)
         transport.connection.incoming.put_nowait(
-            {"type": "welcome", "rpc_version": 1, "user": "alice"}
+            {
+                "type": "welcome",
+                "rpc_version": 2,
+                "user": "alice",
+                "machine": {"label": "ernest", "kind": "client"},
+            }
         )
         transport.connection.incoming.put_nowait(
             _dispatch("d12345678", "echoer", {"path": "/tmp/x"})
@@ -162,6 +173,43 @@ async def test_a_dispatch_runs_and_reports_started_output_and_result(tmp_path):
     assert result["exit_code"] == 0
 
 
+async def test_a_dispatch_addressed_to_another_machine_is_refused(tmp_path):
+    """D112: a routing bug at the core stops here rather than running.
+
+    An `rm` meant for `dgx` executed on a laptop is the failure the machine field
+    exists to make impossible. The daemon is the last place it can be caught, and
+    catching it is the difference between a refusal and an effect on the wrong
+    computer.
+    """
+
+    transport = FakeTransport()
+    daemon = _daemon(tmp_path, _host(tmp_path), transport)
+    task = asyncio.create_task(daemon.run())
+    try:
+        await _until(lambda: transport.connection.sent)
+        transport.connection.incoming.put_nowait(
+            {
+                "type": "welcome",
+                "rpc_version": 2,
+                "user": "alice",
+                "machine": {"label": "ernest", "kind": "client"},
+            }
+        )
+        misrouted = _dispatch("d12345678", "echoer", {"path": "/tmp/x"})
+        misrouted["machine"] = "dgx"
+        transport.connection.incoming.put_nowait(misrouted)
+        [message] = await _collect_until_result(transport.connection)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+    assert message["type"] == "error"
+    assert message["code"] == "wrong_machine"
+    # Nothing ran: no `started` frame, no pid, no exit status.
+    assert message["dispatch_id"] == "d12345678"
+    assert "dgx" in message["message"] and "ernest" in message["message"]
+
+
 async def test_an_unknown_tool_is_an_error_not_a_spawn(tmp_path):
     transport = FakeTransport()
     daemon = _daemon(tmp_path, _host(tmp_path), transport)
@@ -169,7 +217,12 @@ async def test_an_unknown_tool_is_an_error_not_a_spawn(tmp_path):
     try:
         await _until(lambda: transport.connection.sent)
         transport.connection.incoming.put_nowait(
-            {"type": "welcome", "rpc_version": 1, "user": "alice"}
+            {
+                "type": "welcome",
+                "rpc_version": 2,
+                "user": "alice",
+                "machine": {"label": "ernest", "kind": "client"},
+            }
         )
         transport.connection.incoming.put_nowait(_dispatch("d12345678", "not_a_tool", {}))
         [message] = await _collect_until_result(transport.connection)
@@ -189,7 +242,12 @@ async def test_a_cancel_stops_the_process_and_reports_it(tmp_path):
     try:
         await _until(lambda: transport.connection.sent)
         transport.connection.incoming.put_nowait(
-            {"type": "welcome", "rpc_version": 1, "user": "alice"}
+            {
+                "type": "welcome",
+                "rpc_version": 2,
+                "user": "alice",
+                "machine": {"label": "ernest", "kind": "client"},
+            }
         )
         transport.connection.incoming.put_nowait(
             _dispatch("d12345678", "sleeper", {}, wait_ms=60000)
@@ -198,7 +256,7 @@ async def test_a_cancel_stops_the_process_and_reports_it(tmp_path):
             lambda: any(message["type"] == "started" for message in transport.connection.sent)
         )
         transport.connection.incoming.put_nowait(
-            {"type": "cancel", "rpc_version": 1, "dispatch_id": "d12345678"}
+            {"type": "cancel", "rpc_version": 2, "dispatch_id": "d12345678"}
         )
         messages = await _collect_until_result(transport.connection)
     finally:
@@ -235,7 +293,12 @@ async def test_a_package_tool_without_its_program_is_refused_by_name(tmp_path, m
     try:
         await _until(lambda: transport.connection.sent)
         transport.connection.incoming.put_nowait(
-            {"type": "welcome", "rpc_version": 1, "user": "alice"}
+            {
+                "type": "welcome",
+                "rpc_version": 2,
+                "user": "alice",
+                "machine": {"label": "ernest", "kind": "client"},
+            }
         )
         transport.connection.incoming.put_nowait(_dispatch("d12345678", "echoer", {}))
         messages = await _collect_until_result(transport.connection)

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "dispatch-rpc",
-  "description": "JSON-lines between the decision core and a connected client, one JSON object per line. The client opens the connection, says hello with the tool names it can run and the home directory on its machine, and then receives dispatches and returns their output. The core decides; the client executes exactly what it is told. There is no profile on the wire: the client runs as the local account that holds the process and reaches what that account reaches, and the controls are the capability gate and the approval verdict, both decided before a dispatch is sent.",
+  "description": "JSON-lines between the decision core and a connected client, one JSON object per line. The client opens the connection, says hello with the machine it is, the tool names it can run and the home directory there, and then receives dispatches and returns their output. The core decides; the client executes exactly what it is told. There is no profile on the wire: the client runs as the local account that holds the process and reaches what that account reaches, and the controls are the capability gate and the approval verdict, both decided before a dispatch is sent.",
   "type": "object",
   "required": ["type", "rpc_version"],
   "properties": {
@@ -23,7 +23,7 @@
   ],
   "$defs": {
     "rpcVersion": {
-      "enum": [1],
+      "enum": [2],
       "description": "Every shape this contract knows how to write. It is a set rather than a constant because the two halves update on different days and an appliance update must not strand a client that has not been updated yet (D111): the handshake picks one of these per connection, and every frame on that connection carries the one it picked. Adding a value is the append-only case; removing one is what raises the appliance's floor."
     },
     "release": {
@@ -73,16 +73,31 @@
       },
       "description": "Both ends of a handshake that could not agree, so the client can say what to do without a second request."
     },
+    "machineLabel": {"$ref": "common.schema.json#/$defs/machineLabel"},
+    "machine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "kind"],
+      "properties": {
+        "label": {"$ref": "#/$defs/machineLabel"},
+        "kind": {
+          "enum": ["client"],
+          "description": "How the core reaches this machine. `client` is a daemon holding this socket. `ssh` is reserved for a target the client dials and is not spoken yet, so a client claiming it is refused rather than half-served."
+        }
+      },
+      "description": "The machine this connection runs dispatches for. Not an identity claim: the session already names the principal, and a machine is scoped to that account, so naming one grants nothing. It is what makes a branch's path mean *somewhere*: without it, a session created on one computer and reopened on another is silently pointed at a second filesystem."
+    },
     "dispatchId": {"type": "string", "pattern": "^[A-Za-z0-9_-]{8,64}$"},
     "jobId": {"type": "string", "pattern": "^[a-z0-9]{6,16}$", "description": "Short on purpose: the model reads and writes it, so every character is a token in its context."},
     "toolName": {"type": "string", "pattern": "^[a-z_][a-z0-9_]*$", "description": "A tool *name*, never a path: the client resolves it against its own manifest set, so a dispatch cannot ask for a program that is not one of Neuman's (D3)."},
     "sequence": {"type": "integer", "minimum": 0, "description": "Monotonic per dispatch, with no gaps: started=0, then each stdout/stderr chunk, then result or detached. Required on every streamed message because it is the only way the reader can tell a dropped chunk from a chunk that was never sent — the difference between truncated output and complete output, which a model cannot be allowed to confuse."},
     "hello": {
       "type": "object", "additionalProperties": false,
-      "required": ["type", "rpc_version", "home", "drops", "tools"],
+      "required": ["type", "rpc_version", "machine", "home", "drops", "tools"],
       "properties": {
         "type": {"const": "hello"},
         "rpc_version": {"$ref": "#/$defs/rpcVersion"},
+        "machine": {"$ref": "#/$defs/machine"},
         "home": {"$ref": "common.schema.json#/$defs/absPath", "description": "The home directory on the machine this client runs on — what `~` means there. The core expands `$HOME` and `$HOME/<path>` policy entries against it and must not use the account's home on *its* host: a client on another machine has a different one, and a dispatch checked against the wrong home refuses paths the account can read (N145). A dishonest value cannot widen anything — `shell` and `python` are unchecked, so a client wanting more reach would not ask — but it decides which directories those entries name, and that is a question only the client can answer."},
         "drops": {"$ref": "common.schema.json#/$defs/absPath", "description": "Where this client keeps files a person dropped on its window (D102). The core accepts an attachment inside it although no policy names it, because the bytes are ones that person handed over from their own machine; only while this client is connected, and only as an attachment the read tools open. Resolved by the client, so the core compares it as a string."},
         "tools": {"type": "array", "items": {"$ref": "#/$defs/toolName"}, "uniqueItems": true, "description": "The tool names this client can run. The core intersects this with the catalog and the account's grants; dispatching a name the client did not advertise is a bug on the core's side, and asking is cheaper than a round trip that ends in unknown_tool."},
@@ -91,11 +106,12 @@
     },
     "welcome": {
       "type": "object", "additionalProperties": false,
-      "required": ["type", "rpc_version", "user"],
+      "required": ["type", "rpc_version", "user", "machine"],
       "properties": {
         "type": {"const": "welcome"},
         "rpc_version": {"$ref": "#/$defs/rpcVersion", "description": "The shape this connection settled on. Not necessarily the appliance's newest: a client that speaks only an older one is answered in that one, so every frame on this socket is a shape the client can read (D111)."},
         "user": {"$ref": "common.schema.json#/$defs/userName", "description": "The account the core resolved for this connection. Present so the handshake has an acknowledgement rather than silence, and so a client can report which account it is acting as when it is not the one it expected."},
+        "machine": {"$ref": "#/$defs/machine", "description": "The machine the core recorded, echoed rather than assumed: a client that believes it is `ernest` and is told it is `dgx` has to be able to say so, and this is the frame where the two answers meet."},
         "release": {"$ref": "#/$defs/release", "description": "The appliance's release, for the quiet fact \"a newer client exists\" and for `doctor` to print beside the client's own. Optional so a server older than this field can still complete a handshake."},
         "rpc_versions": {
           "type": "array",
@@ -117,6 +133,7 @@
         "args": {"type": "object", "description": "Tool arguments; the tool manifest's parameters schema governs their content."},
         "lifetime_ms": {"type": "integer", "minimum": 1, "maximum": 3600000, "description": "The longest the process may live, from spawn. The client applies min(this, its own manifest's `lifetime_ms`): neither side may extend the other. Equal to `wait_ms` means the dispatch is killed at its wait rather than becoming a job — what the core sends when the session cannot follow a job, and for a task's run step (D96)."},
         "wait_ms": {"type": "integer", "minimum": 1, "maximum": 3600000, "description": "How long the dispatch may block. The client applies min(this, the lifetime it applied), and this may exceed the manifest's own `wait_ms`: that is the default the core sends for a model's call, and a longer one is the core's alone to ask for — a task's run step waits its whole `timeout_s` (D96). A process still running at the wait with lifetime left becomes a background job (`detached`, D98); otherwise it is killed and the result says `timed_out`."},
+        "machine": {"$ref": "#/$defs/machineLabel", "description": "The machine the core believes this connection is. The client refuses a dispatch naming another one (`wrong_machine`), which turns a routing bug at the core into a refusal instead of a command run on the wrong computer — the failure this field exists to make impossible."},
         "session_id": {"type": "string", "minLength": 1, "description": "The session the dispatch belongs to. A job is tagged with it, and `job_output`/`job_kill` find only the jobs of the session that asks (D98), so one of an account's conversations cannot read or stop another's. Absent for a dispatch no session owns — a route's own question, a task's run step — which never becomes a job and sees none."},
         "working_dir": {"$ref": "common.schema.json#/$defs/absPath", "description": "Directory to start the dispatch in. Optional: absent means the client's own working directory. A hint rather than a grant — on the client there is no profile to fail against, and a directory that does not exist is a spawn error."},
         "surfaces": {
@@ -228,7 +245,7 @@
         "type": {"const": "error"},
         "rpc_version": {"$ref": "#/$defs/rpcVersion"},
         "dispatch_id": {"type": ["string", "null"], "description": "Null when the error has no dispatch context (a bad hello, a malformed line)."},
-        "code": {"enum": ["bad_request", "unknown_tool", "spawn_failed", "internal", "unavailable", "outside_surface", "missing_program", "version_mismatch"]},
+        "code": {"enum": ["bad_request", "unknown_tool", "spawn_failed", "internal", "unavailable", "outside_surface", "missing_program", "version_mismatch", "wrong_machine"]},
         "message": {"type": "string", "minLength": 1},
         "versions": {"$ref": "#/$defs/versionReport", "description": "Present on `version_mismatch` and nowhere else. The client cannot derive it: the numbers it needs are the appliance's, and the refusal is the last frame it will get."}
       }

@@ -38,6 +38,7 @@ class FakeChannel:
 async def _connected(
     hub: ClientHub,
     *,
+    machine: str = "ernest",
     tools: frozenset[str] = frozenset({"fs_read"}),
     home: str = "/home/alice",
 ) -> tuple[ClientConnection, FakeChannel]:
@@ -45,6 +46,7 @@ async def _connected(
     connection = ClientConnection(
         channel,
         account="alice",
+        machine=machine,
         tools=tools,
         home=home,
         drops="/home/alice/.local/state/neuman/drops",
@@ -62,7 +64,7 @@ async def _wait_for_sent(channel: FakeChannel) -> None:
 def _started(dispatch_id: str, sequence: int = 0) -> dict:
     return {
         "type": "started",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "dispatch_id": dispatch_id,
         "sequence": sequence,
         "pid": 4242,
@@ -91,7 +93,7 @@ async def test_a_dispatch_round_trips():
     connection.deliver(
         {
             "type": "stdout",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "dispatch_id": "d12345678",
             "sequence": 1,
             "chunk": base64.b64encode(b"hi").decode(),
@@ -100,7 +102,7 @@ async def test_a_dispatch_round_trips():
     connection.deliver(
         {
             "type": "result",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "dispatch_id": "d12345678",
             "sequence": 2,
             "exit_code": 0,
@@ -130,6 +132,7 @@ async def test_a_dispatch_speaks_the_shape_the_connection_settled_on():
     connection = ClientConnection(
         channel,
         account="alice",
+        machine="ernest",
         tools=frozenset({"fs_read"}),
         home="/home/alice",
         drops="/home/alice/.local/state/neuman/drops",
@@ -240,7 +243,7 @@ async def test_a_sequence_gap_fails_the_dispatch():
     connection.deliver(
         {
             "type": "stdout",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "dispatch_id": "d12345678",
             "sequence": 2,
             "chunk": base64.b64encode(b"hi").decode(),
@@ -273,15 +276,48 @@ async def test_a_disconnect_wakes_the_waiter():
     assert hub.connected("alice") is False
 
 
-async def test_a_second_connection_replaces_the_first():
+async def test_a_second_connection_from_one_machine_replaces_the_first():
+    """A reconnect on the same computer takes over its own stale socket.
+
+    Two sockets for one machine is a reconnect the network has not noticed yet,
+    and leaving dispatches to race between them is how a result arrives on the
+    wrong one.
+    """
+
     hub = ClientHub()
     first, first_channel = await _connected(hub)
     _second, _second_channel = await _connected(hub, tools=frozenset({"shell"}))
 
     assert first.closed
     assert first_channel.closed
-    assert hub.available("alice") == frozenset({"shell"})
-    assert hub.connected("alice")
+    assert hub.available("alice", "ernest") == frozenset({"shell"})
+    assert hub.connected("alice", "ernest")
+
+
+async def test_a_second_machine_is_a_second_channel_and_kills_nothing():
+    """The bug D112 exists to end (N185).
+
+    Signing in from a laptop used to disconnect the desktop, fail its in-flight
+    dispatches and kill its jobs — silently. Two computers are two places, not
+    one fight over a slot.
+    """
+
+    hub = ClientHub()
+    desktop, desktop_channel = await _connected(hub, tools=frozenset({"shell"}))
+    laptop, _laptop_channel = await _connected(hub, machine="laptop")
+
+    assert not desktop.closed
+    assert not desktop_channel.closed
+    assert not laptop.closed
+    assert hub.connected("alice", "ernest")
+    assert hub.connected("alice", "laptop")
+    # Each machine advertises what it can run, and the advertisement does not
+    # follow the newest connection.
+    assert hub.available("alice", "ernest") == frozenset({"shell"})
+    assert hub.available("alice", "laptop") == frozenset({"fs_read"})
+    # A dispatch to a machine with no client is refused rather than landing on
+    # whichever one is connected.
+    assert hub.connected("alice", "dgx") is False
 
 
 async def test_the_hub_reports_the_clients_home_and_nothing_without_one():
@@ -297,12 +333,16 @@ async def test_the_hub_reports_the_clients_home_and_nothing_without_one():
     assert hub.home("alice") is None
 
     await _connected(hub, home="/home/remote")
-    assert hub.home("alice") == "/home/remote"
+    assert hub.home("alice", "ernest") == "/home/remote"
 
-    # A second connection replaces the first, home included: the dispatches
-    # follow the connection, so the paths they are checked against must too.
-    await _connected(hub, home="/home/elsewhere")
-    assert hub.home("alice") == "/home/elsewhere"
+    # A second computer's home is its own, and the first machine keeps its own
+    # answer: this is the fact that used to flip under a live session (N186).
+    await _connected(hub, machine="laptop", home="/home/elsewhere")
+    assert hub.home("alice", "laptop") == "/home/elsewhere"
+    assert hub.home("alice", "ernest") == "/home/remote"
+    # A machine nobody has connected from has no home, which is the same answer
+    # as a machine that is merely away and never the wrong directory.
+    assert hub.home("alice", "dgx") is None
 
 
 async def test_cancel_reaches_the_client():
@@ -313,7 +353,7 @@ async def test_cancel_reaches_the_client():
 
     assert channel.sent[-1] == {
         "type": "cancel",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "dispatch_id": "d12345678",
     }
     assert not connection.closed

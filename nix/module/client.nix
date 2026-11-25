@@ -29,7 +29,7 @@ let
     cfg.userDataDir
   ];
 
-  clientExec = "${cfg.package}/bin/neuman-client run --server ${cfg.server} --ui-port ${toString cfg.uiPort} --browse-socket ${cfg.socket}";
+  clientExec = "${cfg.package}/bin/neuman-client run --server ${cfg.server} --ui-port ${toString cfg.uiPort} --browse-socket ${cfg.socket}${lib.optionalString cfg.headless " --no-ui"}";
   browserExec = "${cfg.package}/bin/neuman-browser ${lib.escapeShellArgs browserArguments}";
 
   # A file's presence is not a server's readiness: a leftover `ui-url` from a
@@ -121,12 +121,33 @@ in
         already up.
       '';
     };
+
+    headless = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Run the executor without the window.
+
+        For a machine that is a *place work happens* rather than somewhere a
+        person sits: a lab server, a GPU box, a build host. It connects and
+        executes exactly as any client does — a machine is a named place
+        dispatches run (D112) — and serves no UI, so a session on it is watched
+        from the computer its owner is sitting at.
+
+        The unit is not tied to a graphical session in this mode, which is what
+        lets it keep running with nobody logged in at a screen; a machine that
+        went offline at logout would be an always-on computer that is only
+        sometimes on. It still needs `loginctl enable-linger <user>`, which this
+        module cannot set for you — it is a property of the account, not of the
+        client.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
     home.packages = [ cfg.package ];
 
-    xdg.desktopEntries.neuman = {
+    xdg.desktopEntries.neuman = lib.mkIf (!cfg.headless) {
       name = "Neuman";
       comment = "Neuman appliance";
       exec = "${pkgs.systemd}/bin/systemctl --user start neuman-browser.service";
@@ -141,6 +162,12 @@ in
     systemd.user.services.neuman-client = {
       Unit = {
         Description = "Neuman client";
+      }
+      // lib.optionalAttrs (!cfg.headless) {
+        # A window-driven client belongs to the graphical session: it starts
+        # with it and stops with it. A headless executor must not, or the
+        # machine that is supposed to be always on goes offline when nobody is
+        # logged in at a screen — and on a DGX there is no screen at all (D112).
         After = [ "graphical-session.target" ];
         PartOf = [ "graphical-session.target" ];
       };
@@ -155,7 +182,7 @@ in
       Install.WantedBy = [ "default.target" ];
     };
 
-    systemd.user.services.neuman-browser = {
+    systemd.user.services.neuman-browser = lib.mkIf (!cfg.headless) {
       Unit = {
         Description = "Neuman browser";
         After = [

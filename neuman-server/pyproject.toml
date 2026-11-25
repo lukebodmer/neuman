@@ -1,6 +1,6 @@
 [project]
 name = "neuman-server"
-version = "0.1.0"
+version = "0.1.1"
 description = "Neuman's decision core"
 requires-python = ">=3.12"
 # Runtime dependencies for a non-Nix install. The appliance's flake supplies

@@ -1,1 +1,1 @@
-{"type": "result", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "sequence": 2, "exit_code": 0, "wall_ms": 12, "timed_out": false, "cancelled": false, "truncated": false}
+{"type": "result", "rpc_version": 2, "dispatch_id": "d1c0ffee12345678", "sequence": 2, "exit_code": 0, "wall_ms": 12, "timed_out": false, "cancelled": false, "truncated": false}

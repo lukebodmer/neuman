@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "neuman-admin"
-version = "0.1.0"
+version = "0.1.1"
 description = "Operator CLI for a Neuman appliance"
 requires-python = ">=3.12"
 dependencies = ["httpx"]

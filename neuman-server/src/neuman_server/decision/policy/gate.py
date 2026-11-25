@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from .compose import EffectivePolicy
 from .ports import ToolRegistry
 
-__all__ = ["Decision", "check", "grantable"]
+__all__ = ["Decision", "check", "check_machine", "grantable"]
 
 # Reason codes. Stable strings: they reach the audit chain and the client, and
 # an operator greps for them.
@@ -27,6 +27,7 @@ NOT_GRANTED = "tool_not_granted"
 UNKNOWN_TOOL = "unknown_tool"
 PACKAGE_NOT_ENABLED = "package_not_enabled"
 INSUFFICIENT_REACH = "insufficient_reach"
+MACHINE_NOT_GRANTED = "machine_not_granted"
 ALLOWED = "ok"
 
 
@@ -74,6 +75,45 @@ def check(tool: str, policy: EffectivePolicy, registry: ToolRegistry) -> Decisio
             f"{tool!r} needs {sorted(manifest.needs)}; this user has {sorted(policy.reach)}",
         )
 
+    return Decision(True, ALLOWED)
+
+
+def check_machine(machine: str | None, policy: EffectivePolicy) -> Decision:
+    """Decide whether this policy may dispatch to ``machine`` (D112).
+
+    A dispatch-time ceiling, like `check` — not the boundary. What bounds a
+    dispatch is the operating system on the machine it lands on, running as the
+    person who logged in there.
+
+    **An empty grant list is not a refusal, and the asymmetry with `tools` is
+    deliberate.** A tool is something the appliance holds and hands out; a
+    machine is a place this account's own client logged in from, so reaching it
+    already depends on a login rather than on a grant, and a policy list can only
+    ever narrow that to the places a role's work belongs. Refusing an empty list
+    would make every existing role unusable the day this field arrived, and would
+    say "you may not use the computer you are typing on" — which heals nothing
+    and teaches the operator to fill the field with every machine they own.
+
+    The cost of that choice, stated because a restriction that names no cost is a
+    default dressed as a decision: a role that forgets to list machines does not
+    confine the role to fewer places, so an operator who wants a laptop-only role
+    must say so. The gain is that the list is usable for its actual purpose —
+    narrowing people whose work spans a shared box and a personal one.
+
+    ``None`` is a branch that predates machines and has not been used yet. It is
+    allowed through, because the turn that runs on it is what pins it, and the
+    machine it pins to is resolved and recorded then.
+    """
+
+    if machine is None or not policy.machines:
+        return Decision(True, ALLOWED)
+    if machine not in policy.machines:
+        return Decision(
+            False,
+            MACHINE_NOT_GRANTED,
+            f"{machine!r} is not one of the machines this user may work on "
+            f"({', '.join(policy.machines)})",
+        )
     return Decision(True, ALLOWED)
 
 

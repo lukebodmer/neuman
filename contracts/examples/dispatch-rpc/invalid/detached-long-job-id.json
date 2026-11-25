@@ -1,1 +1,1 @@
-{"type": "detached", "rpc_version": 1, "dispatch_id": "d1c0ffee12345678", "sequence": 3, "job_id": "a2c9d0b1-41f4-4c6e-9a7e-0c3b1f2d4e5a", "wall_ms": 120004, "lifetime_ms": 3600000, "persisted_out": null, "persisted_err": null}
+{"type": "detached", "rpc_version": 2, "dispatch_id": "d1c0ffee12345678", "sequence": 3, "job_id": "a2c9d0b1-41f4-4c6e-9a7e-0c3b1f2d4e5a", "wall_ms": 120004, "lifetime_ms": 3600000, "persisted_out": null, "persisted_err": null}

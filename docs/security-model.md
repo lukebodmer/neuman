@@ -46,11 +46,14 @@ and a consequential one stops for a verdict.
 
 For a dispatch made on behalf of account `A`:
 
-1. **Execution is on the acting human's machine, as that human.** A dispatch runs
-   where `A` runs it (their workstation, their laptop), under their own account,
-   so it can never reach more than that account reaches. That is the ceiling,
-   and the operating system enforces it. Within it, policy decides what the
-   agent may actually use (claims 2, 3 and 5).
+1. **Execution is on the acting human's machine, as that human.** A dispatch
+   runs on the *machine* the branch names — one of the acting account's own
+   computers, the one their client logged in from — under their own account, so
+   it can never reach more than that account reaches. That is the ceiling, and
+   the operating system enforces it. Within it, policy decides what the agent
+   may actually use (claims 2, 3 and 5). A machine is a place, not a new reach:
+   it is scoped to the account that enrolled it, so naming one cannot widen
+   anything (D112).
 2. **Every call is gated against live policy.** A tool `A`'s policy does not list
    is not dispatched, whatever caused the model to ask for it. Policy is composed
    fresh for every step, so a revocation lands on the next call.
@@ -65,10 +68,14 @@ For a dispatch made on behalf of account `A`:
    client's local account is the *executor*, not the identity: the channel never
    asks its name, and it need not match the account on the appliance. The
    password is what binds the two (D67).
-5. **A path a tool is given is checked against the account's surfaces.** A
-   manifest declares which of its arguments are paths; the core sends the
-   account's expanded surfaces with the dispatch; the client resolves each with
-   `realpath` and refuses one outside them.
+5. **A path a tool is given is checked against the account's surfaces, and both
+   are on one machine.** A manifest declares which of its arguments are paths;
+   the core sends the account's expanded surfaces — expanded against the
+   *branch's* machine — with the dispatch; the client resolves each with
+   `realpath` and refuses one outside them. A path is a path on one computer: a
+   conversation's working directory, its attachments and the directory a drop
+   came from are all facts about the machine it runs on, and moving the branch
+   clears them rather than reinterpreting them (D112).
 6. **Nothing is dispatchable without a manifest the client already holds.** A
    binary in the client's tool directory with no manifest is unreachable however
    executable it is (D5). Enabling a package chooses among tools every client
@@ -95,6 +102,7 @@ hold.
 | Claim | Enforced by | Holds as long as |
 |---|---|---|
 | Execution as the human | tools run on the client under the account that runs the client; the appliance executes no user-reach tool | no tool runs on the appliance with the user's reach |
+| Execution on the named machine | the branch's `machine` resolves to one connection, held by that account's client on that computer; a client refuses a dispatch naming another (`wrong_machine`) | the hub never routes by "whichever client is connected" for a branch that names a machine |
 | Capability gate | `needs ⊆ reach` recomposed per step, in the core, before any dispatch | the gate is never cached across a policy change |
 | Approval | the inbox in the decision core; the client receives a dispatch that was already approved | only the core decides a verdict |
 | Identity | the session the client authenticated with; the channel never asks the client to name an account | the account row is re-read on every request, so a disabled account loses its session (D17) |
@@ -192,9 +200,12 @@ confined by Neuman at all and is not meant to be: it *is* the human.
 - **If it fell:** that human's own reach. A compromised client can lie about what
   it did; the record says so, and says it is a claim [^reported].
 
-[^reported]: This is why every dispatch entry records the client it ran on. A
-    client effect is *reported*: the appliance records a claim from a machine it
-    does not control, in an order that cannot be altered afterwards.
+[^reported]: This is why every dispatch entry records the machine it ran on
+    (D112). A client effect is *reported*: the appliance records a claim from a
+    machine it does not control, in an order that cannot be altered afterwards.
+    The machine's *name* is part of that claim — a label the account's own client
+    chose, scoped to that account, so it can misdescribe which of the person's
+    computers ran something and cannot reach past them.
 
 ### Untrusted: the browser, model output, and tool output
 
@@ -279,6 +290,14 @@ more.
   stops, because it is the person's window (D101).
 - **A working directory focuses the agent; it never widens it.** A conversation
   may point the agent at a folder inside its reach, never outside it.
+- **A machine is a place, not a boundary of its own.** Every machine an account
+  can name is one its own client logged in from, so choosing between them is
+  choosing among the person's own computers and grants nothing. What it decides
+  is which filesystem a path means — which is why a branch names one, why a path
+  and an attachment do not survive a move, and why the record names the machine
+  on every dispatch. Policy may narrow a role to a set of machines (D112); it
+  cannot reach one the account never enrolled, because such a machine has no
+  connection to dispatch down.
 - **A fork branches the conversation, not the world.** What happened before the
   fork (files written, approvals given) stays done, and the interface says so.
 - **An approved edit is checked again when it is written.** `fs_edit` refuses if

@@ -373,7 +373,7 @@ def _host(tmp_path: Path) -> ToolHost:
 def _dispatch(dispatch_id: str, tool: str, args: dict, **extra) -> dict:
     return {
         "type": "dispatch",
-        "rpc_version": 1,
+        "rpc_version": 2,
         "dispatch_id": dispatch_id,
         "tool": tool,
         "args": args,
@@ -402,6 +402,7 @@ async def _running(tmp_path: Path):
     transport = FakeTransport()
     daemon = ClientDaemon(
         transport=transport,
+        machine="ernest",
         home="/home/alice",
         drops="/home/alice/.local/state/neuman/drops",
         host=_host(tmp_path),
@@ -410,7 +411,12 @@ async def _running(tmp_path: Path):
     task = asyncio.create_task(daemon.run())
     await _until(lambda: transport.connection.sent)
     transport.connection.incoming.put_nowait(
-        {"type": "welcome", "rpc_version": 1, "user": "alice"}
+        {
+            "type": "welcome",
+            "rpc_version": 2,
+            "user": "alice",
+            "machine": {"label": "ernest", "kind": "client"},
+        }
     )
     return transport.connection, task
 
@@ -470,7 +476,7 @@ async def test_a_cancel_naming_the_jobs_dispatch_kills_the_job(tmp_path):
         connection.incoming.put_nowait(_dispatch("d1c0ffee04", "slow", {}, session_id="s1"))
         await _until(lambda: _of(connection, "d1c0ffee04", "detached"))
         connection.incoming.put_nowait(
-            {"type": "cancel", "rpc_version": 1, "dispatch_id": "d1c0ffee04"}
+            {"type": "cancel", "rpc_version": 2, "dispatch_id": "d1c0ffee04"}
         )
         await _until(lambda: [m for m in connection.sent if m["type"] == "job_settled"])
     finally:

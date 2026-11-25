@@ -219,6 +219,7 @@ class ToolExecution(Protocol):
         tool: str,
         args: dict[str, Any],
         wait_ms: int,
+        machine: str | None = None,
         lifetime_ms: int | None = None,
         working_dir: str | None = None,
         surfaces: dict[str, list[str]] | None = None,
@@ -227,21 +228,40 @@ class ToolExecution(Protocol):
     ) -> DispatchOutcome:
         """Run one tool. `lifetime_ms` absent means the wait: no job.
 
+        `machine` is the place the dispatch runs (D112), and every caller that
+        acts for a conversation passes the branch's. `None` is a caller that
+        names none — a task run, or a browse request with no branch — and the
+        hub reads it as the account's most recently connected machine, which is
+        what the appliance did before machines existed. It disappears as each
+        of those callers is given a machine of its own.
+
         `session_id` goes to the client, which tags a job with it; `branch_id`
         stays here, so a job's end can be told to the branch that started it.
         A dispatch with no session can never become a job.
         """
 
-    async def cancel(self, *, user: str, dispatch_id: str) -> None:
+    async def cancel(self, *, user: str, dispatch_id: str, machine: str | None = None) -> None:
         """Cancel an in-flight dispatch: the client kills the process group."""
 
+    def connected(self, user: str, machine: str | None = None) -> bool:
+        """Whether a dispatch for this user — and machine, if named — has anywhere to go."""
+
+    def newest_machine(self, user: str) -> str | None:
+        """The machine this account most recently connected from, if any.
+
+        For the two transitional callers that name none: a branch predating
+        machines, which adopts it once, and a browse request with no branch. A
+        branch that already names a machine never consults it.
+        """
+
     async def register(self, connection: Any) -> None:
-        """Take over an account's channel.
+        """Take over a machine's channel.
 
         Called by `/client` once a connection has authenticated and said what it
         is, so the port the harness dispatches through is the same thing the
-        transport registers with. One client per account; a second connection
-        replaces the first.
+        transport registers with. One connection per (account, machine); a
+        second connection for the same machine replaces the first, and one from
+        a different machine is a second channel and is kept (D112).
         """
 
     def unregister(self, connection: Any) -> None:
@@ -251,7 +271,7 @@ class ToolExecution(Protocol):
         has to await, and taking a dead channel out of a dict is not.
         """
 
-    def available(self, user: str) -> frozenset[str] | None:
+    def available(self, user: str, machine: str | None = None) -> frozenset[str] | None:
         """The tool names the connected client said it can run.
 
         The core intersects this with the catalog and the account's grant before
@@ -262,7 +282,7 @@ class ToolExecution(Protocol):
         connected would be worse than the granted set.
         """
 
-    def home(self, user: str) -> str | None:
+    def home(self, user: str, machine: str | None = None) -> str | None:
         """Where `~` means on the machine the connected client runs on.
 
         Policy expands `$HOME` into the account's own directories, and the
@@ -272,7 +292,7 @@ class ToolExecution(Protocol):
         client is connected; the caller falls back.
         """
 
-    def drops(self, user: str) -> str | None:
+    def drops(self, user: str, machine: str | None = None) -> str | None:
         """Where the connected client keeps files dropped on its window (D102).
 
         An attachment inside it is accepted without a policy grant. `None`

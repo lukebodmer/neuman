@@ -29,6 +29,8 @@ from .executor import Executor
 from .hosts import HostManager
 from .jobs import JobRegistry
 from .link import UPDATE_COMMAND
+from .machine import MachineError
+from .machine import label as machine_label
 from .platform import (
     browse_socket,
     browser_profile_dir,
@@ -54,6 +56,19 @@ DEFAULT_UI_PORT = 8642
 # Exit 2 is already "not signed in", which the unit deliberately does not retry
 # (D111, D108), so a restart needs a code of its own.
 _RESTART_CODE = 75
+
+
+def _machine_name(state: Path) -> str:
+    """This installation's label for `doctor`, or a sentence saying why not.
+
+    Never raises: `doctor` is the command someone runs when the client will not
+    start, so it must be able to report the reason it will not start.
+    """
+
+    try:
+        return machine_label(state)
+    except MachineError as error:
+        return f"unusable ({error})"
 
 
 # Loopback, where http is not a network: the cookie is `Secure`, and a browser
@@ -138,6 +153,22 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--ui-port", type=int, default=DEFAULT_UI_PORT)
     run.add_argument("--ui-host", default="127.0.0.1")
     run.add_argument(
+        "--no-ui",
+        action="store_true",
+        help=(
+            "execute dispatches without serving the window (a machine work happens "
+            "on, watched from wherever its owner sits)"
+        ),
+    )
+    run.add_argument(
+        "--machine",
+        default=None,
+        help=(
+            "what this computer is called on the appliance (default: the hostname, "
+            "recorded the first time and kept)"
+        ),
+    )
+    run.add_argument(
         "--browse-socket",
         default=str(socket) if socket else None,
         help="the bridge socket the tools dial for `browse`",
@@ -156,6 +187,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--password-file",
         default=None,
         help="read the password from this file instead of prompting (for a service)",
+    )
+    login.add_argument(
+        "--machine",
+        default=None,
+        help="what this computer is called on the appliance (default: the hostname)",
     )
 
     sub.add_parser("doctor", help="report what this host can and cannot do")
@@ -196,6 +232,12 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
 
     session = Session(state / "session.json")
 
+    try:
+        machine = machine_label(state, args.machine)
+    except MachineError as error:
+        print(f"neuman-client: {error}", file=sys.stderr)
+        return 2
+
     server = args.server or session.server()
     if server and (unsafe := _secure_scheme(server)):
         print(f"neuman-client: {unsafe}", file=sys.stderr)
@@ -209,11 +251,19 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         return 2
 
     ui: UiServer | None = None
+    # A flag rather than an empty `NEUMAN_CLIENT_WEB`: the packaged wrapper sets
+    # that variable unconditionally, so `headless` used to be expressible only as
+    # blanking a value the package just set — which no operator would guess, and
+    # which reads like a broken environment rather than a choice. A headless
+    # client is an executor on a machine work happens on, watched from wherever
+    # its owner sits (D112).
+    serves_ui = bool(args.web_root) and not args.no_ui
     # One registry, two readers: the daemon runs the jobs, the UI server lists
     # and stops them (D98). Built here because this is where both are wired.
     jobs = JobRegistry()
     daemon = ClientDaemon(
         transport=WebSocketTransport(url=_client_url(server), cookie=session.cookie),
+        machine=machine,
         home=str(home_dir()),
         drops=str(drops.root),
         host=host,
@@ -221,7 +271,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         jobs=jobs,
         hosts=HostManager(state / "hosts"),
     )
-    if args.web_root:
+    if serves_ui:
         ui = UiServer(
             web_root=args.web_root,
             server_url=server,
@@ -235,6 +285,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
             # is the daemon's too (D111).
             link=daemon.link,
             retry=daemon.retry,
+            machine=machine,
         )
         # A leftover file from a previous run names a URL nothing is listening
         # on. A browser opened against it never completes the token bootstrap,
@@ -266,6 +317,20 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
                     # the caller's to see — an exception swallowed here would be
                     # a client that exits zero for no reason.
                     served.result()
+                elif not restart.is_set():
+                    # The watcher finished and no update is pending, which means
+                    # there was nothing to watch: a Nix install has no build-id
+                    # file to compare against, so `watch_build` returns at once
+                    # rather than sleeping on a timer for a change that cannot
+                    # come (D111). That is the watcher's answer, not the
+                    # client's — serving carries on.
+                    #
+                    # Treating its completion as the end of the run made every
+                    # Nix client exit 0 a fifth of a second after it started,
+                    # taking the UI with it. No test saw it because every test
+                    # passes a build id, and the one check that would have seen
+                    # it needs a booted machine (N187).
+                    await served
             finally:
                 for task in (served, watched):
                     task.cancel()
@@ -359,6 +424,7 @@ def _doctor(args: argparse.Namespace) -> int:
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
     print(f"host: {sys.platform} {os.uname().machine}")
     print(f"state: {state}")
+    print(f"machine: {_machine_name(state)}")
     print(f"client: {__version__} ({running or 'no build id'})")
     if installed and installed != running:
         # `apt` has replaced the files and this process has not restarted yet.
@@ -469,13 +535,23 @@ def _login(args: argparse.Namespace) -> int:
     if unsafe := _secure_scheme(args.server):
         print(f"neuman-client: {unsafe}", file=sys.stderr)
         return 2
+    state = Path(args.state_dir).expanduser()
+    try:
+        # Recorded at login as well as at `run`, so the name a person chooses is
+        # the one the first hello carries — a `login --machine dgx` that only
+        # took effect after a restart would leave the machine named one thing and
+        # recorded as another.
+        machine_label(state, args.machine)
+    except MachineError as error:
+        print(f"neuman-client: {error}", file=sys.stderr)
+        return 2
     user = args.user
     if args.password_file:
         password = Path(args.password_file).read_text(encoding="utf-8").rstrip("\n")
     else:
         password = getpass.getpass(f"password for {user}@{args.server}: ")
     try:
-        Session(Path(args.state_dir).expanduser() / "session.json").login(
+        Session(state / "session.json").login(
             server=args.server, username=user, password=password
         )
     except SessionError as error:

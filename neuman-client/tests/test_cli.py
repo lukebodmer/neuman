@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from neuman_client import cli
+from neuman_client.daemon import RPC_VERSION
 from neuman_client.platform import service_status_hint
 
 
@@ -245,8 +246,12 @@ def test_doctor_fails_when_the_appliance_speaks_a_newer_shape(tmp_path, capsys, 
         lambda _server: {
             "product": "neuman",
             "release": "0.2.0",
-            "rpc_versions": [2],
-            "minimum_client": {"release": "0.2.0", "rpc": 2},
+            # One shape ahead of this client. The fixture states a *newer*
+            # appliance, so it moves with the client's own shape — a number
+            # pinned here would stop testing the refusal the day the client
+            # caught up with the fixture.
+            "rpc_versions": [RPC_VERSION + 1],
+            "minimum_client": {"release": "0.2.0", "rpc": RPC_VERSION + 1},
         },
     )
 

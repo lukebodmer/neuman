@@ -4511,3 +4511,79 @@ machine. And the free-software browser on Ubuntu is the one that still needs a
 root-run `snap connect`; the package recommends it anyway, because the
 alternative on a machine with no third-party apt source is no browser at all.
 
+### N185 — A second computer disconnected the first, and took its jobs with it
+- **What:** the hub held one client connection per account, and `register()`
+  replaced whatever was there. Signing in from a laptop therefore disconnected
+  the desktop: its in-flight dispatches failed with `unavailable`, its running
+  jobs were killed and recorded as `ended: disconnected`, and the account's
+  `home` silently became the laptop's. Nothing said any of it had happened.
+- **Cause:** a socket was the only thing the core knew how to name, so "the
+  client" meant "whichever connected last". That is the whole of a client while
+  a person has one computer, and it is the wrong shape the moment they have two:
+  the second is not a replacement, it is a second place.
+- **Found:** by reading `ClientHub.register` while diagnosing a report that a
+  session created on one computer behaved oddly when opened on another. The
+  prompt's sentence — "every tool call runs as them, on their machine" — was the
+  tell: a model cannot act on a machine it is not told about.
+- **Fix:** the hub is keyed by `(account, machine)`. A reconnect from the same
+  computer still replaces its own stale socket, so two sockets of one machine
+  cannot race; a second computer is a second channel, and the branch says which
+  (D112).
+- **The lesson:** an implicit "the one that is connected" is a design decision
+  that has not been written down. When a noun is missing, the code does not fail
+  — it picks, silently, and picks differently an hour later.
+
+### N186 — A working directory was a path, not a path on a computer
+- **What:** `session_branches.working_dir` is an absolute path, validated against
+  policy when it is set and launched as the dispatch's `cwd` on every turn after.
+  Reopening a conversation created on one computer from another carried the path
+  across: if it did not exist the turn failed at spawn, and if it *did* exist on
+  both — `/home/lj/...`, `/data/study` — it silently named a different directory
+  holding different files. The prompt stated the directory and never which
+  computer, so the model could not tell either.
+- **Cause:** the same missing noun as N185, one layer down. The machine was
+  implicit in the connection, so everything derived from "where the client is" —
+  `$HOME` expansion, the working directory, attachments, drops — was a fact about
+  whichever client happened to be connected rather than about the conversation.
+- **Found:** while adding machines; the reported symptom was "the model gets
+  confused about which computer it is on", which is exactly what a prompt that
+  says "on their machine" leaves it to do.
+- **Fix:** a branch names its machine (D112). `$HOME` and `$HOME/<path>` expand
+  against *that* machine's last reported home, live or stored, so composing
+  policy twice gives one answer. A move clears `working_dir` and `attachments`
+  and is refused once the branch has run anything, where the remedy is a fork
+  that keeps the old transcript true to its own filesystem. The prompt names the
+  machine, and the audit names it on every dispatch.
+- **The rule, one level up from N145:** when a value means "somewhere on the
+  machine that acts", it is a fact about *which* machine as well as which path.
+  Ask the side that knows, and record it with the value.
+
+### N187 — A Nix-installed client exited a fifth of a second after it started
+- **What:** `neuman-client run` started, bound the UI, wrote `ui-url`, and
+  exited 0 about 120 ms later. Under systemd the unit has `Restart=on-failure`,
+  so nothing restarted it: the window went away, the AI had no tools, and the
+  journal said `Deactivated successfully`, which reads like a clean shutdown
+  rather than a failure. The demonstration image failed its own check for this —
+  `vm-iso` curls the UI the client serves and got connection refused.
+- **Cause:** `both()` waited on `{served, watched}` with `FIRST_COMPLETED` and
+  treated either result as "the run is over". `watch_build` returns immediately
+  when there is nothing to watch, which is every Nix install: the wrapper sets
+  `NEUMAN_CLIENT_BUILD_ID`, `/usr/share/neuman-client/build-id` exists only in
+  the `.deb`, and the function's own comment says a Nix client has no file to
+  compare against. So the watcher said "nothing to watch" and the runner heard
+  "stop". The `.deb` was unaffected, which is why this survived: the one install
+  path a developer runs from a checkout is the one that never had the file.
+- **Found:** by running the release gate on a change that had nothing to do with
+  the client's lifetime. Confirmed against the previous release — the built
+  `0.1.0` client exits 0 after 124 ms under the same conditions — so it is not a
+  regression from that change; it arrived with the self-update machinery (D111).
+- **Fix:** the watcher finishing without a pending restart is not the client
+  finishing. `both()` now keeps serving, and only a restart request ends the
+  run. `neuman-client run` against an unreachable core now stays up and retries,
+  which is what the daemon loop was always written to do.
+- **Why no test saw it:** every test constructs `ClientDaemon(build_id=...)`, so
+  `watch_build` sleeps instead of returning, and the path that broke is the one
+  the tests skip. It needed a real package and a real boot to fail. The lesson
+  joins N152's: a fixture that supplies the value under test cannot tell you what
+  happens when nobody supplies it.
+

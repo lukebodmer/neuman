@@ -799,6 +799,23 @@
       <span id="reasoning-level"></span>
     </button>
 
+    <!-- Which computer this conversation's tools run on (D112). Unlike the branch
+         chip it is present for every session, because "where" is a fact about
+         every message and the one thing the person at the window cannot work
+         out: this page is served by the machine they are sitting at, and the
+         branch may name another. Marked `foreign` when it does, which is the
+         only state worth a colour.
+
+         Before the directory, because it is what makes the directory mean
+         something: a path is a path on one computer, and the two were once
+         silently interchangeable. -->
+    <button id="machine-chip" class="hidden" aria-haspopup="menu" aria-expanded="false"
+            title="The computer this conversation runs on">
+      <svg class="where" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14v9H3zM7 16.5h6M10 13.5v3" /></svg>
+      <span id="machine-label">this computer</span>
+      <span class="chev" aria-hidden="true">▾</span>
+    </button>
+
     <!-- Which branch of this session the next message runs in. Invisible until
          there is more than one branch, because "main" on a session that has
          never forked says nothing. A fork never adds a row to the rail: it adds
@@ -871,6 +888,11 @@
   <div id="branch-menu" class="hidden" role="menu" aria-label="Branches">
     <div id="branch-choices"></div>
     <p class="hint">A branch is the same conversation up to the point it forked. Files and messages from before that point already happened.</p>
+  </div>
+
+  <div id="machine-menu" class="hidden" role="menu" aria-label="Machines">
+    <div id="machine-choices"></div>
+    <p class="hint">A conversation runs on one computer at a time. Moving a branch that has already run tools continues it on a new branch, so the earlier paths still mean what they meant.</p>
   </div>
 
   <!-- The three modes, opened from the chip. Rendered by `renderApproval`, the

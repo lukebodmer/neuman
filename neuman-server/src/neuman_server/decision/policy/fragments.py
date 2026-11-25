@@ -5,7 +5,7 @@ overlay``. Its shape is the one in ``contracts/schemas/baseline.schema.json``:
 **flat**, every field optional, ``null`` meaning "inherit from the layer below".
 
     {"tools": [...], "files_read": [...], "files_write": [...],
-     "network": "any", "auto_accept": "safe", "max_iterations": 40}
+     "machines": [...], "network": "any", "auto_accept": "safe", "max_iterations": 40}
 
 v1's fragment was nested (`capabilities.tools`, `files.read`, `budget.*`) and
 every fragment could subtract. Two deliberate changes (gotchas N2):
@@ -42,7 +42,7 @@ __all__ = [
     "PolicyFragment",
 ]
 
-LIST_FIELDS = ("tools", "files_read", "files_write", "models")
+LIST_FIELDS = ("tools", "files_read", "files_write", "models", "machines")
 
 SCALAR_FIELDS = (
     # Whether tools declaring `needs = ["network"]` are offered at all. There is

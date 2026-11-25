@@ -103,6 +103,10 @@ SCHEMA = json.loads(r"""
      "minimum": 1,
      "type": "integer"
     },
+    "machine": {
+     "$ref": "#/$defs/machineLabel",
+     "description": "The machine the core believes this connection is. The client refuses a dispatch naming another one (`wrong_machine`), which turns a routing bug at the core into a refusal instead of a command run on the wrong computer \u2014 the failure this field exists to make impossible."
+    },
     "rpc_version": {
      "$ref": "#/$defs/rpcVersion"
     },
@@ -181,7 +185,8 @@ SCHEMA = json.loads(r"""
       "unavailable",
       "outside_surface",
       "missing_program",
-      "version_mismatch"
+      "version_mismatch",
+      "wrong_machine"
      ]
     },
     "dispatch_id": {
@@ -226,6 +231,9 @@ SCHEMA = json.loads(r"""
      "$ref": "common.schema.json#/$defs/absPath",
      "description": "The home directory on the machine this client runs on \u2014 what `~` means there. The core expands `$HOME` and `$HOME/<path>` policy entries against it and must not use the account's home on *its* host: a client on another machine has a different one, and a dispatch checked against the wrong home refuses paths the account can read (N145). A dishonest value cannot widen anything \u2014 `shell` and `python` are unchecked, so a client wanting more reach would not ask \u2014 but it decides which directories those entries name, and that is a question only the client can answer."
     },
+    "machine": {
+     "$ref": "#/$defs/machine"
+    },
     "release": {
      "$ref": "#/$defs/release",
      "description": "The Neuman release this client is. Optional because a client too old to say still has a hello the core can use, and refusing it would turn a reporting gap into an outage (D111). Absent means \"unknown\", not \"unacceptable\": the gate is `rpc_version`. It is what an operator sees per machine, and what a refusal quotes back to the person."
@@ -248,6 +256,7 @@ SCHEMA = json.loads(r"""
    "required": [
     "type",
     "rpc_version",
+    "machine",
     "home",
     "drops",
     "tools"
@@ -311,6 +320,29 @@ SCHEMA = json.loads(r"""
     "observed"
    ],
    "type": "object"
+  },
+  "machine": {
+   "additionalProperties": false,
+   "description": "The machine this connection runs dispatches for. Not an identity claim: the session already names the principal, and a machine is scoped to that account, so naming one grants nothing. It is what makes a branch's path mean *somewhere*: without it, a session created on one computer and reopened on another is silently pointed at a second filesystem.",
+   "properties": {
+    "kind": {
+     "description": "How the core reaches this machine. `client` is a daemon holding this socket. `ssh` is reserved for a target the client dials and is not spoken yet, so a client claiming it is refused rather than half-served.",
+     "enum": [
+      "client"
+     ]
+    },
+    "label": {
+     "$ref": "#/$defs/machineLabel"
+    }
+   },
+   "required": [
+    "label",
+    "kind"
+   ],
+   "type": "object"
+  },
+  "machineLabel": {
+   "$ref": "common.schema.json#/$defs/machineLabel"
   },
   "minimumClient": {
    "additionalProperties": false,
@@ -409,7 +441,7 @@ SCHEMA = json.loads(r"""
   "rpcVersion": {
    "description": "Every shape this contract knows how to write. It is a set rather than a constant because the two halves update on different days and an appliance update must not strand a client that has not been updated yet (D111): the handshake picks one of these per connection, and every frame on that connection carries the one it picked. Adding a value is the append-only case; removing one is what raises the appliance's floor.",
    "enum": [
-    1
+    2
    ]
   },
   "sequence": {
@@ -562,6 +594,10 @@ SCHEMA = json.loads(r"""
   "welcome": {
    "additionalProperties": false,
    "properties": {
+    "machine": {
+     "$ref": "#/$defs/machine",
+     "description": "The machine the core recorded, echoed rather than assumed: a client that believes it is `ernest` and is told it is `dgx` has to be able to say so, and this is the frame where the two answers meet."
+    },
     "minimum_client": {
      "$ref": "#/$defs/minimumClient",
      "description": "The oldest client this appliance accepts. Nothing below it completes a handshake, so a client that got this far is at or above it; it is stated for the quiet notice and for `doctor`, not as a condition."
@@ -593,13 +629,14 @@ SCHEMA = json.loads(r"""
    "required": [
     "type",
     "rpc_version",
-    "user"
+    "user",
+    "machine"
    ],
    "type": "object"
   }
  },
  "$schema": "https://json-schema.org/draft/2020-12/schema",
- "description": "JSON-lines between the decision core and a connected client, one JSON object per line. The client opens the connection, says hello with the tool names it can run and the home directory on its machine, and then receives dispatches and returns their output. The core decides; the client executes exactly what it is told. There is no profile on the wire: the client runs as the local account that holds the process and reaches what that account reaches, and the controls are the capability gate and the approval verdict, both decided before a dispatch is sent.",
+ "description": "JSON-lines between the decision core and a connected client, one JSON object per line. The client opens the connection, says hello with the machine it is, the tool names it can run and the home directory there, and then receives dispatches and returns their output. The core decides; the client executes exactly what it is told. There is no profile on the wire: the client runs as the local account that holds the process and reaches what that account reaches, and the controls are the capability gate and the approval verdict, both decided before a dispatch is sent.",
  "oneOf": [
   {
    "$ref": "#/$defs/hello"

@@ -244,7 +244,9 @@ async def test_a_ui_with_no_daemon_says_so_rather_than_inventing_a_link(ui):
     )
 
     assert status == 200
-    assert json.loads(body) == {"state": "ui_only", "visible": False}
+    # `machine` is empty because a ui-only server has no daemon to have named
+    # one — the same honesty as the banner it declines to draw (D112).
+    assert json.loads(body) == {"state": "ui_only", "visible": False, "machine": ""}
 
 
 async def test_a_request_without_the_local_cookie_names_itself(ui):

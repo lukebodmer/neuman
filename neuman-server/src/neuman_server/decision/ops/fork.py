@@ -34,6 +34,7 @@ async def fork(
     source: Any,
     at_seq: int | None,
     side: str | None,
+    machine: str | None,
     working_dir: str | None,
     attachments: tuple[str, ...],
     tool_selection: tuple[str, ...] | None,
@@ -44,11 +45,17 @@ async def fork(
 ) -> dict[str, Any]:
     """Create a sibling branch holding the source's prefix through a boundary.
 
-    `working_dir`, `attachments` and `tool_selection` are the values the caller
-    already checked against live policy. They are passed in rather than copied
-    here because reach is a decision and decisions do not live in this module
-    (D7); the branch's model, reasoning and approval are the source's own
-    choices and are copied as they are.
+    `machine`, `working_dir`, `attachments` and `tool_selection` are the values
+    the caller already checked against live policy. They are passed in rather
+    than copied here because reach is a decision and decisions do not live in
+    this module (D7); the branch's model, reasoning and approval are the
+    source's own choices and are copied as they are.
+
+    `machine` is the one field that is *not* simply inherited, and the caller
+    decides it (D112): continuing a conversation on another computer is what a
+    fork is for, and it is also why the marker below records where this branch
+    runs. The inherited prefix was produced on the source's machine, so a reader
+    of the transcript is told which part of it means which filesystem.
     """
 
     # A branch whose turn is running has events after its last `turn_complete`
@@ -63,6 +70,7 @@ async def fork(
         forked_from=source.id,
         forked_from_seq=resolved.through,
         inherited_event_count=0,
+        machine=machine,
         working_dir=working_dir,
         attachments=attachments,
         tool_selection=tool_selection,
@@ -78,6 +86,8 @@ async def fork(
         through_seq=resolved.through,
         at_seq=resolved.at_seq,
         side=resolved.side,
+        machine=machine,
+        from_machine=getattr(source, "machine", None),
     )
 
     # The marker is seq 1 and the copied rows follow, so the prefix a reader must
@@ -96,6 +106,8 @@ async def fork(
             "at_seq": resolved.at_seq,
             "side": resolved.side,
             "events": copied,
+            "machine": machine,
+            "from_machine": getattr(source, "machine", None),
         },
         mirror=mirror,
     )

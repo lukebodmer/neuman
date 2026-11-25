@@ -35,20 +35,71 @@ from ...adapters.clients import (
     SUPPORTED_RPC_VERSIONS,
     ClientConnection,
 )
-from ...adapters.persistence import AccountStore, SessionStore
+from ...adapters.persistence import AccountStore, MachineStore, SessionStore
+from ...adapters.persistence.machines import MACHINE_LABEL
 from ...decision.identity import resolve_session
-from .deps import COOKIE_NAME
+from .deps import COOKIE_NAME, Unauthorized, connection, require_principal, services_of
 
 if TYPE_CHECKING:  # pragma: no cover
     from starlette.websockets import WebSocket
 
 __all__ = ["client_routes"]
 
+# The machine kinds this build can serve. `ssh` is in the contract so the shape
+# does not have to change to add it; a client claiming it gets a refusal that
+# says so, rather than a channel the core cannot dispatch over.
+MACHINE_KINDS = frozenset({"client"})
+
 
 def client_routes() -> list[Any]:
-    from starlette.routing import WebSocketRoute
+    from starlette.routing import Route, WebSocketRoute
 
-    return [WebSocketRoute("/client", _client_socket)]
+    return [
+        WebSocketRoute("/client", _client_socket),
+        Route("/api/machines", _list_machines, methods=["GET"]),
+    ]
+
+
+async def _list_machines(request: Any) -> Any:
+    """The machines this account has, for the window's machine switcher (D112).
+
+    Here rather than with the session routes because a machine is what a client
+    *is*: every row exists because one of this account's clients introduced
+    itself. Scoped by the principal, never by a parameter — asking for someone
+    else's machines has no spelling.
+
+    `online` comes from the hub rather than the row: the row is the last hello
+    and may be days old, and the one question the switcher asks first is
+    whether choosing a machine will work now.
+    """
+
+    from starlette.responses import JSONResponse
+
+    services = services_of(request)
+    async with connection(request) as conn:
+        try:
+            principal = await require_principal(request, conn)
+        except Unauthorized as exc:
+            return JSONResponse({"error": exc.reason}, status_code=exc.status)
+        rows = await MachineStore(conn).list_for(principal.account_id)
+
+    return JSONResponse(
+        {
+            "machines": [
+                {
+                    "label": row.label,
+                    "kind": row.kind,
+                    "notes": row.notes,
+                    "release": row.release,
+                    "last_seen_at": (
+                        row.last_seen_at.isoformat() if row.last_seen_at is not None else None
+                    ),
+                    "online": services.execution.connected(principal.name, row.label),
+                }
+                for row in rows
+            ]
+        }
+    )
 
 
 class _Channel:
@@ -121,6 +172,29 @@ async def _client_socket(websocket: WebSocket) -> None:
         return
 
     tools = frozenset(tool for tool in hello.get("tools", []) if isinstance(tool, str))
+
+    identified = hello.get("machine")
+    machine = _machine(identified)
+    if machine is None:
+        # Refused rather than defaulted. A guessed label would put a dispatch on
+        # some machine and record it as another — the failure this field exists
+        # to make impossible — and the one thing worse than "I do not know where
+        # you are" is a record that says.
+        await websocket.send_json(
+            {
+                "type": "error",
+                "rpc_version": speaks,
+                "dispatch_id": None,
+                "code": "bad_request",
+                "message": (
+                    "hello must name the machine it is: a lower-case label such as "
+                    "`ernest`, and kind `client`"
+                ),
+            }
+        )
+        await websocket.close(code=4400)
+        return
+
     home = hello.get("home")
     if not isinstance(home, str) or not home.startswith("/"):
         # Without it every `$HOME` grant expands against the wrong machine. A
@@ -157,18 +231,35 @@ async def _client_socket(websocket: WebSocket) -> None:
     connection = ClientConnection(
         _Channel(websocket),
         account=principal.name,
+        machine=machine,
         tools=tools,
         home=home,
         drops=drops,
         rpc_version=speaks,
         release=release,
     )
+    # Recorded before the channel is usable, so a dispatch can never run on a
+    # machine the database has never heard of. The row is also what `$HOME`
+    # expands against once the socket goes: keeping the last hello is what makes
+    # an offline machine an answer rather than a hole (D112).
+    async with services.database.connection() as conn:
+        await MachineStore(conn).upsert(
+            principal.account_id,
+            machine,
+            home=home,
+            drops=drops,
+            tools=tools,
+            release=release,
+            rpc=speaks,
+        )
+
     await services.execution.register(connection)
     await connection.send(
         {
             "type": "welcome",
             "rpc_version": connection.rpc_version,
             "user": principal.name,
+            "machine": {"label": machine, "kind": "client"},
             "release": __version__,
             "rpc_versions": sorted(SUPPORTED_RPC_VERSIONS),
             "minimum_client": {
@@ -186,6 +277,26 @@ async def _client_socket(websocket: WebSocket) -> None:
     finally:
         connection.disconnect()
         services.execution.unregister(connection)
+
+
+def _machine(value: Any) -> str | None:
+    """The machine a hello names, or None when it does not name a usable one.
+
+    One function rather than four inline checks so the refusal has one reason:
+    a hello whose machine is missing, malformed, or a kind this build cannot
+    serve is a hello that cannot be bound, and the difference between those is
+    for `doctor` and the client's own validation, not for a socket that has not
+    been accepted yet.
+    """
+
+    if not isinstance(value, dict):
+        return None
+    if value.get("kind") not in MACHINE_KINDS:
+        return None
+    label = value.get("label")
+    if not isinstance(label, str) or not MACHINE_LABEL.fullmatch(label):
+        return None
+    return label
 
 
 async def _refuse_version(

@@ -9,10 +9,11 @@ from __future__ import annotations
 import hashlib
 import itertools
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from typing import Any
 
+from neuman_server.adapters.persistence.machines import CLIENT, MachineRow
 from neuman_server.decision.harness.ports import (
     Chunk,
     DispatchOutcome,
@@ -615,6 +616,69 @@ class FakeEvent:
     payload: dict[str, Any]
 
 
+class FakeMachines:
+    """Implements the machines repository, in memory.
+
+    A machine row is what a socket used to be (D112), so this fake holds the
+    last hello per (account, label) and hands it back after the connection is
+    gone — which is the property the real store exists for, and the one a fake
+    that only remembered connected clients would quietly delete.
+
+    It returns the real `MachineRow`, because that dataclass is shape rather
+    than storage: the thing under test is where the values come from, not how
+    they serialise.
+    """
+
+    def __init__(self) -> None:
+        self.rows: dict[tuple[str, str], MachineRow] = {}
+
+    async def upsert(
+        self,
+        account_id: str,
+        label: str,
+        *,
+        kind: str = CLIENT,
+        home: str,
+        drops: str,
+        tools: tuple[str, ...] | list[str],
+        release: str | None,
+        rpc: int,
+    ) -> MachineRow:
+        now = datetime.now(UTC)
+        existing = self.rows.get((account_id, label))
+        row = MachineRow(
+            account_id=account_id,
+            label=label,
+            kind=kind,
+            notes=existing.notes if existing is not None else "",
+            created_at=existing.created_at if existing is not None else now,
+            last_seen_at=now,
+            home=home,
+            drops=drops,
+            tools=tuple(sorted(tools)),
+            release=release,
+            rpc=rpc,
+        )
+        self.rows[(account_id, label)] = row
+        return row
+
+    async def get(self, account_id: str, label: str) -> MachineRow | None:
+        return self.rows.get((account_id, label))
+
+    async def list_for(self, account_id: str) -> list[MachineRow]:
+        return [row for (account, _), row in sorted(self.rows.items()) if account == account_id]
+
+    async def list_all(self) -> list[MachineRow]:
+        return [row for _, row in sorted(self.rows.items())]
+
+    async def set_notes(self, account_id: str, label: str, notes: str) -> bool:
+        row = self.rows.get((account_id, label))
+        if row is None:
+            return False
+        self.rows[(account_id, label)] = replace(row, notes=notes)
+        return True
+
+
 class FakeImages:
     """Implements ImageRepository, in memory and content-addressed.
 
@@ -701,6 +765,8 @@ class FakeEvents:
         through_seq: int,
         at_seq: int | None,
         side: str | None,
+        machine: str | None = None,
+        from_machine: str | None = None,
     ) -> int:
         """The same filter and renumbering the SQL does, over the fake rows."""
 
@@ -718,6 +784,12 @@ class FakeEvents:
                     "at_seq": at_seq,
                     "side": side,
                     "events": 0,
+                    # Where the copied prefix ran, and where this branch runs
+                    # (D112). A fork may continue a conversation on another
+                    # computer, and the marker is where a later reader learns
+                    # where the break is.
+                    "machine": machine,
+                    "from_machine": from_machine,
                 },
             )
         )
@@ -966,6 +1038,11 @@ class FakeExecution:
         # sets it to stand in for a client somewhere (N145).
         self.home_value: str | None = None
         self.drops_value: str | None = None
+        # The machine a branch written before D112 adopts on its next turn; None
+        # means "no client to ask", which is what almost every test wants — a
+        # branch that already names a machine never consults it, and a fake that
+        # invented one would hide a harness that had stopped using the branch's.
+        self.machine_value: str | None = None
         # What the connected client said it can run, or None for "no client
         # connected" — which is what most tests want. A test that needs the
         # harness to actually probe an environment sets this, because a tool the
@@ -993,6 +1070,7 @@ class FakeExecution:
         tool: str,
         args: dict[str, Any],
         wait_ms: int,
+        machine: str | None = None,
         lifetime_ms: int | None = None,
         working_dir: str | None = None,
         surfaces: dict[str, list[str]] | None = None,
@@ -1014,11 +1092,15 @@ class FakeExecution:
                 # is. A fake that dropped the field would let the harness stop
                 # sending it and every test still pass — the N38/N48 shape.
                 "working_dir": working_dir,
+                # And *which computer*. The same argument as `working_dir` one
+                # layer up: a fake that ignored it would let the harness route
+                # every dispatch to "whoever is connected" again, silently.
+                "machine": machine,
             }
         )
         return self.outcomes.get(tool, self.outcome)
 
-    async def cancel(self, *, user: str, dispatch_id: str) -> None:
+    async def cancel(self, *, user: str, dispatch_id: str, machine: str | None = None) -> None:
         self.cancellations.append(dispatch_id)
 
     async def end_session_jobs(self, *, user: str, session_id: str) -> list[str]:
@@ -1032,11 +1114,16 @@ class FakeExecution:
         """Who the overview reports as connected now, and what they run."""
 
         return [
-            {"account": name, "release": "0.1.0", "rpc": 1}
+            {
+                "account": name,
+                "machine": self.machine_value or "ernest",
+                "release": "0.1.0",
+                "rpc": 1,
+            }
             for name in sorted(self.connected_names)
         ]
 
-    def available(self, user: str) -> frozenset[str] | None:
+    def available(self, user: str, machine: str | None = None) -> frozenset[str] | None:
         """What `available_value` says; None — no client — by default.
 
         None leaves the advertisement unrestricted, which is what most tests
@@ -1047,17 +1134,27 @@ class FakeExecution:
 
         return self.available_value
 
-    def home(self, user: str) -> str | None:
+    def home(self, user: str, machine: str | None = None) -> str | None:
         """What `home_value` says, which a test sets to stand in for a client."""
 
         return self.home_value
 
-    def drops(self, user: str) -> str | None:
+    def drops(self, user: str, machine: str | None = None) -> str | None:
         """What `drops_value` says, set beside `home_value` for a client."""
 
         return self.drops_value
 
-    def connected(self, user: str) -> bool:
+    def newest_machine(self, user: str) -> str | None:
+        """The machine a branch written before D112 would adopt, if a test set one.
+
+        `None` by default: most tests run a branch that already names its
+        machine, and a fake that invented one would hide a harness that had
+        stopped using the branch's own.
+        """
+
+        return self.machine_value
+
+    def connected(self, user: str, machine: str | None = None) -> bool:
         """Whether a dispatch for `user` has anywhere to go.
 
         The scheduler asks this before starting a run. `home_value` is the
@@ -1065,7 +1162,11 @@ class FakeExecution:
         cannot expand `$HOME`, and a task with no client has neither.
         """
 
-        return user in self.connected_names and self.home_value is not None
+        return (
+            user in self.connected_names
+            and self.home_value is not None
+            and (machine is None or machine == self.machine_value)
+        )
 
     async def register(self, connection: Any) -> None:
         """Keep the connection the route built, as the hub would."""

@@ -1,1 +1,1 @@
-{"type": "welcome", "rpc_version": 1, "user": "alice"}
+{"type": "welcome", "rpc_version": 2, "user": "alice", "machine": {"label": "ernest", "kind": "client"}}

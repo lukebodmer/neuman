@@ -18,7 +18,7 @@ initial file carries the reasoning for every table; this page is the map.
 
 ## Everything in it
 
-Eighteen tables plus the migrator's own bookkeeping. `→` marks a foreign
+Nineteen tables plus the migrator's own bookkeeping. `→` marks a foreign
 key and names its delete behaviour; **bold** marks the primary key.
 
 | Table | Key | Columns | Holds |
@@ -29,10 +29,11 @@ key and names its delete behaviour; **bold** marks the primary key.
 | `settings` | **`key`** TEXT | `value` JSONB, `updated_at` TSTZ | The runtime baseline and prompt (D68). |
 | `events` | **`id`** BIGSERIAL | `at` TSTZ, `level` TEXT, `logger` TEXT, `message` TEXT, `fields` JSONB | Warnings and errors for the administration panel. Indexed by time. |
 | `auth_sessions` | **`token_hash`** BYTEA | `account_id` → `accounts` CASCADE, `csrf_token` TEXT, `created_at` TSTZ, `expires_at` TSTZ, `last_seen_at` TSTZ | Login sessions, keyed by the BLAKE2b-256 hash of the token. Indexed by account and by expiry. |
+| `machines` | **(`account_id`, `label`)** | `account_id` → `accounts` CASCADE, `label` TEXT, `kind` TEXT `'client'`, `notes` TEXT `''`, `created_at` TSTZ, `last_seen_at` TSTZ, `home` TEXT, `drops` TEXT, `tools` JSONB `'[]'`, `release` TEXT, `rpc` INT | One row per named place this account's dispatches run: the last hello from a client, kept after the socket goes (D112). `kind` is `client` today; `ssh` is reserved by a CHECK. Indexed by `label`, which spans accounts for the operator's "who is on the dgx". |
 | `policy_generations` | **`account_id`** → `accounts` CASCADE | `generation` INT, `policy_hash` TEXT, `updated_at` TSTZ | One row per account: the counter and hash that make revocation take effect on the next call. |
 | `policy_grants` | **(`group_name`, `role`)** | `created_at` TSTZ | Which groups hold which roles. A group with no members is inert. Who granted it is the audit chain's to record. |
 | `agent_sessions` | **`id`** TEXT | `account_id` → `accounts` RESTRICT, `title` TEXT, `created_at` TSTZ, `closed_at` TSTZ, `removed_at` TSTZ, `pinned_at` TSTZ, `read_at` TSTZ, `task_run_id` TEXT | One row per conversation — what the rail shows — or per task agent step, when `task_run_id` names its run; chat's reads leave those out (D99). `read_at` is the owner's read watermark: a reply newer than it is unread, and opening the session moves it. Indexed by `(account_id, created_at DESC)`. |
-| `session_branches` | **`id`** TEXT | `session_id` → `agent_sessions` CASCADE, `forked_from` TEXT, `forked_from_seq` BIGINT, `inherited_event_count` BIGINT `0`, `created_at` TSTZ, `working_dir` TEXT, `attachments` JSONB `[]`, `tool_selection` JSONB NULL, `model` TEXT, `reasoning` TEXT, `approval` TEXT, UNIQUE (`session_id`, `id`) | One transcript inside a session: the settings its next turn runs with, and what a fork creates. Indexed by `(session_id, created_at)`. |
+| `session_branches` | **`id`** TEXT | `session_id` → `agent_sessions` CASCADE, `forked_from` TEXT, `forked_from_seq` BIGINT, `inherited_event_count` BIGINT `0`, `created_at` TSTZ, `machine` TEXT NULL, `working_dir` TEXT, `attachments` JSONB `[]`, `tool_selection` JSONB NULL, `model` TEXT, `reasoning` TEXT, `approval` TEXT, UNIQUE (`session_id`, `id`) | One transcript inside a session: the settings its next turn runs with, and what a fork creates. `machine` is where a turn dispatches (D112); NULL only on rows written before that column existed, which adopt one on their next turn. Indexed by `(session_id, created_at)`. |
 | `session_events` | **(`branch_id`, `seq`)** | `session_id` TEXT, `branch_id` → (`session_id`, `id`) of `session_branches` CASCADE, `ts` TSTZ, `kind` TEXT, `message_id` TEXT, `payload` JSONB, `redactions` JSONB | The append-only log of one branch — every model-visible request and output. Indexed by `(branch_id, kind)` and `(session_id, ts DESC)`. |
 | `session_images` | **`sha256`** TEXT | `media_type` TEXT, `data` BYTEA, `created_at` TSTZ | The one copy of each image's bytes, content-addressed. No foreign key: one picture may be referenced by several sessions. |
 | `session_image_refs` | **(`session_id`, `sha256`)** | `session_id` → `agent_sessions` CASCADE | The reference graph that roots each image. An image is collected only when no row names it. Indexed by `sha256`. |
@@ -103,6 +104,21 @@ key, so a database read cannot be replayed as a session. Also the CSRF token,
 the owning account, and created / expires / last-seen timestamps. Deleted with
 the account.
 
+**`machines`** — the named places this account's dispatches run (D112). Keyed
+`(account_id, label)`, because reach differs per person: Alice's `dgx` and
+Bob's `dgx` are one physical box and two machines. The row is what a socket
+used to be — every fact a `hello` reports, kept after the connection goes — so
+`$HOME` expands the same way whether the computer is awake or asleep, and an
+offline machine is an answer rather than a hole. `notes` is the only field an
+operator writes: what is installed there, told to the model, because the
+handshake advertises Neuman tools and says nothing about `PATH`.
+
+That the label is a *claim* is the same limit as every other client report. It
+is scoped to the account, so a wrong name can only point at one of that
+account's own computers — but it is not attested, and cannot be, since the two
+ends are different machines (D67). The footnote on `[^reported]` in
+`docs/security-model.md` is the long version.
+
 ## Policy
 
 **`policy_generations`** — one row per account: a `generation` counter and the
@@ -155,6 +171,10 @@ cascades from its session, and the whole session is what retention purges.
 The settings a turn runs with live here rather than on the session, because
 they are statements about the conversation a branch is having:
 
+- `machine` — **where it runs.** A named place this account's dispatches go
+  (D112), set when the branch is created from the computer that created it. The
+  model is told it; a move clears the two path fields below and is refused once
+  the branch has run anything, where the remedy is a fork.
 - `working_dir` — a **hint**, not a grant. The model is told where the work is;
   the route checks it against composed policy, so a working directory outside
   `files_read` is refused rather than widening anything. It is current state

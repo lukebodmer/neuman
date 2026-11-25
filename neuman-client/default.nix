@@ -29,7 +29,7 @@
 
 python3.pkgs.buildPythonApplication {
   pname = "neuman-client";
-  version = "0.1.0";
+  version = "0.1.1";
   src = ./.;
   format = "pyproject";
 

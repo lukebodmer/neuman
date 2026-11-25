@@ -2302,6 +2302,60 @@
   #branch-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #branch-chip .chev { font-size: 9px; opacity: 0.6; flex: none; }
 
+  /* Which computer this conversation runs on (D112). Same shape as the branch
+     chip because it is the same kind of control, one field down: a per-branch
+     setting stated where the message is, not in a panel. `foreign` is the only
+     state that gets a colour — tools running somewhere other than the computer
+     in front of you is worth noticing, and everything else would be decoration. */
+  #machine-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    border: 1px solid transparent; background: none; color: var(--dim);
+    font: inherit; font-family: ui-monospace, monospace; font-size: 11px;
+    padding: 1px 6px; border-radius: 999px; cursor: pointer;
+    max-width: 18ch; min-width: 0;
+  }
+  #machine-chip:hover, #machine-chip[aria-expanded="true"] {
+    border-color: var(--line); color: var(--text); background: var(--hover);
+  }
+  #machine-chip .where { width: 11px; height: 11px; flex: none; opacity: 0.7;
+    fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linejoin: round; }
+  #machine-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #machine-chip .chev { font-size: 9px; opacity: 0.6; flex: none; }
+  /* Not on this computer. Warm rather than alarming: it is a fact about where the
+     work is, not a fault. */
+  #machine-chip.foreign { color: var(--warn); }
+  #machine-chip.foreign .where { opacity: 1; }
+
+  #machine-menu {
+    position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
+    min-width: 220px; max-width: 340px;
+    max-height: var(--headroom-cap); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    box-shadow: 0 6px 24px rgb(var(--shadow) / 0.35); padding: 8px; z-index: 20;
+  }
+  #machine-menu .hint { margin: 8px 4px 2px; color: var(--dim); font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; }
+  #machine-choices { display: flex; flex-direction: column; gap: 2px; }
+  #machine-choices .machine-choice {
+    display: flex; align-items: center; gap: 8px; width: 100%;
+    padding: 7px 9px;
+    border: 1px solid transparent; border-radius: 6px;
+    background: none; color: var(--text); font: inherit; font-size: 13px;
+    text-align: left; cursor: pointer; overflow: hidden;
+  }
+  #machine-choices .machine-choice:hover,
+  #machine-choices .machine-choice:focus-visible {
+    background: var(--hover); color: var(--accent); outline: none;
+  }
+  #machine-choices .machine-choice.current { border-color: var(--accent); color: var(--accent); }
+  #machine-choices .machine-name { overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+  #machine-choices .machine-state {
+    margin-left: auto; color: var(--dim); font-size: 11px;
+    font-family: ui-monospace, monospace; white-space: nowrap;
+  }
+  #machine-choices .machine-choice.offline .machine-name { opacity: 0.6; }
+
   #branch-menu {
     position: absolute; bottom: 100%; left: 0; margin-bottom: 8px;
     min-width: 220px; max-width: 340px;

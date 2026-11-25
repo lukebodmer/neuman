@@ -33,7 +33,8 @@ def client(surface):
 def _hello(**overrides: object) -> dict:
     message = {
         "type": "hello",
-        "rpc_version": 1,
+        "rpc_version": 2,
+        "machine": {"label": "ernest", "kind": "client"},
         "home": "/home/alice",
         "drops": "/home/alice/.local/state/neuman/drops",
         "tools": ["fs_read", "shell"],
@@ -102,6 +103,57 @@ def test_a_hello_without_a_usable_drops_directory_is_refused(surface, client, dr
     assert surface.services.execution.connections == []
 
 
+def test_a_hello_without_a_machine_is_refused(surface, client):
+    """D112: a dispatch has to land somewhere nameable.
+
+    Refused rather than defaulted, which is the whole difference from the old
+    behaviour: a guessed label would put a dispatch on one computer and record
+    it as another, and the one thing worse than "I do not know where you are" is
+    a record that says.
+    """
+
+    from starlette.websockets import WebSocketDisconnect
+
+    _login(surface, client)
+    broken = _hello()
+    del broken["machine"]
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/client") as socket:
+            socket.send_json(broken)
+            message = socket.receive_json()
+            assert "machine" in message["message"], message
+            socket.receive_json()
+    assert caught.value.code == 4400
+    assert surface.services.execution.connections == []
+
+
+@pytest.mark.parametrize(
+    "machine",
+    [
+        # A label is lower case and starts with a letter or digit: it is typed by
+        # people and compared as a string, so a name differing only in case
+        # would be two machines or one depending on who was asking.
+        {"label": "Ernest Laptop", "kind": "client"},
+        {"label": "-ernest", "kind": "client"},
+        # Reserved by the schema and not spoken by this build. Refused rather
+        # than half-served: there is no channel to dispatch down.
+        {"label": "dgx", "kind": "ssh"},
+        "ernest",
+    ],
+)
+def test_a_hello_with_an_unusable_machine_is_refused(surface, client, machine):
+    from starlette.websockets import WebSocketDisconnect
+
+    _login(surface, client)
+    with pytest.raises(WebSocketDisconnect) as caught:
+        with client.websocket_connect("/client") as socket:
+            socket.send_json(_hello(machine=machine))
+            socket.receive_json()
+            socket.receive_json()
+    assert caught.value.code == 4400
+    assert surface.services.execution.connections == []
+
+
 def test_a_relative_home_is_refused(surface, client):
     """A path fragment is not a home, and it would silently expand to nothing."""
 
@@ -155,17 +207,19 @@ def test_a_good_hello_registers_the_client_and_is_answered(surface, client):
 
         assert welcome == {
             "type": "welcome",
-            "rpc_version": 1,
+            "rpc_version": 2,
             "user": "alice",
+            "machine": {"label": "ernest", "kind": "client"},
             "release": __version__,
-            "rpc_versions": [1],
-            "minimum_client": {"release": "0.1.0", "rpc": 1},
+            "rpc_versions": [2],
+            "minimum_client": {"release": "0.1.1", "rpc": 2},
         }
         (connection,) = surface.services.execution.connections
         assert connection.account == "alice"
+        assert connection.machine == "ernest"
         assert connection.tools == frozenset({"fs_read", "shell"})
         assert connection.home == "/home/alice"
-        assert connection.rpc_version == 1
+        assert connection.rpc_version == 2
         assert connection.release is None, "a hello that did not say is unknown, not empty"
 
     assert surface.services.execution.connections == []
@@ -204,10 +258,10 @@ def test_a_shape_this_build_does_not_speak_is_refused_with_both_ends(surface, cl
             assert message["type"] == "error"
             assert message["code"] == "version_mismatch"
             assert "99" in message["message"], message
-            assert message["versions"]["accepted"] == [1]
+            assert message["versions"]["accepted"] == [2]
             assert message["versions"]["server"] == {
                 "release": __version__,
-                "rpc": 1,
+                "rpc": 2,
             }
             assert message["versions"]["client"] == {"release": "0.1.0", "rpc": 99}
             socket.receive_json()

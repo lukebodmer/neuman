@@ -21,6 +21,7 @@ from .accounts import admin_account_routes
 from .audit import admin_audit_routes
 from .catalog import admin_catalog_routes
 from .gateway import admin_gateway_routes
+from .machines import machine_routes
 from .overview import admin_overview_routes
 from .policy import admin_policy_routes
 from .sessions import admin_session_routes
@@ -43,4 +44,5 @@ def admin_routes() -> list[Any]:
         *admin_gateway_routes(),
         *admin_catalog_routes(),
         *admin_overview_routes(),
+        *machine_routes(),
     ]

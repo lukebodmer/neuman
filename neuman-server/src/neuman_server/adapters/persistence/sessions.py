@@ -195,6 +195,16 @@ class BranchRow:
     # a root branch. It is what labels a branch by its first new user message.
     inherited_event_count: int
     created_at: datetime
+    # The machine this transcript runs on (D112). A branch is a transcript with
+    # a place: `working_dir`, `attachments` and the drops an attachment may name
+    # are all paths on *that* machine's filesystem, which is why a change of
+    # machine clears them rather than reinterpreting them.
+    #
+    # Nullable, and only for rows written before machines existed: the core
+    # cannot invent one for a branch it did not create, so such a branch adopts
+    # the machine of its next turn once and is pinned from then on. Nothing
+    # writes NULL after the migration that added this column.
+    machine: str | None = None
     # Where the work is, if the user said. A hint the model is told about, never
     # a grant — the client runs as the user regardless.
     working_dir: str | None = None
@@ -231,6 +241,7 @@ class BranchRow:
             ),
             inherited_event_count=int(row.get("inherited_event_count") or 0),
             created_at=row["created_at"],
+            machine=row.get("machine"),
             working_dir=row.get("working_dir"),
             # `or []` because an older row read through a pre-migration path has
             # NULL here, and a None would become `None` in the prompt.
@@ -273,6 +284,7 @@ class AgentSessionStore:
         *,
         account_id: str,
         title: str | None = None,
+        machine: str | None = None,
         task_run_id: str | None = None,
     ) -> tuple[AgentSessionRow, BranchRow]:
         """Create a session and its root branch, together.
@@ -280,6 +292,11 @@ class AgentSessionStore:
         A session with no branch would be unopenable: the rail row exists but
         there is no transcript to read or turn to run. Both rows are one
         transaction so that half a session cannot survive a failure.
+
+        `machine` is where the conversation's tools run (D112), recorded on the
+        root branch because that is what a turn reads. It is the machine the
+        window that created the session was on — a default, not a property: a
+        fork may continue on another, and the window can be anywhere.
 
         `task_run_id` makes it a task's agent step rather than a conversation:
         every chat read below leaves it out (D99).
@@ -299,11 +316,11 @@ class AgentSessionStore:
             session = AgentSessionRow.of(await cursor.fetchone())
             cursor = await self._conn.execute(
                 """
-                INSERT INTO session_branches (id, session_id)
-                VALUES (%s, %s)
+                INSERT INTO session_branches (id, session_id, machine)
+                VALUES (%s, %s, %s)
                 RETURNING *
                 """,
-                (branch_id, session_id),
+                (branch_id, session_id, machine),
             )
             branch = BranchRow.of(await cursor.fetchone())
         return replace(session, branch_count=1, open_branch_id=branch.id), branch
@@ -978,6 +995,7 @@ class BranchStore:
         forked_from: str | None = None,
         forked_from_seq: int | None = None,
         inherited_event_count: int = 0,
+        machine: str | None = None,
         working_dir: str | None = None,
         attachments: Sequence[str] = (),
         tool_selection: Sequence[str] | None = None,
@@ -993,9 +1011,9 @@ class BranchStore:
             """
             INSERT INTO session_branches
                 (id, session_id, forked_from, forked_from_seq,
-                 inherited_event_count, working_dir, attachments, tool_selection,
+                 inherited_event_count, machine, working_dir, attachments, tool_selection,
                  model, reasoning, approval)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -1004,6 +1022,7 @@ class BranchStore:
                 forked_from,
                 forked_from_seq,
                 inherited_event_count,
+                machine,
                 working_dir,
                 Jsonb(list(attachments)),
                 None if tool_selection is None else Jsonb(list(tool_selection)),
@@ -1013,6 +1032,23 @@ class BranchStore:
             ),
         )
         return BranchRow.of(await cursor.fetchone())
+
+    async def set_machine(self, branch_id: str, machine: str) -> bool:
+        """Pin a branch to a machine.
+
+        Used in exactly two places: adopting a machine for a branch written
+        before machines existed (once), and moving a branch the user asked to
+        move. The caller clears `working_dir` and `attachments` in the same
+        transaction, because a path on one machine is not a path on another and
+        keeping it would be the silent-wrong-files failure this column exists to
+        end.
+        """
+
+        cursor = await self._conn.execute(
+            "UPDATE session_branches SET machine = %s WHERE id = %s",
+            (machine, branch_id),
+        )
+        return cursor.rowcount > 0
 
     async def set_working_dir(self, branch_id: str, working_dir: str | None) -> bool:
         """Point a branch at a directory, or clear it with None.

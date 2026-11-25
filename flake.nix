@@ -255,7 +255,7 @@
             let
               contractsPackage = pkgs.python312Packages.buildPythonPackage {
                 pname = "neuman-contracts";
-                version = "0.1.0";
+                version = "0.1.1";
                 src = "${self}/contracts";
                 format = "pyproject";
                 nativeBuildInputs = [ pkgs.python312Packages.setuptools ];
@@ -265,7 +265,7 @@
             in
             pkgs.python312Packages.buildPythonApplication {
               pname = "neuman-server";
-              version = "0.1.0";
+              version = "0.1.1";
               src = "${self}/neuman-server";
               format = "pyproject";
               nativeBuildInputs = [ pkgs.python312Packages.setuptools ];
@@ -335,7 +335,7 @@
           # a machine that does not run one.
           neuman-admin = pkgs.python312Packages.buildPythonApplication {
             pname = "neuman-admin";
-            version = "0.1.0";
+            version = "0.1.1";
             src = "${self}/neuman-admin";
             format = "pyproject";
             nativeBuildInputs = [ pkgs.python312Packages.setuptools ];

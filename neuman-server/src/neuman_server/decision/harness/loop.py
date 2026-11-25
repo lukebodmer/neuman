@@ -345,6 +345,7 @@ async def _read_project_context(
     registry: ToolRegistry,
     *,
     user: str,
+    machine: str | None,
     working_dir: str | None,
     surfaces: dict[str, list[str]],
     wait_ms: int,
@@ -381,7 +382,7 @@ async def _read_project_context(
         return ""
     if registry.get(_CONTEXT_TOOL) is None:
         return ""
-    available = execution.available(user)
+    available = execution.available(user, machine)
     if available is not None and _CONTEXT_TOOL not in available:
         # A client that cannot run the reader. Dispatching anyway is a round
         # trip that ends in `unknown_tool`, which the handshake exists to avoid.
@@ -396,6 +397,7 @@ async def _read_project_context(
             outcome = await execution.dispatch(
                 user=user,
                 dispatch_id=uuid.uuid4().hex,
+                machine=machine,
                 tool=_CONTEXT_TOOL,
                 args={"path": path, "limit": PROJECT_CONTEXT_MAX_LINES},
                 wait_ms=min(manifest.wait_ms, wait_ms),
@@ -491,6 +493,7 @@ async def _probe_environment(
     registry: ToolRegistry,
     *,
     user: str,
+    machine: str | None,
     working_dir: str | None,
     surfaces: dict[str, list[str]],
     wait_ms: int,
@@ -519,7 +522,7 @@ async def _probe_environment(
         return ""
     if registry.get(_ENV_TOOL) is None:
         return ""
-    available = execution.available(user)
+    available = execution.available(user, machine)
     if available is None or _ENV_TOOL not in available:
         return ""
 
@@ -529,6 +532,7 @@ async def _probe_environment(
         outcome = await execution.dispatch(
             user=user,
             dispatch_id=uuid.uuid4().hex,
+            machine=machine,
             tool=_ENV_TOOL,
             args={"cwd": working_dir},
             wait_ms=min(manifest.wait_ms, wait_ms),
@@ -612,13 +616,23 @@ class TurnResult:
 
 @dataclass(frozen=True, slots=True)
 class Actor:
-    """Who the turn runs for."""
+    """Who the turn runs for, and where."""
 
     account_id: str
     name: str
-    # The connected client's home, which a `$HOME` grant expands under; None
-    # when no client is connected, and then such a grant reaches nothing.
-    home: str | None
+    # The machine this turn's dispatches run on (D112). Empty only for a branch
+    # whose account has no client connected at all, which is a turn that can
+    # read and answer but cannot act — and the prompt then says nothing about a
+    # machine rather than naming one it does not have.
+    machine: str = ""
+    # What the operator says is installed on that machine. Told to the model
+    # because `hello` advertises Neuman tools and nothing about `PATH`, so
+    # without it a missing registration toolkit is discovered one refused turn
+    # at a time.
+    machine_notes: str = ""
+    # The machine's home, which a `$HOME` grant expands under; None when no
+    # client has ever connected from it, and then such a grant reaches nothing.
+    home: str | None = None
 
 
 @dataclass(slots=True)
@@ -889,6 +903,7 @@ class Harness:
             self.execution,
             self.registry,
             user=actor.name,
+            machine=actor.machine or None,
             working_dir=working_dir,
             surfaces=opening_surfaces,
             wait_ms=self.config.tool_wait_ms,
@@ -902,6 +917,7 @@ class Harness:
             self.execution,
             self.registry,
             user=actor.name,
+            machine=actor.machine or None,
             working_dir=working_dir,
             surfaces=opening_surfaces,
             wait_ms=self.config.tool_wait_ms,
@@ -1140,6 +1156,12 @@ class Harness:
                 working_dir=working_dir,
                 attachments=attachments,
                 name=self.config.agent_name,
+                # Where this turn runs. The model is told the machine's name, so
+                # "the user's machine" stops being a phrase it has to guess at:
+                # the same conversation reopened on another computer used to
+                # arrive with a path from the first one and no way to know.
+                machine=actor.machine or None,
+                machine_notes=actor.machine_notes,
                 operator_prompt=self.config.operator_prompt,
                 account_prompt=account_prompt,
                 project_context=project_context,
@@ -1168,7 +1190,7 @@ class Harness:
                 # no program for. `None` when no client is connected, which
                 # advertises the granted set and lets the dispatch report what is
                 # actually wrong.
-                available=self.execution.available(actor.name),
+                available=self.execution.available(actor.name, actor.machine or None),
             )
             # Asked for in this provider's dialect, which is the only thing
             # `reasoning_fields` knows how to decide. Merged after the request
@@ -2044,13 +2066,28 @@ class Harness:
             )
             return
 
-        decision = gate.check(name, policy, self.registry)
+        # The machine first, then the tool. A call that cannot run anywhere is
+        # refused whatever it is, and the sentence the model gets names the place
+        # rather than the tool. Recomposed per step like the tool gate, so a role
+        # that drops a machine lands on the next call rather than the next turn
+        # (D112).
+        machine_decision = gate.check_machine(actor.machine or None, policy)
+        decision = (
+            machine_decision
+            if not machine_decision.allowed
+            else gate.check(name, policy, self.registry)
+        )
         if not decision.allowed:
             await chain.append(
                 self.audit_repository,
                 actor=actor.name,
                 action="tool.denied",
-                payload={"tool": name, "reason": decision.reason, "branch": branch_id},
+                payload={
+                    "tool": name,
+                    "reason": decision.reason,
+                    "branch": branch_id,
+                    "machine": actor.machine or None,
+                },
                 mirror=self.audit_mirror,
             )
             await self._decide(branch_id, call_id, False, decision.reason, consent=False)
@@ -2237,7 +2274,10 @@ class Harness:
         # process it has lost, which is the `setsid … &` this exists to replace.
         offered = (
             selected(
-                policy, self.registry, tool_selection, self.execution.available(actor.name)
+                policy,
+                self.registry,
+                tool_selection,
+                self.execution.available(actor.name, actor.machine or None),
             )
             if manifest.detaches and session_id
             else []
@@ -2354,6 +2394,11 @@ class Harness:
                 "dispatch_id": dispatch_id,
                 "mutating": manifest.mutating,
                 "critical": manifest.critical,
+                # The computer this ran on. `SPEC.md` §5 has promised this since
+                # before there was anything to name: "a dispatch entry carries
+                # which machine executed it: there is one execution site per
+                # turn, but several possible machines".
+                "machine": actor.machine or None,
             },
             mirror=self.audit_mirror,
         )
@@ -2362,6 +2407,7 @@ class Harness:
             outcome = await self.execution.dispatch(
                 user=actor.name,
                 dispatch_id=dispatch_id,
+                machine=actor.machine or None,
                 tool=manifest.name,
                 args=args,
                 wait_ms=wait_ms,
@@ -2441,6 +2487,10 @@ class Harness:
                     "dispatch_id": dispatch_id,
                     "job_id": outcome.job_id,
                     "lifetime_ms": outcome.lifetime_ms,
+                    # The machine holding the process. A job outlives its
+                    # dispatch and its connection, so without this an operator
+                    # asking where a runaway build is has only a job id.
+                    "machine": actor.machine or None,
                 },
                 mirror=self.audit_mirror,
             )
@@ -2580,6 +2630,7 @@ class Harness:
             outcome = await self.execution.dispatch(
                 user=actor.name,
                 dispatch_id=dispatch_id,
+                machine=actor.machine or None,
                 tool=manifest.name,
                 args={**args, "preview": True},
                 wait_ms=min(manifest.wait_ms, self.config.tool_wait_ms),
