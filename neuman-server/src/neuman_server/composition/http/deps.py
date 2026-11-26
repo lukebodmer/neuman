@@ -56,7 +56,7 @@ class MachineFacts:
     notes: str = ""
 
 
-def acting_home(services: Any, principal: Principal, machine: str | None = None) -> str | None:
+def acting_home(services: Any, principal: Principal, machine: str) -> str | None:
     """Where `~` means for a machine, if its client is connected.
 
     Policy naming `$HOME` expands into directories under an account's home, and

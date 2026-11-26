@@ -74,6 +74,11 @@ one physical box appears once per person and the label is what groups them.
   handshake: the home directory `$HOME` expands into, the tools it can run, its
   release. It survives the connection, which is why a `$HOME` grant expands the
   same way whether the computer is awake or asleep.
+- **A machine exists once somebody has connected from it.** A session names the
+  machine it runs on, and the server refuses a label the account has never
+  connected from (`unknown_machine`) — a conversation on a computer that does
+  not exist would have nowhere to run and a prompt naming a fiction. So a new
+  computer is enrolled by signing in on it, not by an administrator adding a row.
 - **A role may name machines**, which narrows where an account's work runs: a
   laptop-only role, or one that spans a laptop and a lab server. Naming none
   narrows nothing — a machine is a place the account's own client logged in from,

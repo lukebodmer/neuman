@@ -481,11 +481,11 @@ there is no down-migration to run.
 
 **Upgrading an appliance that has sessions or tasks from before machines
 existed.** A conversation written before `0002` has no computer on its branch
-and a task written before `0003` has none either, and the appliance will not
-invent one — which computer a conversation or a recipe was about is the one fact
-a migration cannot derive (D112, N186). `0003` adds `tasks.machine` and commits,
-so the statement below has a column to name; `0004` then refuses to fill either
-table in and stops once, printing what to run:
+and a task written before `0003` has none either — both predate the column — and
+the appliance will not invent one: which computer a conversation or a recipe was
+about is the one fact a migration cannot derive (D112, N186). `0003` adds
+`tasks.machine` and commits, so the statement below has a column to name; `0004`
+then refuses to fill either table in and stops once, printing what to run:
 
 ```sql
 UPDATE session_branches

@@ -34,7 +34,7 @@ async def fork(
     source: Any,
     at_seq: int | None,
     side: str | None,
-    machine: str | None,
+    machine: str,
     working_dir: str | None,
     attachments: tuple[str, ...],
     tool_selection: tuple[str, ...] | None,
@@ -87,7 +87,7 @@ async def fork(
         at_seq=resolved.at_seq,
         side=resolved.side,
         machine=machine,
-        from_machine=getattr(source, "machine", None),
+        from_machine=source.machine,
     )
 
     # The marker is seq 1 and the copied rows follow, so the prefix a reader must

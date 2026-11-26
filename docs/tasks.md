@@ -102,10 +102,13 @@ task has one run at a time.
 A **schedule** runs it every day at a set time, every week on a set day, or on
 repeat every 15 minutes to 24 hours, in the time zone you choose.
 
-**Runs happen on your computer.** Neuman's server keeps the clock, and your
-Neuman client does the work, so a run needs your client connected. If it is not,
-the run shows as **Waiting for your computer** and starts when it connects. A
-run that is still waiting after six hours is recorded as `missed`.
+**Runs happen on one computer, and the task names it.** Neuman's server keeps
+the clock; the task records which machine it was written on, and your Neuman
+client *there* does the work. So a run needs a client connected on that machine:
+if it is not, the run shows as **Waiting for your computer** and starts when it
+connects. A run that is still waiting after six hours is recorded as `missed`.
+A task on a shared box — the lab's DGX — is therefore the reliable kind: the
+machine is on all day, and the run does not depend on whose laptop is open.
 
 ## What each run leaves
 

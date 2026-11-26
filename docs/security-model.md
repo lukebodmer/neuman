@@ -102,7 +102,7 @@ hold.
 | Claim | Enforced by | Holds as long as |
 |---|---|---|
 | Execution as the human | tools run on the client under the account that runs the client; the appliance executes no user-reach tool | no tool runs on the appliance with the user's reach |
-| Execution on the named machine | the branch's `machine` resolves to one connection, held by that account's client on that computer; a client refuses a dispatch naming another (`wrong_machine`) | the hub never routes by "whichever client is connected" for a branch that names a machine |
+| Execution on the named machine | the branch's `machine` resolves to one connection, held by that account's client on that computer; a client refuses a dispatch naming another (`wrong_machine`) | the hub has no fallback: a dispatch names a machine or is refused, and no route or port answers for "whichever client is connected" |
 | Capability gate | `needs ⊆ reach` recomposed per step, in the core, before any dispatch | the gate is never cached across a policy change |
 | Approval | the inbox in the decision core; the client receives a dispatch that was already approved | only the core decides a verdict |
 | Identity | the session the client authenticated with; the channel never asks the client to name an account | the account row is re-read on every request, so a disabled account loses its session (D17) |

@@ -316,8 +316,8 @@ class EventStore:
         through_seq: int,
         at_seq: int | None,
         side: str | None,
-        machine: str | None = None,
-        from_machine: str | None = None,
+        machine: str,
+        from_machine: str,
     ) -> int:
         """Copy one branch's projected prefix into another; return the row count.
 
