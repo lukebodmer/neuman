@@ -7125,6 +7125,18 @@ function connect(view) {
     view.opening = opened;
     return opened;
   }
+  // One socket per view (D113). A second socket on the same branch receives the
+  // same frames as the first, and both deliver into one inbox — every token
+  // drawn twice (N190). Callers that just want a usable socket want
+  // `ensureSocket`; refusing here is what keeps a direct `connect` from opening
+  // the duplicate the promise forbids.
+  if (
+    view.socket &&
+    (view.socket.readyState === WebSocket.OPEN ||
+      view.socket.readyState === WebSocket.CONNECTING)
+  ) {
+    return view.opening;
+  }
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
   // No token in the URL: the WebSocket authenticates on upgrade from the same
   // HttpOnly cookie, so a URL that leaks into a log or a Referer carries
@@ -9451,7 +9463,11 @@ async function submit() {
       // Marked before the handshake, so the session cannot be discarded as
       // idle while the socket is opening.
       markTurnStarted(view);
-      ready = await connect(view);
+      // `ensureSocket`, not `connect`: `showView` has already opened this
+      // view's socket (D113), and a second `connect` here orphaned the first
+      // while both kept watching the branch — every frame then arrived twice
+      // and every word was drawn doubled (N190).
+      ready = await ensureSocket(view);
     } catch (error) {
       note(`Could not start a session: ${error.message}`);
     }

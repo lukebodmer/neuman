@@ -6445,6 +6445,43 @@ def test_an_open_session_asks_to_watch_its_branch():
     )
 
 
+def test_a_new_session_waits_on_the_socket_showview_opened():
+    """The draft must not open a second socket on the branch it just created.
+
+    `startSession` ends in `showView`, which connects so the branch is watched
+    from the moment it exists (D113). The draft branch then waited for the
+    handshake with a bare `connect`, which does not check for the socket already
+    there: it assigned a second one to the same view and orphaned the first,
+    still open and still watching. Both delivered every frame into one inbox, so
+    the live transcript drew each token twice while the stored log held one copy
+    (N190).
+
+    `ensureSocket` is the helper for exactly this wait — it returns the existing
+    socket's handshake when one is opening and only connects when there is none —
+    so the rule is that the draft waits on it, and that `connect` itself refuses
+    to replace a live socket.
+    """
+
+    script = (WEB / "neuman.js").read_text()
+
+    submit = re.search(r"async function submit\(\)\s*\{(.*?)\n\}", script, re.S)
+    assert submit, "submit() is gone; this test would pass vacuously"
+    body = submit.group(1)
+    assert "ensureSocket(view)" in body, (
+        "the draft path no longer waits on the socket showView opened"
+    )
+    assert not re.search(r"await\s+connect\(", body), (
+        "the draft opens a second socket on a branch that already has one"
+    )
+
+    connect = re.search(r"function connect\(view\)\s*\{(.*?)\n\}", script, re.S)
+    assert connect, "connect() is gone; this test would pass vacuously"
+    guard = connect.group(1)
+    assert "WebSocket.OPEN" in guard and "WebSocket.CONNECTING" in guard, (
+        "connect will replace a socket that is already open or opening"
+    )
+
+
 def test_a_resume_cuts_the_projection_at_the_feeds_row():
     """The projection and the live step meet at one row, and only one.
 

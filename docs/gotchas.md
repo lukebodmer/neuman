@@ -4651,3 +4651,37 @@ alternative on a machine with no third-party apt source is no browser at all.
   rule. It fails for the next row somebody adds, not just this one — which is
   the point, because the failure was silent: nothing overflowed, nothing
   scrolled, and every element was where it said it was.
+
+### N190 — A new session opened two sockets on one branch, and every word drew twice
+- **What:** a new session's live transcript drew every token and every reasoning
+  chunk twice — "the the model model change change" — while the stored projection
+  at `GET /api/sessions/{id}` held one copy of each message and clean reasoning.
+  The OS showed three browser WebSockets to the client where one was expected:
+  two on the same branch plus an orphan left over from an earlier session.
+- **Cause:** `submit`'s draft path creates the session, and `startSession` ends
+  with `showView(view)`, which — since D113 — connects the view so that an open
+  session watches its branch. The draft path then called `connect(view)` directly
+  to await the handshake. `connect` did not check for a socket already there: it
+  assigned a second WebSocket to `view.socket` and left the first open and
+  orphaned, but still watching the same branch. D113 is what made the orphan
+  harmful — an `?after=` socket is a *watcher* on the branch and receives every
+  frame the turn emits, including from the view that opened it — so both sockets
+  delivered into `view.inbox` and `handle` appended each `token`/`reasoning`
+  chunk twice. Before D113 the orphan received only frames for a turn it had
+  started and never sent anything, which is why the same double-connect had been
+  invisible.
+- **Found:** reported as doubled output in the live UI. The two tell-tale signs
+  were that the stored log read back clean and that a page reload healed the tab
+  until the next new session; a session opened from history uses only
+  `showView`'s single connect, so only the draft path doubled. It started the
+  moment D113's commit restarted the client, not with the machine change that
+  touched `startSession` earlier the same day.
+- **Fix:** the draft path waits on `ensureSocket(view)`, which returns the
+  existing handshake when a socket is already connecting and only connects when
+  there is none; and `connect` itself now refuses to replace a socket that is
+  open or connecting, so a later direct caller cannot reopen the same bug.
+- **The check:** `test_a_new_session_waits_on_the_socket_showview_opened` reads
+  `submit` for a second `connect` and `connect` for the open-or-connecting
+  guard. It fails on the old call, not just on this branch: any future caller
+  that reaches for `connect` where `ensureSocket` belongs is caught by the first
+  assertion.
