@@ -77,5 +77,6 @@
     "report.md",
     "result.json"
   ],
-  "enabled": true
+  "enabled": true,
+  "machine": "ernest"
 }

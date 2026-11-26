@@ -109,17 +109,6 @@ def test_a_named_machine_is_allowed_when_it_is_granted():
     assert check_machine("dgx", _policy(machines=("laptop", "dgx"))).allowed
 
 
-def test_a_branch_with_no_machine_yet_is_not_refused():
-    """Rows written before machines existed adopt one on their next turn.
-
-    Refusing them would strand every conversation predating the column, and the
-    turn that runs on one is what pins it — so the check lets it through and the
-    harness records where it actually went.
-    """
-
-    assert check_machine(None, _policy(machines=("laptop",))).allowed
-
-
 # -- the dispatch -----------------------------------------------------------
 
 
@@ -192,15 +181,6 @@ def test_the_prompt_names_the_computer_and_says_paths_mean_it():
 
     assert "on `dgx`" in text
     assert "Every path you use names a file there" in text
-
-
-def test_the_prompt_says_which_home_it_means_with_no_machine():
-    """A turn with no client connected can still answer, and it must not claim a
-    computer it does not have."""
-
-    text = system_prompt(_policy(), user="alice", tools=[], machine=None)
-
-    assert "on their machine." in text
 
 
 def test_the_prompt_states_what_is_installed_on_that_computer():

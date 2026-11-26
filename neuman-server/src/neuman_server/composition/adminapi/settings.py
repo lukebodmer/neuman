@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...adapters.persistence import AccountStore, AuditStore, GenerationStore, GrantStore
 from ...adapters.persistence.events import ServerEventStore
+from ...adapters.persistence.machines import MACHINE_LABEL, MachineStore
 from ...adapters.persistence.settings import SettingsStore
 from ...decision.audit import chain
 from ...decision.harness.presets import catalog_problems
@@ -404,9 +405,22 @@ async def _compose_prompt(request: Request) -> Response:
     services = services_of(request)
     name = (request.query_params.get("account") or "").strip()
     working_dir = (request.query_params.get("working_dir") or "").strip() or None
+    machine = (request.query_params.get("machine") or "").strip()
     if not name:
         return JSONResponse(
             {"error": "invalid_request", "detail": "account is required"},
+            status_code=400,
+        )
+    # `$HOME` is a directory on a computer, so a preview of what the account is
+    # told has to say which one it is previewing (D112). The operator names it;
+    # the route does not pick, because picking is what made this page describe
+    # one computer's folders while the reader was thinking about another.
+    if not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse(
+            {
+                "error": "invalid_request",
+                "detail": "machine is required: the computer to expand $HOME for",
+            },
             status_code=400,
         )
 
@@ -430,16 +444,25 @@ async def _compose_prompt(request: Request) -> Response:
             directory=services.directory,
             grants=GrantStore(conn),
         )
-        # `None` with no client connected, which expands `$HOME` to nothing —
-        # the same answer a dispatch would get, so the preview does not promise
-        # a path the turn could not reach (N145).
-        home = services.execution.home(row.name)
+        # The live answer where that machine is connected, and nothing where it
+        # is not — the same answer a dispatch would get, so the preview does not
+        # promise a path the turn could not reach (N145).
+        home = services.execution.home(row.name, machine)
+        # What the operator wrote about that computer. Part of what the model is
+        # told, so this page has to show it: a preview that left it out would be
+        # a preview of a prompt nobody receives.
+        recorded = await MachineStore(conn).get(row.id, machine)
+        machine_notes = recorded.notes if recorded is not None else ""
 
     sections = prompt_sections(
         policy,
         user=row.name,
         tools=grantable(policy, services.registry),
         name=services.agent_name,
+        machine=machine,
+        # What the operator wrote about that computer, because it is part of what
+        # the model is told and this page exists to show the whole of it.
+        machine_notes=machine_notes,
         working_dir=working_dir,
         operator_prompt=services.operator_prompt,
         account_prompt=row.instructions,

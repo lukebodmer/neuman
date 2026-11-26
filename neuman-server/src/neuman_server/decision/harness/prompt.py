@@ -160,7 +160,7 @@ def prompt_sections(
     user: str,
     tools: list[str],
     name: str | None = None,
-    machine: str | None = None,
+    machine: str,
     machine_notes: str = "",
     working_dir: str | None = None,
     environment_note: str | None = None,
@@ -208,19 +208,18 @@ def prompt_sections(
     writable = list(expanded_write) if expanded_write is not None else list(policy.files_write)
 
     location = []
-    if machine:
-        # Said because it was never said, and its absence was the whole of a
-        # class of failure: "on their machine" is not an address when a person
-        # has two. A conversation reopened on another computer arrived with a
-        # path from the first one, and the model had no way to tell that the
-        # directory it was told to work in named a *different* computer's files
-        # (D112). The sentence is not a grant — reach is policy and the client
-        # runs as the person — it is the difference between a hint and a guess.
-        location.append(
-            f"The computer your tools run on is `{machine}`. Every path you use "
-            "names a file there; a directory that does not exist on that computer "
-            "does not exist for you, whatever this conversation did earlier."
-        )
+    # Said because it was never said, and its absence was the whole of a
+    # class of failure: "on their machine" is not an address when a person has
+    # two. A conversation reopened on another computer arrived with a path from
+    # the first one, and the model had no way to tell that the directory it was
+    # told to work in named a *different* computer's files (D112). The sentence
+    # is not a grant — reach is policy and the client runs as the person — it is
+    # the difference between a hint and a guess.
+    location.append(
+        f"The computer your tools run on is `{machine}`. Every path you use "
+        "names a file there; a directory that does not exist on that computer "
+        "does not exist for you, whatever this conversation did earlier."
+    )
     if machine_notes.strip():
         # What an operator says is installed here. `hello` advertises Neuman
         # *tools* and nothing about `PATH`, so without this a model discovers a
@@ -380,8 +379,7 @@ def prompt_sections(
                 (
                     f"You are acting for the signed-in Linux user {user}. You reach "
                     "exactly what that user reaches — their files, their network, "
-                    "nothing else — and every tool call runs as them, "
-                    + (f"on `{machine}`." if machine else "on their machine.")
+                    f"nothing else — and every tool call runs as them, on `{machine}`."
                 ),
                 "",
             ],
@@ -412,7 +410,7 @@ def system_prompt(
     user: str,
     tools: list[str],
     name: str | None = None,
-    machine: str | None = None,
+    machine: str,
     machine_notes: str = "",
     working_dir: str | None = None,
     environment_note: str | None = None,
@@ -462,7 +460,7 @@ def build_request(
     messages: list[dict[str, Any]],
     max_tokens: int,
     name: str | None = None,
-    machine: str | None = None,
+    machine: str,
     machine_notes: str = "",
     working_dir: str | None = None,
     environment_note: str | None = None,

@@ -200,11 +200,12 @@ class BranchRow:
     # are all paths on *that* machine's filesystem, which is why a change of
     # machine clears them rather than reinterpreting them.
     #
-    # Nullable, and only for rows written before machines existed: the core
-    # cannot invent one for a branch it did not create, so such a branch adopts
-    # the machine of its next turn once and is pinned from then on. Nothing
-    # writes NULL after the migration that added this column.
-    machine: str | None = None
+    # Required, and the schema says so too. It was nullable for one release while
+    # a branch written before machines existed adopted whichever client was
+    # connected — a guess that pointed conversations at the wrong computer and
+    # produced N186. Nothing guesses now: a branch is created with a machine, or
+    # it is not created.
+    machine: str
     # Where the work is, if the user said. A hint the model is told about, never
     # a grant — the client runs as the user regardless.
     working_dir: str | None = None
@@ -241,7 +242,7 @@ class BranchRow:
             ),
             inherited_event_count=int(row.get("inherited_event_count") or 0),
             created_at=row["created_at"],
-            machine=row.get("machine"),
+            machine=row["machine"],
             working_dir=row.get("working_dir"),
             # `or []` because an older row read through a pre-migration path has
             # NULL here, and a None would become `None` in the prompt.
@@ -284,7 +285,7 @@ class AgentSessionStore:
         *,
         account_id: str,
         title: str | None = None,
-        machine: str | None = None,
+        machine: str,
         task_run_id: str | None = None,
     ) -> tuple[AgentSessionRow, BranchRow]:
         """Create a session and its root branch, together.
@@ -995,7 +996,7 @@ class BranchStore:
         forked_from: str | None = None,
         forked_from_seq: int | None = None,
         inherited_event_count: int = 0,
-        machine: str | None = None,
+        machine: str,
         working_dir: str | None = None,
         attachments: Sequence[str] = (),
         tool_selection: Sequence[str] | None = None,

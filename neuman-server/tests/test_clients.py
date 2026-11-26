@@ -78,6 +78,7 @@ async def test_a_dispatch_round_trips():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={"path": "/tmp/x"},
@@ -144,6 +145,7 @@ async def test_a_dispatch_speaks_the_shape_the_connection_settled_on():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={"path": "/tmp/x"},
@@ -154,7 +156,7 @@ async def test_a_dispatch_speaks_the_shape_the_connection_settled_on():
     await _wait_for_sent(channel)
     assert channel.sent[0]["rpc_version"] == 7
 
-    await hub.cancel(user="alice", dispatch_id="d12345678")
+    await hub.cancel(user="alice", machine="ernest", dispatch_id="d12345678")
     assert channel.sent[1] == {
         "type": "cancel",
         "rpc_version": 7,
@@ -183,6 +185,7 @@ async def test_a_dispatch_with_no_connected_client_is_unavailable():
     with pytest.raises(ClientUnavailable):
         await hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={},
@@ -198,6 +201,7 @@ async def test_a_tool_the_client_did_not_advertise_is_refused_before_sending():
     with pytest.raises(ClientUnavailable):
         await hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="shell",
             args={},
@@ -214,6 +218,7 @@ async def test_a_dispatch_without_surfaces_is_refused_before_sending():
     with pytest.raises(ClientError):
         await hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={},
@@ -229,6 +234,7 @@ async def test_a_sequence_gap_fails_the_dispatch():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={},
@@ -261,6 +267,7 @@ async def test_a_disconnect_wakes_the_waiter():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d12345678",
             tool="fs_read",
             args={},
@@ -273,7 +280,7 @@ async def test_a_disconnect_wakes_the_waiter():
 
     with pytest.raises(ClientError, match="disconnected"):
         await dispatch
-    assert hub.connected("alice") is False
+    assert hub.connected("alice", "ernest") is False
 
 
 async def test_a_second_connection_from_one_machine_replaces_the_first():
@@ -330,7 +337,7 @@ async def test_the_hub_reports_the_clients_home_and_nothing_without_one():
     """
 
     hub = ClientHub()
-    assert hub.home("alice") is None
+    assert hub.home("alice", "ernest") is None
 
     await _connected(hub, home="/home/remote")
     assert hub.home("alice", "ernest") == "/home/remote"
@@ -349,7 +356,7 @@ async def test_cancel_reaches_the_client():
     hub = ClientHub()
     connection, channel = await _connected(hub)
 
-    await hub.cancel(user="alice", dispatch_id="d12345678")
+    await hub.cancel(user="alice", machine="ernest", dispatch_id="d12345678")
 
     assert channel.sent[-1] == {
         "type": "cancel",

@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ...adapters.persistence import CLIENT, AccountStore, SessionStore
+from ...adapters.persistence import AccountStore, SessionStore
 from ...decision.identity import Principal, resolve_session, tokens
 from ...foundation import bind
 
@@ -44,16 +44,16 @@ class MachineFacts:
     because the pieces come from two places — the live connection and the last
     hello the database kept — and a caller that read them separately could
     describe a machine that is half online.
+
+    Three fields, and every one of them is read: where `~` means, where a dropped
+    file comes from, and what an operator says is installed there.
     """
 
-    label: str | None
-    kind: str
     home: str | None
     drops: str | None
-    # What an operator says is installed here. Told to the model, because the
-    # handshake advertises Neuman tools and says nothing about `PATH`.
+    # Told to the model, because the handshake advertises Neuman's own tools and
+    # says nothing about `PATH`.
     notes: str = ""
-    online: bool = False
 
 
 def acting_home(services: Any, principal: Principal, machine: str | None = None) -> str | None:
@@ -73,41 +73,36 @@ def acting_home(services: Any, principal: Principal, machine: str | None = None)
 
 
 async def machine_facts(
-    conn: Any, services: Any, principal: Principal, machine: str | None
+    conn: Any, services: Any, principal: Principal, machine: str
 ) -> MachineFacts:
-    """What a named machine is and where `~` means there, online or not.
+    """Where `~` means on a machine, and what is installed there.
 
-    Live first, then the machine's last hello. The fallback is the point: a
-    branch names a machine, and policy for that branch has to compose the same
-    way whether the computer is awake or asleep, or the session's reach would
-    change shape when a lid closed. A home directory does not move, so the last
-    answer stays right until the machine says otherwise.
+    Live first, then the machine's last hello. The fallback is the point: policy
+    for a branch has to compose the same way whether the computer is awake or
+    asleep, or a session's reach would change shape when a lid closed. A home
+    directory does not move, so the last answer stays right until the machine
+    says otherwise.
 
-    A machine with no row has never connected on this account, so every field
-    is empty: `$HOME` then names nothing, which is the same answer as a machine
-    that is merely away and never a directory on the wrong computer.
+    A machine with no row has never connected on this account, so every field is
+    empty: `$HOME` then names nothing, which is the same answer as a machine that
+    is merely away and never a directory on the wrong computer.
 
-    One read for four fields rather than four helpers, because they are four
+    One read for three fields rather than three helpers, because they are three
     answers about one row and the routes that ask want more than one of them.
     """
 
     from ...adapters.persistence import MachineStore
 
-    row = None
-    if machine is not None:
-        row = await MachineStore(conn).get(principal.account_id, machine)
+    row = await MachineStore(conn).get(principal.account_id, machine)
 
     live_home = services.execution.home(principal.name, machine)
     live_drops = services.execution.drops(principal.name, machine)
     return MachineFacts(
-        label=machine,
-        kind=row.kind if row is not None else CLIENT,
         home=live_home if live_home is not None else (row.home if row is not None else None),
         drops=(
             live_drops if live_drops is not None else (row.drops if row is not None else None)
         ),
         notes=row.notes if row is not None else "",
-        online=services.execution.connected(principal.name, machine),
     )
 
 

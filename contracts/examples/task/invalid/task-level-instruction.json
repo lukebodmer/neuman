@@ -82,5 +82,6 @@
   ],
   "enabled": true,
   "instruction": "Read brief.md and follow it.",
-  "model": "DeepSeek-V4.1-Flash"
+  "model": "DeepSeek-V4.1-Flash",
+  "machine": "ernest"
 }

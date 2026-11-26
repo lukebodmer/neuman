@@ -4548,12 +4548,25 @@ alternative on a machine with no third-party apt source is no browser at all.
 - **Found:** while adding machines; the reported symptom was "the model gets
   confused about which computer it is on", which is exactly what a prompt that
   says "on their machine" leaves it to do.
-- **Fix:** a branch names its machine (D112). `$HOME` and `$HOME/<path>` expand
-  against *that* machine's last reported home, live or stored, so composing
-  policy twice gives one answer. A move clears `working_dir` and `attachments`
-  and is refused once the branch has run anything, where the remedy is a fork
-  that keeps the old transcript true to its own filesystem. The prompt names the
-  machine, and the audit names it on every dispatch.
+- **Fix:** a branch names its machine (D112), and names it in the schema: the
+  column is NOT NULL and `0003` refuses to guess one for a row written before it
+  existed. `$HOME` and `$HOME/<path>` expand against *that* machine's last
+  reported home, live or stored, so composing policy twice gives one answer. A
+  move clears `working_dir` and `attachments` and is refused once the branch has
+  run anything, where the remedy is a fork that keeps the old transcript true to
+  its own filesystem. The prompt names the machine, and the audit names it on
+  every dispatch.
+- **It happened again while fixing it, which is the part worth keeping.** The
+  first fix let a branch with no machine *adopt* the account's most recently
+  connected client on its next turn, so conversations written before the column
+  kept working. A session created on the desktop, reopened from the laptop,
+  adopted the laptop and kept the desktop's `working_dir`: every dispatch then
+  failed on a directory that was not there (`spawn_failed: [Errno 2]`), and the
+  window's picker offered the laptop's folders while the chip said the desktop's
+  name. The fallback was the bug. Deleting it — NOT NULL, a required field on
+  every route that names a place, no `newest_machine` — is what made the rule
+  true, and the migration's refusal to fill in a value is the same rule applied
+  to history.
 - **The rule, one level up from N145:** when a value means "somewhere on the
   machine that acts", it is a fact about *which* machine as well as which path.
   Ask the side that knows, and record it with the value.

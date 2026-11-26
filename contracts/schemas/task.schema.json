@@ -3,8 +3,12 @@
   "title": "task",
   "description": "A task is a standing approval: an account saves a recipe once — inputs, an ordered list of steps, the outputs it leaves — and runs it on demand or on a schedule. A step is either a `run` step, a command the owner wrote word for word, or an `agent` step, a harness turn inside an envelope. The envelope is a policy fragment, never a grant — the server intersects it with the account's live policy on every model step, so an agent step can narrow reach and can never widen it (D92, D93, D95, D96). A task is not a principal: it runs as its owner, on that owner's client (D94). Every run gets a fresh directory under `run_root`, the one place an agent step may write by default and where the run's record is left (D97).",
   "oneOf": [
-    {"$ref": "#/$defs/task"},
-    {"$ref": "#/$defs/draft"}
+    {
+      "$ref": "#/$defs/task"
+    },
+    {
+      "$ref": "#/$defs/draft"
+    }
   ],
   "$defs": {
     "toolName": {
@@ -14,8 +18,12 @@
     "stepPath": {
       "description": "A path a step names: an absolute path, or exactly `$RUN_DIR` for this run's own directory, which does not exist until the run does (D97).",
       "anyOf": [
-        {"$ref": "common.schema.json#/$defs/absPath"},
-        {"const": "$RUN_DIR"}
+        {
+          "$ref": "common.schema.json#/$defs/absPath"
+        },
+        {
+          "const": "$RUN_DIR"
+        }
       ]
     },
     "outputPath": {
@@ -23,7 +31,11 @@
       "description": "A path relative to the run directory naming an artifact the run is expected to leave there. A declaration for the reader and the runner, not a grant: an agent step's `files_write` is what decides where a write may land.",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$",
       "allOf": [
-        {"not": {"pattern": "(^|/)\\.\\.($|/)"}}
+        {
+          "not": {
+            "pattern": "(^|/)\\.\\.($|/)"
+          }
+        }
       ]
     },
     "inputName": {
@@ -40,13 +52,22 @@
       "type": "object",
       "additionalProperties": false,
       "description": "A parameter one run supplies. Values are strings and reach a run step only as environment variables, never spliced into its argv, so an input can change what a script is told and never which program runs (D96).",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "properties": {
-        "name": {"$ref": "#/$defs/inputName"},
-        "description": {"type": "string", "maxLength": 200},
+        "name": {
+          "$ref": "#/$defs/inputName"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 200
+        },
         "values": {
           "type": "array",
-          "items": {"$ref": "#/$defs/inputValue"},
+          "items": {
+            "$ref": "#/$defs/inputValue"
+          },
           "minItems": 1,
           "uniqueItems": true,
           "description": "The values a run may give, when the input is a choice. Absent means any string."
@@ -55,13 +76,19 @@
           "type": "boolean",
           "description": "Whether a run must give a value. A required input with no default must also be given by `schedule.inputs` for the schedule to fire."
         },
-        "default": {"$ref": "#/$defs/inputValue"}
+        "default": {
+          "$ref": "#/$defs/inputValue"
+        }
       }
     },
     "inputValues": {
       "type": "object",
-      "propertyNames": {"$ref": "#/$defs/inputName"},
-      "additionalProperties": {"$ref": "#/$defs/inputValue"},
+      "propertyNames": {
+        "$ref": "#/$defs/inputName"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/inputValue"
+      },
       "maxProperties": 10
     },
     "stepName": {
@@ -70,38 +97,61 @@
       "description": "Unique within the task. The run record reports each step under this name."
     },
     "runIf": {
-      "enum": ["ok", "ok_or_budget", "always"],
+      "enum": [
+        "ok",
+        "ok_or_budget",
+        "always"
+      ],
       "description": "When the step runs, given the steps before it. `ok` (the default): every earlier step succeeded. `ok_or_budget`: as `ok`, except an agent step that stopped on its budget counts — the step after a research turn that ran long still has the work it left. `always`: regardless, for a step that records or cleans up. A step that does not run is `skipped`."
     },
     "envelope": {
       "type": "object",
       "additionalProperties": false,
       "description": "An agent step's declared reach, as a policy fragment. `files_read` and `files_write` are absolute paths chosen from what the owner already reaches, or `$RUN_DIR`; an entry outside the owner's reach is refused at authoring time and dropped again by the run-time intersection. No entry of `files_write` may contain the workspace, a run step's `cwd` or a run step's program, nor lie inside them, so an agent step can never write what a run step executes (D96). `models` is the set the step may choose from; the step's own `model` must be in it.",
-      "required": ["tools", "files_read", "files_write", "network", "models", "max_iterations"],
+      "required": [
+        "tools",
+        "files_read",
+        "files_write",
+        "network",
+        "models",
+        "max_iterations"
+      ],
       "properties": {
         "tools": {
           "type": "array",
-          "items": {"$ref": "#/$defs/toolName"},
+          "items": {
+            "$ref": "#/$defs/toolName"
+          },
           "uniqueItems": true,
           "description": "Client tools the step may dispatch. A server-native tool or a `critical` tool is refused at authoring time: a task has no human to ask, and a critical call must never be pre-approved (D93). `shell` and `python` are refused in an agent step of a task with a run step after it, because neither declares its paths and either could rewrite what that step runs (D96)."
         },
         "files_read": {
           "type": "array",
-          "items": {"$ref": "#/$defs/stepPath"},
+          "items": {
+            "$ref": "#/$defs/stepPath"
+          },
           "uniqueItems": true
         },
         "files_write": {
           "type": "array",
-          "items": {"$ref": "#/$defs/stepPath"},
+          "items": {
+            "$ref": "#/$defs/stepPath"
+          },
           "uniqueItems": true
         },
         "network": {
-          "enum": ["none", "any"],
+          "enum": [
+            "none",
+            "any"
+          ],
           "description": "Whether the step may use tools that declare `needs = [\"network\"]`. `any` requires the account to hold network reach too; there is no host list (N146)."
         },
         "models": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1},
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "uniqueItems": true,
           "description": "Catalog names the step may use. The step's `model` is one of them."
         },
@@ -117,13 +167,27 @@
       "type": "object",
       "additionalProperties": false,
       "description": "A command the owner wrote word for word. It is dispatched to the owner's client as a pre-approved `shell` call through the ordinary gate and recorded in the audit chain like one; the model neither chooses it nor sees its arguments before it runs. It reaches what the owner reaches — there is no write list, because nothing on the client could enforce one (N146) — so what keeps it safe is that its program, its arguments and its working directory are fixed at authoring and lie outside every path an agent step may write (D96). The owner's policy must grant `shell`, checked at authoring and again when the step starts. It sees `NEUMAN_RUN_ID`, `NEUMAN_RUN_DIR`, `NEUMAN_TASK_ID` and one `NEUMAN_INPUT_<NAME>` per input in its environment.",
-      "required": ["kind", "name", "argv", "timeout_s"],
+      "required": [
+        "kind",
+        "name",
+        "argv",
+        "timeout_s"
+      ],
       "properties": {
-        "kind": {"const": "run"},
-        "name": {"$ref": "#/$defs/stepName"},
+        "kind": {
+          "const": "run"
+        },
+        "name": {
+          "$ref": "#/$defs/stepName"
+        },
         "argv": {
           "type": "array",
-          "items": {"type": "string", "minLength": 1, "maxLength": 4000, "pattern": "^[^\\u0000]*$"},
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "pattern": "^[^\\u0000]*$"
+          },
           "minItems": 1,
           "maxItems": 64,
           "description": "The program and its arguments, quoted by the server, never by a shell the model writes. `argv[0]` is a program name looked up on the owner's `PATH`, or an absolute path."
@@ -138,17 +202,29 @@
           "maximum": 3600,
           "description": "The longest the command may run. A command still running is killed and the step is `failed`."
         },
-        "run_if": {"$ref": "#/$defs/runIf"}
+        "run_if": {
+          "$ref": "#/$defs/runIf"
+        }
       }
     },
     "agentStep": {
       "type": "object",
       "additionalProperties": false,
       "description": "One harness turn: a session and a branch of their own, pre-approved inside the step's envelope intersected with the owner's live policy (D93). The step ends with the harness's terminal reason, never with the model's account of itself.",
-      "required": ["kind", "name", "instruction", "model", "envelope"],
+      "required": [
+        "kind",
+        "name",
+        "instruction",
+        "model",
+        "envelope"
+      ],
       "properties": {
-        "kind": {"const": "agent"},
-        "name": {"$ref": "#/$defs/stepName"},
+        "kind": {
+          "const": "agent"
+        },
+        "name": {
+          "$ref": "#/$defs/stepName"
+        },
         "instruction": {
           "type": "string",
           "minLength": 1,
@@ -165,22 +241,35 @@
           "description": "The catalog name this turn asks for. Must be in `envelope.models` and the owner's policy."
         },
         "reasoning": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "The reasoning level for this turn, or null for the model's declared default. Validated against the catalog at run time, like a branch's choice."
         },
-        "envelope": {"$ref": "#/$defs/envelope"},
-        "run_if": {"$ref": "#/$defs/runIf"}
+        "envelope": {
+          "$ref": "#/$defs/envelope"
+        },
+        "run_if": {
+          "$ref": "#/$defs/runIf"
+        }
       }
     },
     "step": {
       "oneOf": [
-        {"$ref": "#/$defs/runStep"},
-        {"$ref": "#/$defs/agentStep"}
+        {
+          "$ref": "#/$defs/runStep"
+        },
+        {
+          "$ref": "#/$defs/agentStep"
+        }
       ]
     },
     "steps": {
       "type": "array",
-      "items": {"$ref": "#/$defs/step"},
+      "items": {
+        "$ref": "#/$defs/step"
+      },
       "minItems": 1,
       "maxItems": 10,
       "description": "Run in order, one at a time. There are no branches, loops or retries: a step that should not follow a failure says so with `run_if` (D95)."
@@ -189,9 +278,17 @@
       "type": "object",
       "additionalProperties": false,
       "description": "When the task is due. Times are local to `timezone`; the server computes `next_run_at` from this and never from the client's clock. A due run waits for the owner's client, so `scheduled` means due rather than guaranteed at that second (D94).",
-      "required": ["kind"],
+      "required": [
+        "kind"
+      ],
       "properties": {
-        "kind": {"enum": ["daily", "weekly", "interval"]},
+        "kind": {
+          "enum": [
+            "daily",
+            "weekly",
+            "interval"
+          ]
+        },
         "time": {
           "type": "string",
           "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
@@ -221,16 +318,49 @@
       },
       "allOf": [
         {
-          "if": {"properties": {"kind": {"const": "daily"}}},
-          "then": {"required": ["time", "timezone"]}
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "daily"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "time",
+              "timezone"
+            ]
+          }
         },
         {
-          "if": {"properties": {"kind": {"const": "weekly"}}},
-          "then": {"required": ["time", "weekday", "timezone"]}
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "weekly"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "time",
+              "weekday",
+              "timezone"
+            ]
+          }
         },
         {
-          "if": {"properties": {"kind": {"const": "interval"}}},
-          "then": {"required": ["minutes"]}
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "interval"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "minutes"
+            ]
+          }
         }
       ]
     },
@@ -238,9 +368,20 @@
       "type": "object",
       "additionalProperties": false,
       "description": "What a client submits to create a task, or the merged form of what it submits to edit one. The server validates the merged draft against the owner's live policy, so an edit cannot smuggle in reach the create path would have refused.",
-      "required": ["name", "workspace", "run_root", "steps", "schedule"],
+      "required": [
+        "name",
+        "workspace",
+        "run_root",
+        "machine",
+        "steps",
+        "schedule"
+      ],
       "properties": {
-        "name": {"type": "string", "minLength": 1, "maxLength": 80},
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
         "workspace": {
           "$ref": "common.schema.json#/$defs/absPath",
           "description": "The directory the task belongs to, and where a run step with no `cwd` runs. It must be inside the owner's read reach."
@@ -249,16 +390,28 @@
           "$ref": "common.schema.json#/$defs/absPath",
           "description": "Where each run gets its own directory, `<run_root>/<due date>-<run id>`, made on the owner's client before the first step. It must be inside the owner's write reach and outside the workspace and every run step's `cwd`, since an agent step may write there (D96, D97)."
         },
+        "machine": {
+          "$ref": "common.schema.json#/$defs/machineLabel",
+          "description": "The computer this task's steps run on (D112). Required, and not derived: a recipe is about files somewhere, and the machine is where they are. A run dispatches to it or waits for it — never to whichever client happens to be connected."
+        },
         "inputs": {
           "type": "array",
-          "items": {"$ref": "#/$defs/input"},
+          "items": {
+            "$ref": "#/$defs/input"
+          },
           "maxItems": 10
         },
-        "steps": {"$ref": "#/$defs/steps"},
-        "schedule": {"$ref": "#/$defs/schedule"},
+        "steps": {
+          "$ref": "#/$defs/steps"
+        },
+        "schedule": {
+          "$ref": "#/$defs/schedule"
+        },
         "outputs": {
           "type": "array",
-          "items": {"$ref": "#/$defs/outputPath"},
+          "items": {
+            "$ref": "#/$defs/outputPath"
+          },
           "uniqueItems": true,
           "maxItems": 20,
           "description": "Artifacts the run is expected to leave in its directory. Declared so the reader knows what success looks like; the run record says which exist when it ends, and whether they are right stays outside Neuman."
@@ -274,33 +427,91 @@
       "additionalProperties": false,
       "description": "A stored task as the API returns it. The server owns the id, the owner and every timestamp; a client that sends them is refused rather than trusted.",
       "required": [
-        "id", "account", "name", "workspace", "run_root", "inputs", "steps",
-        "schedule", "outputs", "enabled", "created_at", "updated_at", "next_run_at"
+        "id",
+        "account",
+        "name",
+        "workspace",
+        "run_root",
+        "machine",
+        "inputs",
+        "steps",
+        "schedule",
+        "outputs",
+        "enabled",
+        "created_at",
+        "updated_at",
+        "next_run_at"
       ],
       "properties": {
-        "id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
-        "account": {"type": "string", "minLength": 1},
-        "name": {"type": "string", "minLength": 1, "maxLength": 80},
-        "workspace": {"$ref": "common.schema.json#/$defs/absPath"},
-        "run_root": {"$ref": "common.schema.json#/$defs/absPath"},
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "account": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "workspace": {
+          "$ref": "common.schema.json#/$defs/absPath"
+        },
+        "run_root": {
+          "$ref": "common.schema.json#/$defs/absPath"
+        },
+        "machine": {
+          "$ref": "common.schema.json#/$defs/machineLabel",
+          "description": "The computer this task's steps run on (D112). Required, and not derived: a recipe is about files somewhere, and the machine is where they are. A run dispatches to it or waits for it — never to whichever client happens to be connected."
+        },
         "inputs": {
           "type": "array",
-          "items": {"$ref": "#/$defs/input"},
+          "items": {
+            "$ref": "#/$defs/input"
+          },
           "maxItems": 10
         },
-        "steps": {"$ref": "#/$defs/steps"},
-        "schedule": {"$ref": "#/$defs/schedule"},
+        "steps": {
+          "$ref": "#/$defs/steps"
+        },
+        "schedule": {
+          "$ref": "#/$defs/schedule"
+        },
         "outputs": {
           "type": "array",
-          "items": {"$ref": "#/$defs/outputPath"},
+          "items": {
+            "$ref": "#/$defs/outputPath"
+          },
           "uniqueItems": true,
           "maxItems": 20
         },
-        "enabled": {"type": "boolean"},
-        "created_at": {"type": "string", "format": "date-time"},
-        "updated_at": {"type": "string", "format": "date-time"},
-        "next_run_at": {"type": ["string", "null"], "format": "date-time"},
-        "last_run_at": {"type": ["string", "null"], "format": "date-time"}
+        "enabled": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "next_run_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "last_run_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
       }
     }
   }

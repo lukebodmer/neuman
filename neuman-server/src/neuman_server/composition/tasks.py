@@ -136,6 +136,7 @@ def task_json(row: TaskRow, *, account: str) -> dict[str, Any]:
         "name": row.name,
         "workspace": row.workspace,
         "run_root": row.run_root,
+        "machine": row.machine,
         "inputs": list(row.inputs),
         "steps": list(row.steps),
         "schedule": dict(row.schedule),
@@ -212,8 +213,20 @@ def _check_draft(body: dict[str, Any]) -> None:
 
 async def _validated(
     services: Any, account: str, body: dict[str, Any]
-) -> tuple[Recipe, TaskSchedule, bool]:
+) -> tuple[Recipe, TaskSchedule, bool, str]:
+    """The recipe, its schedule, whether it is enabled, and where it runs.
+
+    The machine is checked here rather than at the first dispatch because a task
+    outlives the session that created it: a recipe whose workspace is on a
+    computer the account has never enrolled would look valid and then wait
+    forever for a client that does not exist (D112).
+    """
+
     _check_draft(body)
+    # The contract requires a label and checks its shape, so this is not a
+    # second validator — it is the one place that has to hold the value, named
+    # for the reader.
+    machine = body["machine"]
     recipe = Recipe.of(
         workspace=body["workspace"],
         run_root=body["run_root"],
@@ -229,15 +242,15 @@ async def _validated(
         schedule,
         enabled=enabled,
         registry=services.registry,
-        home=services.execution.home(account),
+        home=services.execution.home(account, machine),
     )
-    return recipe, schedule, enabled
+    return recipe, schedule, enabled, machine
 
 
 async def create_task(
     services: Any, *, account_id: str, account: str, body: dict[str, Any]
 ) -> dict[str, Any]:
-    recipe, schedule, enabled = await _validated(services, account, body)
+    recipe, schedule, enabled, machine = await _validated(services, account, body)
     now = datetime.now(UTC)
     async with services.database.connection() as conn:
         row = await TaskStore(conn).create(
@@ -245,6 +258,7 @@ async def create_task(
             name=body["name"],
             workspace=recipe.workspace,
             run_root=recipe.run_root,
+            machine=machine,
             inputs=recipe.inputs_json(),
             steps=recipe.steps_json(),
             schedule=schedule.to_json(),
@@ -278,7 +292,7 @@ async def list_tasks(services: Any, *, account_id: str, account: str) -> dict[st
             if run is not None
         },
         "recent": [run_json(run, account=account) for run in recent],
-        "connected": services.execution.connected(account),
+        "connected": any(services.execution.connected(account, row.machine) for row in rows),
     }
 
 
@@ -308,13 +322,14 @@ async def update_task(
         "name": body.get("name", existing.name),
         "workspace": body.get("workspace", existing.workspace),
         "run_root": body.get("run_root", existing.run_root),
+        "machine": body.get("machine", existing.machine),
         "inputs": body.get("inputs", existing.inputs),
         "steps": body.get("steps", existing.steps),
         "schedule": body.get("schedule", existing.schedule),
         "outputs": body.get("outputs", existing.outputs),
         "enabled": bool(body.get("enabled", existing.enabled)),
     }
-    recipe, schedule, enabled = await _validated(services, account, merged)
+    recipe, schedule, enabled, machine = await _validated(services, account, merged)
 
     now = datetime.now(UTC)
     schedule_changed = schedule.to_json() != existing.schedule
@@ -331,6 +346,7 @@ async def update_task(
             name=merged["name"],
             workspace=recipe.workspace,
             run_root=recipe.run_root,
+            machine=machine,
             inputs=recipe.inputs_json(),
             steps=recipe.steps_json(),
             schedule=schedule.to_json(),
@@ -551,7 +567,7 @@ async def _start_if_possible(services: Any, run: TaskRunRow, *, now: datetime) -
             )
         return
 
-    if not services.execution.connected(account.name):
+    if not services.execution.connected(account.name, task.machine):
         if run.status == "due":
             async with services.database.connection() as conn:
                 await TaskRunStore(conn).wait(run.id, error="waiting for a connected client")
@@ -581,7 +597,7 @@ async def start_run(services: Any, run_id: str) -> TaskRunRow | None:
         if account is None or account.disabled_at is not None:
             await runs.finish(run_id, status="failed", error="account disabled or missing")
             return await runs.get(run_id)
-        home = services.execution.home(account.name)
+        home = services.execution.home(account.name, task.machine)
         if home is None:
             await runs.wait(run_id, error="waiting for a connected client")
             return await runs.get(run_id)
@@ -849,6 +865,7 @@ async def _owner_dispatch(
     after it must not start while it still runs (D98).
     """
 
+    machine = task.machine
     manifest = services.registry.get(tool)
     if manifest is None or manifest.kind != "client":
         raise PermissionError(f"{tool!r} is not a client tool on this appliance")
@@ -872,6 +889,10 @@ async def _owner_dispatch(
                 "dispatch_id": dispatch_id,
                 "mutating": manifest.mutating,
                 "critical": manifest.critical,
+                # Which computer ran it: the same field a turn's dispatch
+                # carries, and the only one an operator has to tell two
+                # machines' runs apart (D112).
+                "machine": machine,
             },
             mirror=services.settings.audit_mirror_path,
         )
@@ -879,6 +900,7 @@ async def _owner_dispatch(
     outcome = await services.execution.dispatch(
         user=account.name,
         dispatch_id=dispatch_id,
+        machine=machine,
         tool=tool,
         args=args,
         wait_ms=min(wait_ms, manifest.lifetime_ms),
@@ -1066,7 +1088,12 @@ async def _run_agent(
             return await harness.run_turn(
                 branch_id=branch.id,
                 session_id=session.id,
-                actor=Actor(account_id=account.id, name=account.name, home=home),
+                actor=Actor(
+                    account_id=account.id,
+                    name=account.name,
+                    machine=task.machine,
+                    home=home,
+                ),
                 message=_opening(run, run_dir, step.instruction),
                 model=step.model,
                 inbox=inbox,

@@ -24,6 +24,7 @@ from ...adapters.persistence import (
     EventStore,
     GrantStore,
     ImageStore,
+    MachineStore,
 )
 from ...adapters.persistence.machines import MACHINE_LABEL
 from ...decision.harness import PROJECTION_KINDS, project
@@ -371,19 +372,37 @@ async def _create_session(request: Request) -> Response:
         if title is not None and (not isinstance(title, str) or len(title) > _MAX_TITLE):
             return JSONResponse({"error": "invalid_request"}, status_code=400)
 
-        # Where the conversation starts. The window names it — a session made on
-        # the laptop begins on the laptop — and a window too old to say gets the
-        # machine it is talking through, which is what the appliance did before
-        # machines existed. Never a guess between two computers: a session
-        # created while both are connected and with nobody naming one is the
-        # ambiguity this feature exists to remove, so the fallback is the
-        # *connected* one and there is no other candidate.
+        # Where the conversation starts, and it is not optional. The window says
+        # which computer it is — a session made on the laptop begins on the
+        # laptop — and a window that cannot say gets no session. This used to
+        # fall back to "the account's most recently connected client", which is
+        # how a session created at one computer came to run its tools on another
+        # (N186); the fallback is gone rather than narrowed.
         machine = body.get("machine") if isinstance(body, dict) else None
-        if machine is not None:
-            if not isinstance(machine, str) or not MACHINE_LABEL.fullmatch(machine):
-                return JSONResponse({"error": "invalid_request"}, status_code=400)
-        else:
-            machine = services_of(request).execution.newest_machine(principal.name)
+        if not isinstance(machine, str) or not MACHINE_LABEL.fullmatch(machine):
+            return JSONResponse(
+                {
+                    "error": "invalid_request",
+                    "detail": "a session must name the machine it runs on",
+                },
+                status_code=400,
+            )
+
+        # Enrolled, not merely well-formed: a label that no client of this
+        # account has ever reported would create a conversation with nowhere to
+        # run and a prompt naming a computer that does not exist.
+        if await MachineStore(conn).get(principal.account_id, machine) is None:
+            return JSONResponse(
+                {
+                    "error": "unknown_machine",
+                    "detail": (
+                        f"{machine!r} has never connected to this account. "
+                        "Sign in from it first, or name one of the machines "
+                        "this account has."
+                    ),
+                },
+                status_code=400,
+            )
 
         session, branch = await AgentSessionStore(conn).create(
             account_id=principal.account_id, title=title, machine=machine

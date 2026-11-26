@@ -2505,7 +2505,19 @@ async function loadPolicy() {
   const select = $("model");
   select.innerHTML = "";
   try {
-    const body = await api("GET", "/api/policy");
+    // Which computer `$HOME` expands for, because the roots this response lists
+    // are directories, and a directory is a path on one computer (D112). An open
+    // session asks for its branch's; a draft asks for this window's.
+    const machine = await chooserMachine();
+    if (!machine) {
+      // The window has not heard its own name yet. Nothing else here is
+      // readable without it, so wait for the link rather than ask for a policy
+      // that would describe the wrong computer.
+      note("Waiting for this computer's name from the client…");
+      return;
+    }
+    const body = await api("GET", `/api/policy?machine=${encodeURIComponent(machine)}`);
+    policyMachine = machine;
     renderPermissions(body);
     renderApproval(body.policy || {});
     // The expanded paths, not `policy.files_read`: a grant naming a home
@@ -2718,7 +2730,12 @@ async function probeEnvironment(path) {
   if (!path) return;
   let answer;
   try {
-    answer = await api("GET", `/api/environment?path=${encodeURIComponent(path)}`);
+    answer = await api(
+      "GET",
+      `/api/environment?path=${encodeURIComponent(path)}&machine=${encodeURIComponent(
+        chooserMachineNow()
+      )}`
+    );
   } catch {
     // Silence. An unprobed directory and a directory with no environment look
     // the same on screen, which is right: neither is a state to act on, and a
@@ -2799,6 +2816,10 @@ function chooserParts(menuId) {
 // the button takes, and the thing the right panel previews.
 function newChooserView(start, files) {
   return {
+    // Which computer is being browsed. Every listing this view asks for names
+    // it, because a directory on one computer is a different directory on
+    // another: the server refuses a listing that does not say (D112).
+    machine: chooserMachineNow(),
     centre: start,
     selected: null,
     filter: "",
@@ -4021,6 +4042,11 @@ function applyBranchChoices(view) {
   if (policyState) renderApproval(policyState.policy || {});
   paintBranchChip();
   paintMachineChip();
+  // A branch on another computer has another computer's roots, so the policy in
+  // hand describes the wrong ones. Re-read it — once per move, not per frame.
+  if (view.machine && policyMachine && view.machine !== policyMachine) {
+    loadPolicy().catch(() => {});
+  }
   if (view.model && !availableModel(view.model) && !view._missingNoted) {
     view._missingNoted = true;
     note(
@@ -4109,6 +4135,24 @@ function paintBranchChip() {
 // desktop with nothing saying so (D112).
 let localMachine = "";
 let machineChoices = [];
+// Which machine the policy in hand was composed for. A branch may run on
+// another computer from the one this window is on, and the roots a picker offers
+// are that computer's directories — so the policy has to be re-read when the
+// conversation moves, and a cached one would offer the wrong computer's paths
+// (D112).
+let policyMachine = null;
+
+// The computer a picker or a policy read is about: the open branch's, or — on
+// the hero, where no session exists yet — this window's own.
+function chooserMachineNow() {
+  return (currentView && currentView.machine) || localMachine || "";
+}
+
+async function chooserMachine() {
+  if (chooserMachineNow()) return chooserMachineNow();
+  await loadLink();
+  return chooserMachineNow();
+}
 
 function paintMachineChip() {
   const chip = $("machine-chip");
@@ -6914,12 +6958,16 @@ async function startSession() {
   // Creating a session supersedes that choice, so the late answer must not
   // mount a conversation the reader has already left the draft to start.
   viewOpen++;
-  // The machine this window is on, said explicitly. The server falls back to the
-  // account's most recently connected client, which is the wrong answer exactly
-  // when a person has two computers connected at once — the case this whole
-  // feature is for (D112). A draft's staged working directory then means what it
-  // was chosen against.
-  const created = await api("POST", "/api/sessions", localMachine ? { machine: localMachine } : {});
+  // The machine this window is on, and it must be known before the session
+  // exists: the server refuses a session that does not name one, because a
+  // conversation with no machine is a conversation that can run anywhere — the
+  // bug this field exists to end (D112, N186).
+  const machine = await chooserMachine();
+  if (!machine) {
+    note("This window has not heard which computer it is from the client yet. Try again in a moment.");
+    return;
+  }
+  const created = await api("POST", "/api/sessions", { machine });
   const { branch, ...session } = created;
   sessions.set(session.id, { ...session, branches: [branch] });
   const view = makeView(session, {

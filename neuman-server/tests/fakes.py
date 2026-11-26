@@ -1038,11 +1038,10 @@ class FakeExecution:
         # sets it to stand in for a client somewhere (N145).
         self.home_value: str | None = None
         self.drops_value: str | None = None
-        # The machine a branch written before D112 adopts on its next turn; None
-        # means "no client to ask", which is what almost every test wants — a
-        # branch that already names a machine never consults it, and a fake that
-        # invented one would hide a harness that had stopped using the branch's.
-        self.machine_value: str | None = None
+        # The machine this fake client is. One machine is all a fake needs: what
+        # a test asserts about routing is that the *branch's* label reaches the
+        # dispatch, which `dispatches` records.
+        self.machine = "ernest"
         # What the connected client said it can run, or None for "no client
         # connected" — which is what most tests want. A test that needs the
         # harness to actually probe an environment sets this, because a tool the
@@ -1070,7 +1069,7 @@ class FakeExecution:
         tool: str,
         args: dict[str, Any],
         wait_ms: int,
-        machine: str | None = None,
+        machine: str,
         lifetime_ms: int | None = None,
         working_dir: str | None = None,
         surfaces: dict[str, list[str]] | None = None,
@@ -1116,14 +1115,14 @@ class FakeExecution:
         return [
             {
                 "account": name,
-                "machine": self.machine_value or "ernest",
+                "machine": self.machine,
                 "release": "0.1.0",
                 "rpc": 1,
             }
             for name in sorted(self.connected_names)
         ]
 
-    def available(self, user: str, machine: str | None = None) -> frozenset[str] | None:
+    def available(self, user: str, machine: str) -> frozenset[str] | None:
         """What `available_value` says; None — no client — by default.
 
         None leaves the advertisement unrestricted, which is what most tests
@@ -1134,27 +1133,17 @@ class FakeExecution:
 
         return self.available_value
 
-    def home(self, user: str, machine: str | None = None) -> str | None:
+    def home(self, user: str, machine: str) -> str | None:
         """What `home_value` says, which a test sets to stand in for a client."""
 
         return self.home_value
 
-    def drops(self, user: str, machine: str | None = None) -> str | None:
+    def drops(self, user: str, machine: str) -> str | None:
         """What `drops_value` says, set beside `home_value` for a client."""
 
         return self.drops_value
 
-    def newest_machine(self, user: str) -> str | None:
-        """The machine a branch written before D112 would adopt, if a test set one.
-
-        `None` by default: most tests run a branch that already names its
-        machine, and a fake that invented one would hide a harness that had
-        stopped using the branch's own.
-        """
-
-        return self.machine_value
-
-    def connected(self, user: str, machine: str | None = None) -> bool:
+    def connected(self, user: str, machine: str) -> bool:
         """Whether a dispatch for `user` has anywhere to go.
 
         The scheduler asks this before starting a run. `home_value` is the
@@ -1162,11 +1151,7 @@ class FakeExecution:
         cannot expand `$HOME`, and a task with no client has neither.
         """
 
-        return (
-            user in self.connected_names
-            and self.home_value is not None
-            and (machine is None or machine == self.machine_value)
-        )
+        return user in self.connected_names and self.home_value is not None
 
     async def register(self, connection: Any) -> None:
         """Keep the connection the route built, as the hub would."""

@@ -1829,6 +1829,10 @@ function tasksBody(draft) {
     name: draft.name.trim(),
     workspace: draft.workspace,
     run_root: draft.run_root,
+    // The computer the steps run on, and never inferred by the server (D112).
+    // A task copied or edited keeps its own; a new one starts where the person
+    // is, which is where the files it is about are.
+    machine: draft.machine || localMachine,
     inputs,
     steps,
     schedule: draft.schedule,

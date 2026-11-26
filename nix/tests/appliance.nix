@@ -401,7 +401,7 @@ pkgs.testers.nixosTest {
         assert json.loads(out)["auto_accept"] == "yolo", out
 
         # In force, read back from the server rather than from the response.
-        shown = json.loads(machine.succeed("curl -sS -b /tmp/bob.jar http://127.0.0.1:8443/api/policy"))
+        shown = json.loads(machine.succeed("curl -sS -b /tmp/bob.jar \"http://127.0.0.1:8443/api/policy?machine=machine\""))
         assert shown["policy"]["auto_accept"] == "yolo", shown
 
     with subtest("a mode above the ceiling is refused"):
@@ -434,7 +434,10 @@ pkgs.testers.nixosTest {
         # left whatever was there untouched — not that a particular value is
         # present.
         shown = json.loads(
-            machine.succeed("curl -sS -b /tmp/alice.jar http://127.0.0.1:8443/api/policy")
+            machine.succeed(
+                "curl -sS -b /tmp/alice.jar "
+                "\"http://127.0.0.1:8443/api/policy?machine=machine\""
+            )
         )
         assert shown["policy"]["auto_accept"] == "never", shown
         assert shown["policy"]["auto_accept_max"] == "safe", shown
@@ -496,6 +499,12 @@ pkgs.testers.nixosTest {
         # turn needs a model, and what is under test is the index rather than
         # the harness. The index is then rebuilt through the store's own
         # `reindex_search`, so the statement this exercises is the shipped one.
+        # Written with Python's own `json`/file handling rather than a shell
+        # heredoc: a heredoc's body has to sit at column 0 to end its
+        # delimiter, and `nixfmt` reindents this whole script, so the two
+        # fight and the testScript stops parsing (`check_testscript.py`).
+        import shlex
+
         login = json.loads(
             machine.succeed(
                 "curl -sS -c /tmp/search.jar -X POST http://127.0.0.1:8443/api/login "
@@ -505,21 +514,29 @@ pkgs.testers.nixosTest {
         )
         token = login["csrf_token"]
 
+        # bob's computer, recorded the way a client's hello records it. This
+        # subtest is about the search SQL, not about enrolment, and a session
+        # names the machine it runs on (D112) — the route refuses a label the
+        # account has never connected from, which is the rule working and would
+        # otherwise make this an assertion about the wrong thing.
+        machine.succeed(
+            "sudo -u postgres psql -d neuman -c "
+            + shlex.quote(
+                "INSERT INTO machines (account_id, label) "
+                "SELECT id, 'machine' FROM accounts WHERE name = 'bob' "
+                "ON CONFLICT DO NOTHING"
+            )
+        )
+
         created = json.loads(
             machine.succeed(
                 "curl -sS -b /tmp/search.jar -X POST http://127.0.0.1:8443/api/sessions "
                 f"-H 'x-csrf-token: {token}' "
-                "-H 'content-type: application/json' -d '{}'"
+                "-H 'content-type: application/json' -d '{\"machine\": \"machine\"}'"
             )
         )
         sid = created["id"]
         bid = created["branch"]["id"]
-
-        # Written with Python's own `json`/file handling rather than a shell
-        # heredoc: a heredoc's body has to sit at column 0 to end its
-        # delimiter, and `nixfmt` reindents this whole script, so the two
-        # fight and the testScript stops parsing (`check_testscript.py`).
-        import shlex
 
         rows = ", ".join(
             [

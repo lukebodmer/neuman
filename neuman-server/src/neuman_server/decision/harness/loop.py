@@ -345,7 +345,7 @@ async def _read_project_context(
     registry: ToolRegistry,
     *,
     user: str,
-    machine: str | None,
+    machine: str,
     working_dir: str | None,
     surfaces: dict[str, list[str]],
     wait_ms: int,
@@ -493,7 +493,7 @@ async def _probe_environment(
     registry: ToolRegistry,
     *,
     user: str,
-    machine: str | None,
+    machine: str,
     working_dir: str | None,
     surfaces: dict[str, list[str]],
     wait_ms: int,
@@ -620,11 +620,9 @@ class Actor:
 
     account_id: str
     name: str
-    # The machine this turn's dispatches run on (D112). Empty only for a branch
-    # whose account has no client connected at all, which is a turn that can
-    # read and answer but cannot act — and the prompt then says nothing about a
-    # machine rather than naming one it does not have.
-    machine: str = ""
+    # The machine this turn's dispatches run on (D112). Required: a branch always
+    # names one, so a turn that cannot say where it runs does not exist.
+    machine: str
     # What the operator says is installed on that machine. Told to the model
     # because `hello` advertises Neuman tools and nothing about `PATH`, so
     # without it a missing registration toolkit is discovered one refused turn
@@ -903,7 +901,7 @@ class Harness:
             self.execution,
             self.registry,
             user=actor.name,
-            machine=actor.machine or None,
+            machine=actor.machine,
             working_dir=working_dir,
             surfaces=opening_surfaces,
             wait_ms=self.config.tool_wait_ms,
@@ -917,7 +915,7 @@ class Harness:
             self.execution,
             self.registry,
             user=actor.name,
-            machine=actor.machine or None,
+            machine=actor.machine,
             working_dir=working_dir,
             surfaces=opening_surfaces,
             wait_ms=self.config.tool_wait_ms,
@@ -1160,7 +1158,7 @@ class Harness:
                 # "the user's machine" stops being a phrase it has to guess at:
                 # the same conversation reopened on another computer used to
                 # arrive with a path from the first one and no way to know.
-                machine=actor.machine or None,
+                machine=actor.machine,
                 machine_notes=actor.machine_notes,
                 operator_prompt=self.config.operator_prompt,
                 account_prompt=account_prompt,
@@ -1190,7 +1188,7 @@ class Harness:
                 # no program for. `None` when no client is connected, which
                 # advertises the granted set and lets the dispatch report what is
                 # actually wrong.
-                available=self.execution.available(actor.name, actor.machine or None),
+                available=self.execution.available(actor.name, actor.machine),
             )
             # Asked for in this provider's dialect, which is the only thing
             # `reasoning_fields` knows how to decide. Merged after the request
@@ -2071,7 +2069,7 @@ class Harness:
         # rather than the tool. Recomposed per step like the tool gate, so a role
         # that drops a machine lands on the next call rather than the next turn
         # (D112).
-        machine_decision = gate.check_machine(actor.machine or None, policy)
+        machine_decision = gate.check_machine(actor.machine, policy)
         decision = (
             machine_decision
             if not machine_decision.allowed
@@ -2086,7 +2084,7 @@ class Harness:
                     "tool": name,
                     "reason": decision.reason,
                     "branch": branch_id,
-                    "machine": actor.machine or None,
+                    "machine": actor.machine,
                 },
                 mirror=self.audit_mirror,
             )
@@ -2277,7 +2275,7 @@ class Harness:
                 policy,
                 self.registry,
                 tool_selection,
-                self.execution.available(actor.name, actor.machine or None),
+                self.execution.available(actor.name, actor.machine),
             )
             if manifest.detaches and session_id
             else []
@@ -2398,7 +2396,7 @@ class Harness:
                 # before there was anything to name: "a dispatch entry carries
                 # which machine executed it: there is one execution site per
                 # turn, but several possible machines".
-                "machine": actor.machine or None,
+                "machine": actor.machine,
             },
             mirror=self.audit_mirror,
         )
@@ -2407,7 +2405,7 @@ class Harness:
             outcome = await self.execution.dispatch(
                 user=actor.name,
                 dispatch_id=dispatch_id,
-                machine=actor.machine or None,
+                machine=actor.machine,
                 tool=manifest.name,
                 args=args,
                 wait_ms=wait_ms,
@@ -2490,7 +2488,7 @@ class Harness:
                     # The machine holding the process. A job outlives its
                     # dispatch and its connection, so without this an operator
                     # asking where a runaway build is has only a job id.
-                    "machine": actor.machine or None,
+                    "machine": actor.machine,
                 },
                 mirror=self.audit_mirror,
             )
@@ -2630,7 +2628,7 @@ class Harness:
             outcome = await self.execution.dispatch(
                 user=actor.name,
                 dispatch_id=dispatch_id,
-                machine=actor.machine or None,
+                machine=actor.machine,
                 tool=manifest.name,
                 args={**args, "preview": True},
                 wait_ms=min(manifest.wait_ms, self.config.tool_wait_ms),

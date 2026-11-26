@@ -114,11 +114,19 @@ def working_set(server: str, cookie: str | None) -> str:
     """
 
     import httpx
+    from neuman_client.machine import default_label
     from neuman_client.transport import COOKIE
 
     with httpx.Client(base_url=server, cookies={COOKIE: cookie or ""}, timeout=10) as client:
         csrf = client.get("/api/me").json()["csrf_token"]
-        created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf})
+        # The machine this probe is on, as its hello said. A session names one
+        # and the route refuses a request that does not (D112); the probe is the
+        # client for the purposes of this check, so it says what the client says.
+        created = client.post(
+            "/api/sessions",
+            json={"machine": default_label()},
+            headers={"x-csrf-token": csrf},
+        )
         created.raise_for_status()
         session_id = created.json()["id"]
         rows = client.get("/api/active").json()["sessions"]

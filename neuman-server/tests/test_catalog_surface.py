@@ -577,7 +577,9 @@ def test_a_composed_prompt_names_where_each_section_came_from(surface, operator)
     never receives.
     """
 
-    response = operator.get("/admin/prompt/compose", params={"account": "bob"})
+    response = operator.get(
+        "/admin/prompt/compose", params={"account": "bob", "machine": "ernest"}
+    )
 
     assert response.status_code == 200, response.text
     body = response.json()
@@ -599,7 +601,9 @@ def test_a_composed_prompt_names_where_each_section_came_from(surface, operator)
 
 
 def test_composing_a_prompt_for_an_unknown_account_is_a_404(surface, operator):
-    response = operator.get("/admin/prompt/compose", params={"account": "nobody"})
+    response = operator.get(
+        "/admin/prompt/compose", params={"account": "nobody", "machine": "ernest"}
+    )
     assert response.status_code == 404
 
 
@@ -607,7 +611,9 @@ def test_composing_a_prompt_needs_admin_authority(surface, client, monkeypatch):
     """The route reads another account's policy, so it is an operator's to use."""
 
     as_peer(monkeypatch, client, 1001, "bob")
-    response = client.get("/admin/prompt/compose", params={"account": "bob"})
+    response = client.get(
+        "/admin/prompt/compose", params={"account": "bob", "machine": "ernest"}
+    )
     assert response.status_code == 403
 
 
@@ -621,7 +627,9 @@ def test_renaming_the_appliance_reaches_the_prompt(surface, operator):
 
     assert operator.put("/admin/name", json={"name": "Acme Assistant"}).status_code == 200
 
-    body = operator.get("/admin/prompt/compose", params={"account": "bob"}).json()
+    body = operator.get(
+        "/admin/prompt/compose", params={"account": "bob", "machine": "ernest"}
+    ).json()
     identity = next(s for s in body["sections"] if s["source"] == "identity")
     assert (
         "You are Acme Assistant, an assistant running on a governed appliance."

@@ -54,7 +54,7 @@ def test_unauthenticated_requests_are_refused(client):
         ("GET", "/api/me"),
         ("GET", "/api/sessions"),
         ("GET", "/api/active"),
-        ("GET", "/api/policy"),
+        ("GET", "/api/policy?machine=ernest"),
         ("GET", "/api/usage"),
         ("POST", "/api/sessions"),
     ):
@@ -81,12 +81,14 @@ def test_unsafe_requests_need_a_csrf_token(surface, client):
     """The cookie alone must not be enough to act."""
 
     authenticate(surface, client)
-    assert client.post("/api/sessions", json={}).status_code == 403
+    assert client.post("/api/sessions", json={"machine": "ernest"}).status_code == 403
 
 
 def test_a_wrong_csrf_token_is_refused(surface, client):
     authenticate(surface, client)
-    response = client.post("/api/sessions", json={}, headers={"x-csrf-token": "wrong-token"})
+    response = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": "wrong-token"}
+    )
     assert response.status_code == 403
 
 
@@ -95,13 +97,17 @@ def test_another_users_csrf_token_is_refused(surface, client):
 
     _bob_token, bob_csrf = surface.login("bob")
     authenticate(surface, client, "alice")
-    response = client.post("/api/sessions", json={}, headers={"x-csrf-token": bob_csrf})
+    response = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": bob_csrf}
+    )
     assert response.status_code == 403
 
 
 def test_the_matching_csrf_token_is_accepted(surface, client):
     csrf = authenticate(surface, client)
-    response = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf})
+    response = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    )
     assert response.status_code == 201
 
 
@@ -119,7 +125,7 @@ def test_a_cross_origin_unsafe_request_is_rejected(surface, client):
     csrf = authenticate(surface, client)
     response = client.post(
         "/api/sessions",
-        json={},
+        json={"machine": "ernest"},
         headers={"x-csrf-token": csrf, "origin": "https://evil.test"},
     )
     assert response.status_code == 403
@@ -129,7 +135,9 @@ def test_a_cross_origin_unsafe_request_is_rejected(surface, client):
 def test_the_configured_origin_is_allowed(surface, client):
     csrf = authenticate(surface, client)
     response = client.post(
-        "/api/sessions", json={}, headers={"x-csrf-token": csrf, "origin": ORIGIN}
+        "/api/sessions",
+        json={"machine": "ernest"},
+        headers={"x-csrf-token": csrf, "origin": ORIGIN},
     )
     assert response.status_code == 201
 
@@ -770,7 +778,7 @@ def test_the_session_list_carries_what_a_list_needs(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf})
+    client.post("/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf})
 
     rows = client.get("/api/sessions").json()["sessions"]
     assert rows, "no sessions listed after creating one"
@@ -795,7 +803,9 @@ def test_a_fresh_session_has_no_title_rather_than_a_placeholder(surface, client)
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     assert created["title"] is None, created
 
 
@@ -808,7 +818,9 @@ def test_resuming_a_session_returns_the_projected_transcript(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     body = client.get(f"/api/sessions/{created['id']}").json()
     assert "messages" in body, body
@@ -985,7 +997,9 @@ async def test_titling_a_session_you_do_not_own_does_nothing(surface):
 
 def test_a_session_can_be_renamed(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/sessions/{created['id']}",
@@ -1032,7 +1046,9 @@ def test_a_renamed_title_is_collapsed_and_bounded(surface, client):
     surface (D1), and a newline in a title is a list row with a newline in it."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/sessions/{created['id']}",
@@ -1053,7 +1069,9 @@ def test_an_empty_rename_is_refused(surface, client):
     """Whitespace is not a name, and a blank row is worse than "untitled"."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     for title in ("", "   ", "\n\t"):
         response = client.patch(
@@ -1073,7 +1091,9 @@ async def test_a_rename_survives_the_next_message(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     client.patch(
         f"/api/sessions/{created['id']}",
         json={"title": "chosen by hand"},
@@ -1091,7 +1111,9 @@ async def test_a_rename_survives_the_next_message(surface, client):
 
 def test_a_removed_session_leaves_the_listing(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.post(
         f"/api/sessions/{created['id']}/remove", headers={"x-csrf-token": csrf}
@@ -1111,7 +1133,9 @@ def test_removing_does_not_close_the_conversation(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     client.post(f"/api/sessions/{created['id']}/remove", headers={"x-csrf-token": csrf})
 
@@ -1124,7 +1148,9 @@ def test_a_removed_session_survives_for_the_operator(surface, client):
     """Removal is not a delete: the row and its transcript stay on the appliance."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     client.post(f"/api/sessions/{created['id']}/remove", headers={"x-csrf-token": csrf})
 
@@ -1139,7 +1165,9 @@ def test_a_removed_session_cannot_be_reopened_by_id(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     client.post(f"/api/sessions/{created['id']}/remove", headers={"x-csrf-token": csrf})
 
@@ -1154,7 +1182,9 @@ def test_removing_a_session_twice_is_not_an_error(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     first = client.post(f"/api/sessions/{created['id']}/remove", headers={"x-csrf-token": csrf})
     when = surface.agent_sessions.rows[created["id"]].removed_at
@@ -1468,7 +1498,9 @@ def test_every_route_the_browser_client_calls_exists():
 
 def test_a_working_directory_inside_policy_is_accepted(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -1491,7 +1523,9 @@ def test_a_working_directory_outside_policy_is_refused_by_name(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -1507,7 +1541,9 @@ def test_a_working_directory_can_be_cleared(surface, client):
     """Null clears it, and null is not "outside policy"."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     client.patch(
         f"/api/branches/{created['branch']['id']}",
         json={"working_dir": "/srv/eng"},
@@ -1527,7 +1563,9 @@ def test_a_patch_touches_only_the_fields_it_names(surface, client):
     """Which is what PATCH means, and what lets the client send one at a time."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     client.patch(
         f"/api/sessions/{created['id']}",
@@ -1549,7 +1587,9 @@ def test_an_empty_patch_is_refused(surface, client):
     """A PATCH naming no field is a request that means nothing."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/sessions/{created['id']}", json={}, headers={"x-csrf-token": csrf}
@@ -1567,7 +1607,9 @@ def test_every_session_response_describes_the_working_directory(surface, client)
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     assert "working_dir" in created["branch"], created
 
     reopened = client.get(f"/api/sessions/{created['id']}").json()
@@ -1580,7 +1622,9 @@ def test_a_working_directory_survives_a_resume(surface, client):
     """Set it, fetch the session, and get it back — which is the whole point."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     client.patch(
         f"/api/branches/{created['branch']['id']}",
         json={"working_dir": "/srv/eng/work"},
@@ -1601,7 +1645,7 @@ def test_the_policy_response_separates_granted_from_reachable(surface, client):
     """
 
     authenticate(surface, client)
-    body = client.get("/api/policy").json()
+    body = client.get("/api/policy?machine=ernest").json()
 
     assert "readable" in body, body
     assert "writable" in body, body
@@ -1647,14 +1691,16 @@ def test_a_home_grant_is_offered_as_the_home(monkeypatch, tmp_path):
     surface.services.execution.home_value = "/home/alice"
     with surface.client() as client:
         csrf = authenticate(surface, client)
-        body = client.get("/api/policy").json()
+        body = client.get("/api/policy?machine=ernest").json()
 
         assert body["policy"]["files_read"] == ["$HOME"]
         assert body["readable"] == ["/home/alice"], body["readable"]
 
         # And the offer is honest: what the menu shows, the PATCH accepts,
         # and any directory under it is a working directory like another.
-        created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+        created = client.post(
+            "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+        ).json()
         for path in ("/home/alice", "/home/alice/Documents", "/home/alice/.ssh"):
             response = client.patch(
                 f"/api/branches/{created['branch']['id']}",
@@ -1684,10 +1730,12 @@ def test_a_subpath_grant_is_offered_and_bounded(monkeypatch, tmp_path):
     surface.services.execution.home_value = "/Users/alice"
     with surface.client() as client:
         csrf = authenticate(surface, client)
-        body = client.get("/api/policy").json()
+        body = client.get("/api/policy?machine=ernest").json()
         assert body["readable"] == ["/Users/alice/Documents"], body["readable"]
 
-        created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+        created = client.post(
+            "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+        ).json()
         inside = client.patch(
             f"/api/branches/{created['branch']['id']}",
             json={"working_dir": "/Users/alice/Documents"},
@@ -1723,13 +1771,13 @@ def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
 
     with surface.client() as client:
         authenticate(surface, client)
-        offline = client.get("/api/policy").json()["readable"]
+        offline = client.get("/api/policy?machine=ernest").json()["readable"]
         assert offline == [], offline
 
     surface.services.execution.home_value = "/home/remote"
     with surface.client() as client:
         csrf = authenticate(surface, client)
-        body = client.get("/api/policy").json()
+        body = client.get("/api/policy?machine=ernest").json()
         readable = body["readable"]
 
         assert readable == ["/home/remote"], readable
@@ -1737,7 +1785,9 @@ def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
 
         # And the offer is what the PATCH checks against, so a directory chosen
         # from the menu is accepted rather than refused one step later.
-        created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+        created = client.post(
+            "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+        ).json()
         for path in readable:
             response = client.patch(
                 f"/api/branches/{created['branch']['id']}",
@@ -1751,7 +1801,7 @@ def test_a_home_grant_expands_against_the_clients_home(monkeypatch, tmp_path):
 
 
 def test_browsing_needs_a_session(client):
-    assert client.get("/api/browse?path=/srv/eng").status_code in (401, 403)
+    assert client.get("/api/browse?machine=ernest&path=/srv/eng").status_code in (401, 403)
 
 
 def test_browsing_a_granted_directory_dispatches_the_listing_tool(surface, client):
@@ -1770,7 +1820,7 @@ def test_browsing_a_granted_directory_dispatches_the_listing_tool(surface, clien
     )
     authenticate(surface, client)
 
-    response = client.get("/api/browse?path=/srv/eng")
+    response = client.get("/api/browse?machine=ernest&path=/srv/eng")
     assert response.status_code == 200, response.text
     # Parsed, in order, with the kind preserved. Note the file is still here:
     # filtering is `fs_list`'s job via `dirs_only`, asserted below on the
@@ -1803,7 +1853,7 @@ def test_browsing_outside_policy_is_refused_without_dispatching(surface, client)
 
     authenticate(surface, client)
 
-    response = client.get("/api/browse?path=/etc")
+    response = client.get("/api/browse?machine=ernest&path=/etc")
     assert response.status_code == 403, response.text
     assert response.json()["error"] == "outside_policy"
     assert surface.services.execution.dispatches == []
@@ -1813,7 +1863,7 @@ def test_browsing_cannot_escape_by_traversal(surface, client):
     authenticate(surface, client)
 
     for path in ("/srv/eng/../../etc", "/srv/engine", "relative/path", ""):
-        response = client.get(f"/api/browse?path={path}")
+        response = client.get(f"/api/browse?machine=ernest&path={path}")
         assert response.status_code in (400, 403), (path, response.status_code)
     assert surface.services.execution.dispatches == []
 
@@ -1827,7 +1877,7 @@ def test_the_caller_cannot_choose_which_tool_runs(surface, client):
 
     authenticate(surface, client)
 
-    response = client.get("/api/browse?path=/srv/eng&tool=shell")
+    response = client.get("/api/browse?machine=ernest&path=/srv/eng&tool=shell")
     assert response.status_code == 200, response.text
     assert [d["tool"] for d in surface.services.execution.dispatches] == ["fs_list"]
 
@@ -1842,7 +1892,7 @@ def test_a_failed_listing_is_reported_rather_than_shown_as_empty(surface, client
     )
     authenticate(surface, client)
 
-    response = client.get("/api/browse?path=/srv/eng/secret")
+    response = client.get("/api/browse?machine=ernest&path=/srv/eng/secret")
     assert response.status_code == 422, response.text
     assert "permission denied" in response.json()["detail"]
 
@@ -1854,12 +1904,12 @@ def test_sentinel_lines_are_not_entries(surface, client):
 
     surface.services.execution.outcome = DispatchOutcome(exit_code=0, stdout="(empty)\n")
     authenticate(surface, client)
-    assert client.get("/api/browse?path=/srv/eng").json()["entries"] == []
+    assert client.get("/api/browse?machine=ernest&path=/srv/eng").json()["entries"] == []
 
     surface.services.execution.outcome = DispatchOutcome(
         exit_code=0, stdout="d\tsrc\n(stopped at 500 entries)\n"
     )
-    response = client.get("/api/browse?path=/srv/eng")
+    response = client.get("/api/browse?machine=ernest&path=/srv/eng")
     assert response.json()["entries"] == [{"kind": "d", "name": "src"}]
 
 
@@ -1867,7 +1917,7 @@ def test_sentinel_lines_are_not_entries(surface, client):
 
 
 def test_probing_an_environment_needs_a_session(client):
-    assert client.get("/api/environment?path=/srv/eng").status_code in (401, 403)
+    assert client.get("/api/environment?machine=ernest&path=/srv/eng").status_code in (401, 403)
 
 
 def test_probing_dispatches_the_probe_as_the_user(surface, client):
@@ -1889,7 +1939,7 @@ def test_probing_dispatches_the_probe_as_the_user(surface, client):
     )
     authenticate(surface, client)
 
-    response = client.get("/api/environment?path=/srv/eng")
+    response = client.get("/api/environment?machine=ernest&path=/srv/eng")
     assert response.status_code == 200, response.text
     assert response.json() == {
         "path": "/srv/eng",
@@ -1914,7 +1964,7 @@ def test_probing_outside_policy_is_refused_without_dispatching(surface, client):
 
     authenticate(surface, client)
 
-    response = client.get("/api/environment?path=/etc")
+    response = client.get("/api/environment?machine=ernest&path=/etc")
     assert response.status_code == 403, response.text
     assert response.json()["error"] == "outside_policy"
     assert surface.services.execution.dispatches == []
@@ -1924,7 +1974,7 @@ def test_probing_cannot_escape_by_traversal(surface, client):
     authenticate(surface, client)
 
     for path in ("/srv/eng/../../etc", "/srv/engine", "relative/path", ""):
-        response = client.get(f"/api/environment?path={path}")
+        response = client.get(f"/api/environment?machine=ernest&path={path}")
         assert response.status_code in (400, 403), (path, response.status_code)
     assert surface.services.execution.dispatches == []
 
@@ -1943,7 +1993,7 @@ def test_the_caller_cannot_choose_which_tool_probes(surface, client):
     )
     authenticate(surface, client)
 
-    response = client.get("/api/environment?path=/srv/eng&tool=shell")
+    response = client.get("/api/environment?machine=ernest&path=/srv/eng&tool=shell")
     assert response.status_code == 200, response.text
     assert [d["tool"] for d in surface.services.execution.dispatches] == ["env_probe"]
 
@@ -1969,7 +2019,7 @@ def test_an_unrecognised_reason_becomes_env_unreadable(surface, client):
         surface.services.execution.outcome = DispatchOutcome(exit_code=0, stdout=stdout)
         authenticate(surface, client)
 
-        response = client.get("/api/environment?path=/srv/eng")
+        response = client.get("/api/environment?machine=ernest&path=/srv/eng")
         assert response.status_code == 200, (stdout, response.text)
         assert response.json() == {"path": "/srv/eng", "reason": "env_unreadable"}, stdout
 
@@ -1993,7 +2043,7 @@ def test_a_resolved_probe_reports_only_the_profile_and_interpreter(surface, clie
     )
     authenticate(surface, client)
 
-    body = client.get("/api/environment?path=/srv/eng").json()
+    body = client.get("/api/environment?machine=ernest&path=/srv/eng").json()
     assert "rc_path" not in body, body
     assert set(body) == {"path", "reason", "profile", "interpreter"}, body
 
@@ -2014,7 +2064,7 @@ def test_a_states_detail_is_not_forwarded(surface, client):
     )
     authenticate(surface, client)
 
-    body = client.get("/api/environment?path=/srv/eng").json()
+    body = client.get("/api/environment?machine=ernest&path=/srv/eng").json()
     assert body == {"path": "/srv/eng", "reason": "env_unrealised"}, body
 
 
@@ -2033,7 +2083,7 @@ def test_a_failed_probe_dispatch_is_reported(surface, client):
     )
     authenticate(surface, client)
 
-    response = client.get("/api/environment?path=/srv/eng")
+    response = client.get("/api/environment?machine=ernest&path=/srv/eng")
     assert response.status_code == 422, response.text
     assert response.json()["error"] == "probe_failed"
 
@@ -2043,7 +2093,9 @@ def test_a_failed_probe_dispatch_is_reported(surface, client):
 
 def test_a_file_inside_policy_can_be_attached(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     assert created["branch"]["attachments"] == []
 
     response = client.patch(
@@ -2065,7 +2117,9 @@ def test_a_file_outside_policy_cannot_be_attached(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2085,7 +2139,9 @@ def test_one_unreachable_path_rejects_the_whole_list(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     # The bad entry first *and* last, in separate requests. With it only in the
     # last position, an implementation that checked `attachments[-1:]` — or any
@@ -2117,7 +2173,9 @@ def test_a_dropped_file_can_be_attached_while_its_client_is_connected(surface, c
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     branch_id = created["branch"]["id"]
     dropped = f"{DROPS}/{'a' * 64}/notes.pdf"
 
@@ -2145,8 +2203,12 @@ def test_the_attached_paths_are_listed_for_the_client_sweep(surface, client):
 
     surface.services.execution.drops_value = DROPS
     csrf = authenticate(surface, client)
-    kept = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
-    gone = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    kept = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
+    gone = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     for created, path in ((kept, f"{DROPS}/k/kept.md"), (gone, f"{DROPS}/g/gone.md")):
         response = client.patch(
             f"/api/branches/{created['branch']['id']}",
@@ -2171,7 +2233,9 @@ def test_every_path_is_rechecked_not_just_the_new_one(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     branch_id = created["branch"]["id"]
 
     # Valid under the current baseline.
@@ -2211,7 +2275,9 @@ def test_every_path_is_rechecked_not_just_the_new_one(surface, client):
 
 def test_attachments_are_deduplicated_in_order(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2223,7 +2289,9 @@ def test_attachments_are_deduplicated_in_order(surface, client):
 
 def test_attachments_can_be_cleared(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     client.patch(
         f"/api/branches/{created['branch']['id']}",
         json={"attachments": ["/srv/eng/a.md"]},
@@ -2241,7 +2309,9 @@ def test_attachments_can_be_cleared(surface, client):
 
 def test_too_many_attachments_are_refused(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2253,7 +2323,9 @@ def test_too_many_attachments_are_refused(surface, client):
 
 def test_a_malformed_attachment_list_is_refused(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     for bad in ("/srv/eng/a.md", [1, 2], [""], [None], {"a": 1}):
         response = client.patch(
@@ -2266,7 +2338,9 @@ def test_a_malformed_attachment_list_is_refused(surface, client):
 
 def test_attachments_survive_a_resume(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     client.patch(
         f"/api/branches/{created['branch']['id']}",
         json={"attachments": ["/srv/eng/a.md"]},
@@ -2288,10 +2362,14 @@ def test_the_session_filter_searches_what_was_said(surface, client):
 
     csrf = authenticate(surface, client)
     hit = client.post(
-        "/api/sessions", json={"title": "Tuesday"}, headers={"x-csrf-token": csrf}
+        "/api/sessions",
+        json={"title": "Tuesday", "machine": "ernest"},
+        headers={"x-csrf-token": csrf},
     ).json()
     miss = client.post(
-        "/api/sessions", json={"title": "Wednesday"}, headers={"x-csrf-token": csrf}
+        "/api/sessions",
+        json={"title": "Wednesday", "machine": "ernest"},
+        headers={"x-csrf-token": csrf},
     ).json()
     surface.agent_sessions.said[hit["id"]] = "how do I raise the retention window"
     surface.agent_sessions.said[miss["id"]] = "unrelated chatter about lunch"
@@ -2312,7 +2390,9 @@ def test_the_session_filter_still_matches_a_deliberate_title(surface, client):
 
     csrf = authenticate(surface, client)
     created = client.post(
-        "/api/sessions", json={"title": "Quarterly audit"}, headers={"x-csrf-token": csrf}
+        "/api/sessions",
+        json={"title": "Quarterly audit", "machine": "ernest"},
+        headers={"x-csrf-token": csrf},
     ).json()
 
     found = client.get("/api/sessions?q=Quarterly").json()["sessions"]
@@ -2325,7 +2405,9 @@ def test_an_unfiltered_listing_carries_no_snippets(surface, client):
     """The snippet is an artefact of searching, not a field of a session."""
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
     surface.agent_sessions.said[created["id"]] = "some conversation"
 
     listing = client.get("/api/sessions").json()["sessions"]
@@ -2447,14 +2529,18 @@ def test_a_new_session_selects_no_tools_in_particular(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     assert created["branch"]["tool_selection"] is None
 
 
 def test_a_tool_selection_is_stored_and_survives_a_resume(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2478,7 +2564,9 @@ def test_a_tool_selection_cannot_name_an_ungranted_tool(surface, client):
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     response = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2497,7 +2585,9 @@ def test_an_empty_tool_selection_is_kept_distinct_from_the_default(surface, clie
     """
 
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     emptied = client.patch(
         f"/api/branches/{created['branch']['id']}",
@@ -2518,7 +2608,9 @@ def test_an_empty_tool_selection_is_kept_distinct_from_the_default(surface, clie
 
 def test_a_malformed_tool_selection_is_refused(surface, client):
     csrf = authenticate(surface, client)
-    created = client.post("/api/sessions", json={}, headers={"x-csrf-token": csrf}).json()
+    created = client.post(
+        "/api/sessions", json={"machine": "ernest"}, headers={"x-csrf-token": csrf}
+    ).json()
 
     for bad in ("fs_read", [1, 2], [""], [None], {"a": 1}):
         response = client.patch(
@@ -2538,8 +2630,8 @@ def test_browsing_can_include_files(surface, client):
 
     authenticate(surface, client)
 
-    client.get("/api/browse?path=/srv/eng")
-    client.get("/api/browse?path=/srv/eng&files=1")
+    client.get("/api/browse?machine=ernest&path=/srv/eng")
+    client.get("/api/browse?machine=ernest&path=/srv/eng&files=1")
 
     assert [d["args"]["dirs_only"] for d in surface.services.execution.dispatches] == [
         True,

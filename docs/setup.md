@@ -479,6 +479,27 @@ Take a backup first: `neuman-admin backup`, and the audit mirror beside it. A
 downgrade is a restore from that backup, because migrations are forward-only and
 there is no down-migration to run.
 
+**Upgrading an appliance that has sessions from before machines existed.** The
+conversations written before `0003` have no computer on their branch, and the
+appliance will not invent one — which computer a conversation was about is the
+one fact a migration cannot derive (D112, N186). So the upgrade stops once and
+prints what to run:
+
+```sql
+UPDATE session_branches
+   SET machine = '<label>', working_dir = NULL, attachments = '[]'::jsonb
+ WHERE machine IS NULL;
+
+UPDATE tasks SET machine = '<label>' WHERE machine IS NULL;
+```
+
+`<label>` is a machine the owning account has connected from; the labels are in
+the `machines` table. The working directory and attachments are cleared with the
+machine because they were paths on a computer that was never recorded, and
+carrying them across is the failure the column exists to end. Run it as the
+appliance's database user (`sudo -u neuman psql -d neuman`), then start Neuman
+again. A fresh appliance has no such rows and never sees this.
+
 An appliance that will not start and says `has changed since it was applied` is
 not an upgrade problem: a file that had already run was edited, so the schema in
 the database is not the one in the tree. Restore from backup, or start over —

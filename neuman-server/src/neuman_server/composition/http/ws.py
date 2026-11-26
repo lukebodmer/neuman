@@ -254,17 +254,14 @@ async def _run_turn(
         grants = GrantStore(conn)
         source = services.policy_source()
 
-        # Where this turn runs. A branch names its machine (D112); a branch
-        # written before machines existed names none, and adopts the one this
-        # person is connected from now — once, pinned from then on. That is the
-        # migration path as well as the rule: it is what the appliance did
-        # before the noun existed, and it stops being ambiguous the first time
-        # the conversation is used.
+        # Where this turn runs. A branch always names a machine (D112): the
+        # column is NOT NULL, and the only rows without one were written before
+        # machines existed and were given one by `0003`, with the paths that
+        # belonged to no identified computer cleared at the same time. There is
+        # no adoption and no fallback here — an implicit "whichever client is
+        # connected" is exactly what ran conversations on the wrong computer
+        # (N186).
         machine = branch.machine
-        if machine is None:
-            machine = services.execution.newest_machine(principal.name)
-            if machine is not None:
-                await BranchStore(conn).set_machine(branch_id, machine)
 
         # One read for the home, the drops and what the operator says is
         # installed on that machine. Live where it can be, the last hello where
@@ -311,7 +308,7 @@ async def _run_turn(
             actor=Actor(
                 account_id=principal.account_id,
                 name=principal.name,
-                machine=machine or "",
+                machine=machine,
                 machine_notes=facts.notes,
                 home=facts.home,
             ),

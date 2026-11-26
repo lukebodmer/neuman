@@ -92,6 +92,10 @@ def draft(**overrides) -> dict:
         "name": "Site update",
         "workspace": WORKSPACE,
         "run_root": RUN_ROOT,
+        # Where the recipe runs. Required, and never inferred: a task that does
+        # not say is a task that waits for whichever client happens to be up
+        # (D112).
+        "machine": "ernest",
         "inputs": [
             {
                 "name": "kind",
@@ -134,6 +138,7 @@ async def stored_task(surface, **overrides):
         name=body["name"],
         workspace=body["workspace"],
         run_root=body["run_root"],
+        machine=body["machine"],
         inputs=body["inputs"],
         steps=body["steps"],
         schedule=body["schedule"],

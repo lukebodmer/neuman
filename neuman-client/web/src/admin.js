@@ -4332,6 +4332,17 @@ async function loadComposed() {
     return;
   }
   const params = new URLSearchParams({ account });
+  // Which computer to expand `$HOME` for. Required, and named here rather than
+  // guessed by the route: a preview of "what this account is told" that quietly
+  // described another computer's folders is the confusion the machine field
+  // exists to end (D112).
+  const machine = $("compose-machine").value.trim();
+  if (!machine) {
+    message.textContent = "Name a machine — the computer to expand $HOME for.";
+    $("composed-sections").replaceChildren();
+    return;
+  }
+  params.set("machine", machine);
   const workingDir = $("compose-working-dir").value.trim();
   if (workingDir) params.set("working_dir", workingDir);
 

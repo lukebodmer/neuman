@@ -49,8 +49,10 @@ from fakes import (
     manifest,
 )
 
+from neuman_server.adapters.clients import RPC_VERSION
 from neuman_server.adapters.gpu import GpuReporter
 from neuman_server.adapters.persistence import TaskRow, TaskRunRow
+from neuman_server.adapters.persistence.machines import CLIENT, MachineRow
 from neuman_server.adapters.registry import load_registry
 from neuman_server.composition.app import Services
 from neuman_server.decision.identity import tokens
@@ -132,7 +134,9 @@ class FakeBranchRow:
     forked_from_seq: int | None = None
     inherited_event_count: int = 0
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    machine: str | None = None
+    # Every branch names a machine (D112). One is enough for a fake: tests that
+    # care which label reaches the dispatch read it back from `FakeExecution`.
+    machine: str = "ernest"
     working_dir: str | None = None
     attachments: tuple[str, ...] = ()
     tool_selection: tuple[str, ...] | None = None
@@ -289,7 +293,7 @@ class FakeAgentSessions:
         *,
         account_id: str,
         title: str | None = None,
-        machine: str | None = None,
+        machine: str = "ernest",
         task_run_id: str | None = None,
     ):
         row = FakeAgentSessionRow(
@@ -658,6 +662,7 @@ class FakeTaskStore:
         name: str,
         workspace: str,
         run_root: str,
+        machine: str,
         inputs: Sequence[dict[str, Any]],
         steps: Sequence[dict[str, Any]],
         schedule: dict[str, Any],
@@ -672,6 +677,7 @@ class FakeTaskStore:
             name=name,
             workspace=workspace,
             run_root=run_root,
+            machine=machine,
             inputs=[dict(item) for item in inputs],
             steps=[dict(item) for item in steps],
             schedule=dict(schedule),
@@ -706,6 +712,7 @@ class FakeTaskStore:
         name: str,
         workspace: str,
         run_root: str,
+        machine: str,
         inputs: Sequence[dict[str, Any]],
         steps: Sequence[dict[str, Any]],
         schedule: dict[str, Any],
@@ -721,6 +728,7 @@ class FakeTaskStore:
             name=name,
             workspace=workspace,
             run_root=run_root,
+            machine=machine,
             inputs=[dict(item) for item in inputs],
             steps=[dict(item) for item in steps],
             schedule=dict(schedule),
@@ -1042,6 +1050,23 @@ def build_surface(
             password_hash=f"{FakePasswords.PREFIX}{PASSWORD}",
             first_seen=datetime.now(UTC),
             last_seen=datetime.now(UTC),
+        )
+        # A machine each account has connected from. A session names one and the
+        # route refuses a label that has never connected (D112), so a surface
+        # with no machines would refuse every `POST /api/sessions` — which is
+        # the check working, and something every test would have to arrange.
+        machines.rows[(f"acct-{name}", "ernest")] = MachineRow(
+            account_id=f"acct-{name}",
+            label="ernest",
+            kind=CLIENT,
+            notes="",
+            created_at=datetime.now(UTC),
+            last_seen_at=datetime.now(UTC),
+            home="/home/alice",
+            drops="/home/alice/.local/state/neuman/drops",
+            tools=(),
+            release=None,
+            rpc=RPC_VERSION,
         )
 
     # Patch the stores where composition imports them. Each module does

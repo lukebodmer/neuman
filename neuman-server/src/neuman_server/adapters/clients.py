@@ -521,44 +521,24 @@ class ClientHub:
     def _live(self) -> list[ClientConnection]:
         return [c for c in self._clients.values() if not c.closed]
 
-    def _connection(self, user: str, machine: str | None) -> ClientConnection | None:
-        """The channel for a machine, or — for a caller that names none — the newest.
+    def _connection(self, user: str, machine: str) -> ClientConnection | None:
+        """The channel for one machine, or None.
 
-        The `None` branch is a fallback for callers that predate machines and
-        still have not named one: a task run, and a browse request that names no
-        branch. It is exactly the old rule (the most recently connected client),
-        it is what those callers did before, and it disappears as each is given
-        a machine of its own. Nothing on the branch path uses it — a branch
-        always names its machine, because a branch that guessed would be the
-        bug this table exists to end.
+        There is no "whichever client is connected" fallback, and its removal is
+        the point of D112. That fallback was the bug: a conversation created on
+        one computer ran on another because the caller had not named a machine,
+        and the hub answered with whatever had connected last.
         """
 
-        if machine is not None:
-            connection = self._clients.get((user, machine))
-            return connection if connection is not None and not connection.closed else None
-        candidates = [c for c in self._live() if c.account == user]
-        if not candidates:
-            return None
-        return max(candidates, key=lambda c: c.connected_at)
+        connection = self._clients.get((user, machine))
+        return connection if connection is not None and not connection.closed else None
 
-    def newest_machine(self, user: str) -> str | None:
-        """The machine this account most recently connected from, if any.
-
-        Two callers need it, and both are transitional: a branch written before
-        machines existed adopts it once on its next turn, and a browse request
-        that names no branch asks the machine the person is sitting at. Nothing
-        on the branch path guesses — a branch always names its machine.
-        """
-
-        connection = self._connection(user, None)
-        return None if connection is None else connection.machine
-
-    def connected(self, user: str, machine: str | None = None) -> bool:
-        """Whether a dispatch for this user — and machine, if named — has anywhere to go."""
+    def connected(self, user: str, machine: str) -> bool:
+        """Whether a dispatch for this user on this machine has anywhere to go."""
 
         return self._connection(user, machine) is not None
 
-    def available(self, user: str, machine: str | None = None) -> frozenset[str] | None:
+    def available(self, user: str, machine: str) -> frozenset[str] | None:
         """The tools the connected client advertised, or None with no client.
 
         Used to narrow the advertisement, so the other direction of the
@@ -572,7 +552,7 @@ class ClientHub:
         connection = self._connection(user, machine)
         return None if connection is None else connection.tools
 
-    def home(self, user: str, machine: str | None = None) -> str | None:
+    def home(self, user: str, machine: str) -> str | None:
         """Where `~` means on that machine, or None with no client.
 
         None is not an error: the HTTP surfaces stay reachable while a daemon is
@@ -584,7 +564,7 @@ class ClientHub:
         connection = self._connection(user, machine)
         return None if connection is None else connection.home
 
-    def drops(self, user: str, machine: str | None = None) -> str | None:
+    def drops(self, user: str, machine: str) -> str | None:
         """That machine's drops directory, or None with no client (D102)."""
 
         connection = self._connection(user, machine)
@@ -598,7 +578,7 @@ class ClientHub:
         tool: str,
         args: dict[str, Any],
         wait_ms: int,
-        machine: str | None = None,
+        machine: str,
         lifetime_ms: int | None = None,
         working_dir: str | None = None,
         surfaces: dict[str, list[str]] | None = None,
@@ -607,8 +587,7 @@ class ClientHub:
     ) -> DispatchOutcome:
         connection = self._connection(user, machine)
         if connection is None:
-            where = f"{machine!r}" if machine else "any machine"
-            raise ClientUnavailable(f"{user} has no client connected on {where}")
+            raise ClientUnavailable(f"{user} has no client connected on {machine!r}")
         if tool not in connection.tools:
             # The handshake's whole purpose: asking would be a round trip that
             # ends in the same answer, and the core is the one that should have
@@ -647,7 +626,7 @@ class ClientHub:
             branch_id=branch_id,
         )
 
-    async def cancel(self, *, user: str, dispatch_id: str, machine: str | None = None) -> None:
+    async def cancel(self, *, user: str, dispatch_id: str, machine: str) -> None:
         connection = self._connection(user, machine)
         if connection is not None:
             await connection.cancel(dispatch_id)

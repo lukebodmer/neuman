@@ -180,7 +180,10 @@ pkgs.testers.nixosTest {
         # Read it back from the core rather than trusting the response, so a
         # proxy that answered with a canned 200 is not enough.
         policy = json.loads(
-            machine.succeed("curl -sS -b /tmp/jar http://127.0.0.1:8642/api/policy")
+            machine.succeed(
+                "curl -sS -b /tmp/jar "
+                "\"http://127.0.0.1:8642/api/policy?machine=machine\""
+            )
         )
         assert policy["policy"]["auto_accept"] == "yolo", policy["policy"]
 

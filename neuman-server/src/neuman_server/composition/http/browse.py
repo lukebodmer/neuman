@@ -93,14 +93,20 @@ async def _browse(request: Request) -> Response:
     # eventually disagree about reach.
     files = request.query_params.get("files") == "1"
 
-    # Which computer to list. The picker names the branch's machine, because a
-    # directory named on one computer is a different directory on another — the
-    # whole reason the machine exists (D112). Absent, it is the machine the
-    # person is sitting at, which is what this route did before branches named
-    # one.
+    # Which computer to list, and it is required. The picker names the branch's
+    # machine, because a directory named on one computer is a different
+    # directory on another — the whole reason the machine exists (D112). It used
+    # to fall back to "the most recently connected client", which is how this
+    # picker came to offer the laptop's folders to a session on the DGX (N186).
     machine = request.query_params.get("machine")
-    if machine is not None and not MACHINE_LABEL.fullmatch(machine):
-        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    if not machine or not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse(
+            {
+                "error": "invalid_request",
+                "detail": "listing must name a machine: add ?machine=<label>",
+            },
+            status_code=400,
+        )
 
     async with connection(request) as conn:
         try:
@@ -108,8 +114,6 @@ async def _browse(request: Request) -> Response:
         except Unauthorized as exc:
             return JSONResponse({"error": exc.reason}, status_code=exc.status)
 
-        if machine is None:
-            machine = services.execution.newest_machine(principal.name)
         facts = await machine_facts(conn, services, principal, machine)
 
         # Re-composed per request, not cached, so a revoked grant stops working
@@ -233,8 +237,14 @@ async def _environment(request: Request) -> Response:
     # The same machine the chooser is listing, so the environment it reports is
     # the one the turn will actually run in (D112).
     machine = request.query_params.get("machine")
-    if machine is not None and not MACHINE_LABEL.fullmatch(machine):
-        return JSONResponse({"error": "invalid_request"}, status_code=400)
+    if not machine or not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse(
+            {
+                "error": "invalid_request",
+                "detail": "the probe must name a machine: add ?machine=<label>",
+            },
+            status_code=400,
+        )
 
     async with connection(request) as conn:
         try:
@@ -242,8 +252,6 @@ async def _environment(request: Request) -> Response:
         except Unauthorized as exc:
             return JSONResponse({"error": exc.reason}, status_code=exc.status)
 
-        if machine is None:
-            machine = services.execution.newest_machine(principal.name)
         facts = await machine_facts(conn, services, principal, machine)
 
         policy = await preview_policy(

@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ...adapters.persistence import GrantStore, UsageStore
+from ...adapters.persistence.machines import MACHINE_LABEL
 from ...decision.policy import gate
 from ...decision.policy.fragments import AUTO_ACCEPT_MODES, FragmentError
 from ...decision.policy.ops import choose_auto_accept, preview_policy
@@ -163,6 +164,21 @@ async def _my_policy(request: Request) -> Response:
 
     services = services_of(request)
 
+    # Which computer `$HOME` expands for. The picker the window builds from this
+    # response offers directories, and a directory is a path on one computer
+    # (D112) — so the question is not optional, and answering it with "whichever
+    # client is connected" is how the picker came to offer the other machine's
+    # folders (N186).
+    machine = request.query_params.get("machine")
+    if not machine or not MACHINE_LABEL.fullmatch(machine):
+        return JSONResponse(
+            {
+                "error": "invalid_request",
+                "detail": "policy must be read for a machine: add ?machine=<label>",
+            },
+            status_code=400,
+        )
+
     async with connection(request) as conn:
         try:
             principal = await require_principal(request, conn)
@@ -214,12 +230,13 @@ async def _my_policy(request: Request) -> Response:
             # the server then refuses.
             "readable": expand_paths(
                 policy.files_read,
-                home=acting_home(services, principal),
+                home=acting_home(services, principal, machine),
             ),
             "writable": expand_paths(
                 policy.files_write,
-                home=acting_home(services, principal),
+                home=acting_home(services, principal, machine),
             ),
+            "machine": machine,
             # What the composer draws its thinking control from, for the models
             # this account may select. Here rather than on the model panel
             # because the panel is operator-only — it is appliance topology —

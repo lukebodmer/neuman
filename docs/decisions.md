@@ -3286,11 +3286,41 @@ Final until explicitly reversed here, with a new entry.
 
   **The costs, in one place.** A second noun and a table to administer, though a
   personal machine enrols itself on first login and needs no ceremony. A column
-  on the most-written table and a read on every turn. A branch written before
-  this migration has no machine and adopts one on its next turn, which is the
-  old behaviour happening once rather than a property. And a prompt that names a
-  machine is a new way to be wrong if the name is stale — which is why the
-  record, not the prompt, is the authority.
+  on the most-written table and a read on every turn. An upgrade statement for
+  any appliance whose database predates the column (below). And a prompt that
+  names a machine is a new way to be wrong if the name is stale — which is why
+  the record, not the prompt, is the authority.
+
+  **Amended before release: nothing is optional and nothing is inferred.** The
+  first shape of this decision let `machine` be NULL and had a branch adopt "the
+  account's most recently connected client" on its next turn, so a conversation
+  written before the column kept working. Running it produced the bug it was
+  meant to prevent, one turn later: a session created on one computer, opened
+  from another, adopted the second and kept the first's `working_dir`, so every
+  dispatch ran in a directory that was not there (N186). The fault is the
+  *fallback*, not its implementation — an implicit "whichever is connected" is
+  how a place stops being a fact. So:
+
+  * `session_branches.machine` and `tasks.machine` are NOT NULL, and `0003`
+    refuses to guess: an appliance with rows from before the column stops once,
+    prints the statement to run, and starts when it has been run.
+  * `POST /api/sessions`, `/api/browse`, `/api/environment`, `/api/policy` and
+    the admin prompt preview all name a machine, and refuse a request that does
+    not. `/api/sessions` also refuses a label the account has never connected
+    from (`unknown_machine`) — a session on a computer that does not exist has
+    nowhere to run and a prompt naming a fiction.
+  * `ToolExecution.dispatch`, `available`, `home` and `drops` take `machine: str`.
+    There is no method that answers for "any machine", and `newest_machine` is
+    gone.
+  * A **task** names one, recorded when it was written: a recipe is about files
+    somewhere, and "wherever a client happens to be online" is not an answer a
+    scheduled run can be trusted with.
+
+  The cost is an upgrade step on this appliance and on any other with history,
+  and a client that cannot find its own label cannot start a session — which is
+  the intended refusal, not a failure: the window learns its machine from the
+  client it is served by, and a window that does not know is a window that would
+  guess.
 
 ## Platform ground truth
 

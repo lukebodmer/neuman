@@ -38,7 +38,7 @@ from neuman_server.decision.harness.prompt import (
 )
 from neuman_server.decision.policy.compose import EffectivePolicy
 
-ACTOR = Actor(account_id="acct1", name="alice", home="/home/alice")
+ACTOR = Actor(account_id="acct1", name="alice", machine="ernest", home="/home/alice")
 
 
 def _policy(**kwargs):
@@ -1034,6 +1034,9 @@ def test_the_composed_view_is_the_prompt_the_model_gets():
     policy = EffectivePolicy(files_read=("/srv/eng",), files_write=("/srv/eng/work",))
     arguments = {
         "user": "alice",
+        # Where the turn runs. Required now, and the sentence it produces is one
+        # of the sections this test checks (D112).
+        "machine": "ernest",
         "tools": ["fs_read"],
         "working_dir": "/srv/eng/project",
         "operator_prompt": "OPERATOR-TEXT",
@@ -1075,16 +1078,18 @@ def test_the_identity_sentence_carries_the_configured_name():
     policy = EffectivePolicy(files_read=("/srv/eng",))
 
     assert "You are Acme, an assistant" in system_prompt(
-        policy, user="alice", tools=[], name="Acme"
+        policy, user="alice", machine="ernest", tools=[], name="Acme"
     )
-    assert "You are Neuman, an assistant" in system_prompt(policy, user="alice", tools=[])
     assert "You are Neuman, an assistant" in system_prompt(
-        policy, user="alice", tools=[], name="   "
+        policy, user="alice", machine="ernest", tools=[]
+    )
+    assert "You are Neuman, an assistant" in system_prompt(
+        policy, user="alice", machine="ernest", tools=[], name="   "
     )
     # Collapsed to one line: a newline would open a paragraph inside the
     # identity sentence and shift every section below it.
     assert "You are Acme Agent, an assistant" in system_prompt(
-        policy, user="alice", tools=[], name=" Acme\nAgent "
+        policy, user="alice", machine="ernest", tools=[], name=" Acme\nAgent "
     )
 
 
@@ -1094,7 +1099,7 @@ def test_the_prompt_names_the_reach_policy_grants():
     policy = EffectivePolicy(
         files_read=("/srv/eng",), files_write=("/srv/eng/work",), tools=frozenset()
     )
-    prompt = system_prompt(policy, user="alice", tools=[])
+    prompt = system_prompt(policy, user="alice", machine="ernest", tools=[])
 
     assert "/srv/eng" in prompt
     assert "/srv/eng/work" in prompt
@@ -1113,7 +1118,7 @@ def test_the_prompt_describes_network_reach_as_the_users_own():
     from neuman_server.decision.harness.prompt import system_prompt
 
     policy = EffectivePolicy(files_read=("/srv/eng",), network="any")
-    prompt = system_prompt(policy, user="alice", tools=["web_fetch"])
+    prompt = system_prompt(policy, user="alice", machine="ernest", tools=["web_fetch"])
 
     assert "any host that machine can reach" in prompt
 
@@ -1124,7 +1129,7 @@ def test_the_prompt_is_silent_about_the_network_without_a_tool_that_uses_it():
     from neuman_server.decision.harness.prompt import system_prompt
 
     policy = EffectivePolicy(files_read=("/srv/eng",), network="any")
-    prompt = system_prompt(policy, user="alice", tools=["fs_read"])
+    prompt = system_prompt(policy, user="alice", machine="ernest", tools=["fs_read"])
 
     assert "any host that machine can reach" not in prompt
 
@@ -1133,7 +1138,9 @@ def test_the_prompt_names_the_working_directory_when_one_is_set():
     from neuman_server.decision.harness.prompt import system_prompt
 
     policy = EffectivePolicy(files_read=("/srv/eng",))
-    prompt = system_prompt(policy, user="alice", tools=[], working_dir="/srv/eng/project")
+    prompt = system_prompt(
+        policy, user="alice", machine="ernest", tools=[], working_dir="/srv/eng/project"
+    )
 
     assert "/srv/eng/project" in prompt
     assert "working directory" in prompt.lower()
@@ -1148,7 +1155,9 @@ def test_the_prompt_says_nothing_about_a_directory_that_is_not_set():
 
     from neuman_server.decision.harness.prompt import system_prompt
 
-    prompt = system_prompt(EffectivePolicy(files_read=("/srv/eng",)), user="alice", tools=[])
+    prompt = system_prompt(
+        EffectivePolicy(files_read=("/srv/eng",)), user="alice", machine="ernest", tools=[]
+    )
     assert "working directory" not in prompt.lower()
 
 
@@ -1166,6 +1175,7 @@ def test_the_prompt_carries_the_projects_instructions():
     prompt = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         project_context="Always run the linter before saying a change is done.",
     )
@@ -1187,6 +1197,7 @@ def test_the_projects_instructions_are_delimited_as_untrusted():
     prompt = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         project_context="Prefer tabs.",
     )
@@ -1198,10 +1209,13 @@ def test_the_projects_instructions_are_delimited_as_untrusted():
 def test_a_project_with_no_instructions_adds_nothing():
     from neuman_server.decision.harness.prompt import system_prompt
 
-    bare = system_prompt(EffectivePolicy(files_read=("/srv/eng",)), user="alice", tools=[])
+    bare = system_prompt(
+        EffectivePolicy(files_read=("/srv/eng",)), user="alice", machine="ernest", tools=[]
+    )
     blank = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         project_context="   \n  ",
     )
@@ -1223,6 +1237,7 @@ def test_the_prompt_carries_the_accounts_own_instructions():
     prompt = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         account_prompt="Keep replies short. Prefer bulleted lists for steps.",
     )
@@ -1245,6 +1260,7 @@ def test_the_accounts_instructions_sit_between_the_operators_and_the_projects():
     prompt = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         operator_prompt="OPERATOR-TEXT",
         account_prompt="ACCOUNT-TEXT",
@@ -1271,6 +1287,7 @@ def test_the_accounts_instructions_are_not_delimited_as_untrusted():
     prompt = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         account_prompt="Prefer bullets.",
     )
@@ -1285,10 +1302,13 @@ def test_the_accounts_instructions_are_not_delimited_as_untrusted():
 def test_an_account_with_no_instructions_adds_nothing():
     from neuman_server.decision.harness.prompt import system_prompt
 
-    bare = system_prompt(EffectivePolicy(files_read=("/srv/eng",)), user="alice", tools=[])
+    bare = system_prompt(
+        EffectivePolicy(files_read=("/srv/eng",)), user="alice", machine="ernest", tools=[]
+    )
     blank = system_prompt(
         EffectivePolicy(files_read=("/srv/eng",)),
         user="alice",
+        machine="ernest",
         tools=[],
         account_prompt="  \n ",
     )
@@ -1608,7 +1628,7 @@ def test_an_empty_selection_advertises_nothing_and_says_so():
 
     assert selected(policy, registry, ()) == []
 
-    prompt = system_prompt(policy, user="alice", tools=[])
+    prompt = system_prompt(policy, user="alice", machine="ernest", tools=[])
     assert "no tools on this turn" in prompt
     assert "answer from the conversation" in prompt
 
@@ -1629,6 +1649,7 @@ def test_a_deselected_tool_is_absent_from_the_prompt_rather_than_forbidden():
     request = build_request(
         model="m",
         user="alice",
+        machine="ernest",
         policy=policy,
         registry=registry,
         messages=[],
@@ -3806,6 +3827,7 @@ def test_the_prompt_names_attached_files():
     prompt = system_prompt(
         policy,
         user="alice",
+        machine="ernest",
         tools=["fs_read"],
         attachments=["/srv/eng/spec.pdf", "/srv/eng/notes.md"],
     )
@@ -3824,7 +3846,9 @@ def test_the_prompt_says_nothing_about_attachments_when_there_are_none():
 
     policy = EffectivePolicy(files_read=("/srv/eng",))
     for value in (None, []):
-        prompt = system_prompt(policy, user="alice", tools=[], attachments=value)
+        prompt = system_prompt(
+            policy, user="alice", machine="ernest", tools=[], attachments=value
+        )
         assert "attached" not in prompt.lower(), value
 
 

@@ -78,7 +78,7 @@ def check(tool: str, policy: EffectivePolicy, registry: ToolRegistry) -> Decisio
     return Decision(True, ALLOWED)
 
 
-def check_machine(machine: str | None, policy: EffectivePolicy) -> Decision:
+def check_machine(machine: str, policy: EffectivePolicy) -> Decision:
     """Decide whether this policy may dispatch to ``machine`` (D112).
 
     A dispatch-time ceiling, like `check` — not the boundary. What bounds a
@@ -99,13 +99,9 @@ def check_machine(machine: str | None, policy: EffectivePolicy) -> Decision:
     confine the role to fewer places, so an operator who wants a laptop-only role
     must say so. The gain is that the list is usable for its actual purpose —
     narrowing people whose work spans a shared box and a personal one.
-
-    ``None`` is a branch that predates machines and has not been used yet. It is
-    allowed through, because the turn that runs on it is what pins it, and the
-    machine it pins to is resolved and recorded then.
     """
 
-    if machine is None or not policy.machines:
+    if not policy.machines:
         return Decision(True, ALLOWED)
     if machine not in policy.machines:
         return Decision(

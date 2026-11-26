@@ -77,6 +77,7 @@ async def _detach(hub: ClientHub, connection: ClientConnection, channel: FakeCha
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d1c0ffee01",
             tool="shell",
             args={"command": "make"},
@@ -119,6 +120,7 @@ async def test_a_dispatch_without_a_lifetime_lives_as_long_as_it_waits():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d1c0ffee02",
             tool="shell",
             args={},
@@ -197,6 +199,7 @@ async def test_a_settlement_read_before_its_detached_frame_is_not_lost():
     dispatch = asyncio.create_task(
         hub.dispatch(
             user="alice",
+            machine="ernest",
             dispatch_id="d1c0ffee01",
             tool="shell",
             args={"command": "make"},

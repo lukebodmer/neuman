@@ -6,7 +6,10 @@
     {
       "name": "kind",
       "description": "queued: the oldest request from the dashboard. sweep: prices, re-checks, new releases.",
-      "values": ["queued", "sweep"],
+      "values": [
+        "queued",
+        "sweep"
+      ],
       "required": true,
       "default": "queued"
     }
@@ -15,7 +18,13 @@
     {
       "kind": "run",
       "name": "prepare",
-      "argv": ["nix", "develop", "-c", "pnpm", "task:prepare"],
+      "argv": [
+        "nix",
+        "develop",
+        "-c",
+        "pnpm",
+        "task:prepare"
+      ],
       "timeout_s": 900
     },
     {
@@ -25,18 +34,35 @@
       "model": "DeepSeek-V4.1-Flash",
       "reasoning": null,
       "envelope": {
-        "tools": ["fs_read", "fs_list", "fs_write", "web_fetch"],
-        "files_read": ["$RUN_DIR"],
-        "files_write": ["$RUN_DIR"],
+        "tools": [
+          "fs_read",
+          "fs_list",
+          "fs_write",
+          "web_fetch"
+        ],
+        "files_read": [
+          "$RUN_DIR"
+        ],
+        "files_write": [
+          "$RUN_DIR"
+        ],
         "network": "any",
-        "models": ["DeepSeek-V4.1-Flash"],
+        "models": [
+          "DeepSeek-V4.1-Flash"
+        ],
         "max_iterations": 200
       }
     },
     {
       "kind": "run",
       "name": "check",
-      "argv": ["nix", "develop", "-c", "pnpm", "check"],
+      "argv": [
+        "nix",
+        "develop",
+        "-c",
+        "pnpm",
+        "check"
+      ],
       "timeout_s": 1800,
       "run_if": "ok_or_budget"
     }
@@ -45,8 +71,15 @@
     "kind": "daily",
     "time": "06:15",
     "timezone": "America/Los_Angeles",
-    "inputs": {"kind": "sweep"}
+    "inputs": {
+      "kind": "sweep"
+    }
   },
-  "outputs": ["claims.json", "report.md", "result.json"],
-  "enabled": true
+  "outputs": [
+    "claims.json",
+    "report.md",
+    "result.json"
+  ],
+  "enabled": true,
+  "machine": "ernest"
 }

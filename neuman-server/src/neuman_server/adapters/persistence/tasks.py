@@ -30,6 +30,9 @@ class TaskRow:
     name: str
     workspace: str
     run_root: str
+    # The computer this task's steps run on (D112). A recipe is about files
+    # somewhere, and the person who wrote it was looking at them.
+    machine: str
     inputs: list[dict[str, Any]]
     steps: list[dict[str, Any]]
     schedule: dict[str, Any]
@@ -48,6 +51,7 @@ class TaskRow:
             name=row["name"],
             workspace=row["workspace"],
             run_root=row["run_root"],
+            machine=row["machine"],
             inputs=list(row.get("inputs") or []),
             steps=list(row.get("steps") or []),
             schedule=dict(row.get("schedule") or {}),
@@ -115,6 +119,7 @@ class TaskStore:
         name: str,
         workspace: str,
         run_root: str,
+        machine: str,
         inputs: Sequence[dict[str, Any]],
         steps: Sequence[dict[str, Any]],
         schedule: dict[str, Any],
@@ -127,10 +132,10 @@ class TaskStore:
         cursor = await self._conn.execute(
             """
             INSERT INTO tasks (
-                id, account_id, name, workspace, run_root, inputs, steps,
+                id, account_id, name, workspace, run_root, machine, inputs, steps,
                 schedule, outputs, enabled, next_run_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING *
             """,
             (
@@ -139,6 +144,7 @@ class TaskStore:
                 name,
                 workspace,
                 run_root,
+                machine,
                 Jsonb(list(inputs)),
                 Jsonb(list(steps)),
                 Jsonb(schedule),
@@ -176,6 +182,7 @@ class TaskStore:
         name: str,
         workspace: str,
         run_root: str,
+        machine: str,
         inputs: Sequence[dict[str, Any]],
         steps: Sequence[dict[str, Any]],
         schedule: dict[str, Any],
@@ -191,6 +198,7 @@ class TaskStore:
                SET name = %s,
                    workspace = %s,
                    run_root = %s,
+                   machine = %s,
                    inputs = %s,
                    steps = %s,
                    schedule = %s,
@@ -205,6 +213,7 @@ class TaskStore:
                 name,
                 workspace,
                 run_root,
+                machine,
                 Jsonb(list(inputs)),
                 Jsonb(list(steps)),
                 Jsonb(schedule),

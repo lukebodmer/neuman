@@ -1940,6 +1940,10 @@ RESOURCES["task.schema.json"] = json.loads(r"""
      "maxItems": 10,
      "type": "array"
     },
+    "machine": {
+     "$ref": "common.schema.json#/$defs/machineLabel",
+     "description": "The computer this task's steps run on (D112). Required, and not derived: a recipe is about files somewhere, and the machine is where they are. A run dispatches to it or waits for it \u2014 never to whichever client happens to be connected."
+    },
     "name": {
      "maxLength": 80,
      "minLength": 1,
@@ -1973,6 +1977,7 @@ RESOURCES["task.schema.json"] = json.loads(r"""
     "name",
     "workspace",
     "run_root",
+    "machine",
     "steps",
     "schedule"
    ],
@@ -2312,6 +2317,10 @@ RESOURCES["task.schema.json"] = json.loads(r"""
       "null"
      ]
     },
+    "machine": {
+     "$ref": "common.schema.json#/$defs/machineLabel",
+     "description": "The computer this task's steps run on (D112). Required, and not derived: a recipe is about files somewhere, and the machine is where they are. A run dispatches to it or waits for it \u2014 never to whichever client happens to be connected."
+    },
     "name": {
      "maxLength": 80,
      "minLength": 1,
@@ -2355,6 +2364,7 @@ RESOURCES["task.schema.json"] = json.loads(r"""
     "name",
     "workspace",
     "run_root",
+    "machine",
     "inputs",
     "steps",
     "schedule",
