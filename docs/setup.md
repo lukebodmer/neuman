@@ -479,11 +479,13 @@ Take a backup first: `neuman-admin backup`, and the audit mirror beside it. A
 downgrade is a restore from that backup, because migrations are forward-only and
 there is no down-migration to run.
 
-**Upgrading an appliance that has sessions from before machines existed.** The
-conversations written before `0003` have no computer on their branch, and the
-appliance will not invent one — which computer a conversation was about is the
-one fact a migration cannot derive (D112, N186). So the upgrade stops once and
-prints what to run:
+**Upgrading an appliance that has sessions or tasks from before machines
+existed.** A conversation written before `0002` has no computer on its branch
+and a task written before `0003` has none either, and the appliance will not
+invent one — which computer a conversation or a recipe was about is the one fact
+a migration cannot derive (D112, N186). `0003` adds `tasks.machine` and commits,
+so the statement below has a column to name; `0004` then refuses to fill either
+table in and stops once, printing what to run:
 
 ```sql
 UPDATE session_branches

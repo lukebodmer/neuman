@@ -3301,9 +3301,11 @@ Final until explicitly reversed here, with a new entry.
   *fallback*, not its implementation — an implicit "whichever is connected" is
   how a place stops being a fact. So:
 
-  * `session_branches.machine` and `tasks.machine` are NOT NULL, and `0003`
+  * `session_branches.machine` and `tasks.machine` are NOT NULL, and `0004`
     refuses to guess: an appliance with rows from before the column stops once,
-    prints the statement to run, and starts when it has been run.
+    prints the statement to run, and starts when it has been run. The column is
+    added by its own migration that commits (`0003`) so that statement has
+    something to name (N188).
   * `POST /api/sessions`, `/api/browse`, `/api/environment`, `/api/policy` and
     the admin prompt preview all name a machine, and refuse a request that does
     not. `/api/sessions` also refuses a label the account has never connected

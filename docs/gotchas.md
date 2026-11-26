@@ -4549,7 +4549,7 @@ alternative on a machine with no third-party apt source is no browser at all.
   confused about which computer it is on", which is exactly what a prompt that
   says "on their machine" leaves it to do.
 - **Fix:** a branch names its machine (D112), and names it in the schema: the
-  column is NOT NULL and `0003` refuses to guess one for a row written before it
+  column is NOT NULL and `0004` refuses to guess one for a row written before it
   existed. `$HOME` and `$HOME/<path>` expand against *that* machine's last
   reported home, live or stored, so composing policy twice gives one answer. A
   move clears `working_dir` and `attachments` and is refused once the branch has
@@ -4599,4 +4599,28 @@ alternative on a machine with no third-party apt source is no browser at all.
   the tests skip. It needed a real package and a real boot to fail. The lesson
   joins N152's: a fixture that supplies the value under test cannot tell you what
   happens when nobody supplies it.
+
+### N188 — A migration refused to guess, then rolled back the column it wanted filled
+- **What:** An appliance with one saved task would not start after upgrading to
+  the machine-aware schema. `journalctl` said `1 task(s) do not name a computer`
+  and printed `UPDATE tasks SET machine = '<label>' WHERE machine IS NULL;`.
+  Running that statement failed with `ERROR: column "machine" does not exist`,
+  so the appliance was wedged: the migration refused to proceed, and the fix it
+  prescribed could not be applied.
+- **Cause:** `0003` added `tasks.machine` with `ADD COLUMN` and then raised, in
+  the same file. Each migration is one transaction (D103), so the raise rolled
+  the `ADD COLUMN` back — the column never existed outside the failed
+  transaction. The refusal was correct and the statement was correct; putting
+  them in one transaction made them mutually exclusive. `session_branches` was
+  unaffected only because `0002` had already committed that column, so the
+  branch half of the same file worked.
+- **Found:** by upgrading a real appliance that had a task. No test saw it: the
+  VM tests boot a fresh database, which has no rows to backfill and applies the
+  file cleanly, and the Python tests stub a connection rather than run SQL.
+- **Fix:** the column an operator must backfill is added by its own migration
+  that commits — `0003_task_machine_column.sql` — and the refusal and `NOT NULL`
+  are the next one, `0004_machine_required.sql`. The upgrade now really is the
+  one statement the error prints. The rule, for the next such column: a value
+  the operator supplies cannot be created in the same transaction that demands
+  it.
 

@@ -256,7 +256,7 @@ async def _run_turn(
 
         # Where this turn runs. A branch always names a machine (D112): the
         # column is NOT NULL, and the only rows without one were written before
-        # machines existed and were given one by `0003`, with the paths that
+        # machines existed and were given one by `0004`, with the paths that
         # belonged to no identified computer cleared at the same time. There is
         # no adoption and no fallback here — an implicit "whichever client is
         # connected" is exactly what ran conversations on the wrong computer

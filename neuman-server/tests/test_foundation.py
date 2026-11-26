@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import re
 
 import pytest
 
@@ -195,6 +196,37 @@ async def test_an_edited_applied_migration_is_a_hard_error():
         match=r"has changed since it was applied.*Restore from backup, or start over",
     ):
         await migrate(Conn())
+
+
+def test_a_column_an_operator_must_backfill_is_added_before_the_refusal():
+    """N188: the refusal cannot roll back the column it tells you to fill.
+
+    `0003` both added `tasks.machine` and raised when it was null, and one
+    transaction per migration (D103) rolled the `ADD COLUMN` back — so the
+    `UPDATE` the error printed named a column that never existed and could not
+    be run. The add and the refusal are separate migrations, and the add comes
+    first. This is a static check because whether the SQL runs is a question for
+    a real Postgres (`tests/surface.py`), and the VM tests boot a database with
+    no rows to backfill.
+    """
+
+    found = {item.version: item.sql for item in migrations()}
+    adds = [
+        version
+        for version, sql in found.items()
+        if re.search(r"ALTER\s+TABLE\s+tasks\s+ADD\s+COLUMN\s+machine", sql, re.IGNORECASE)
+    ]
+    refusal = [
+        version
+        for version, sql in found.items()
+        if "UPDATE tasks SET machine = '<label>'" in sql
+    ]
+    assert adds, "nothing adds tasks.machine, but something refuses a null one"
+    assert refusal, "the task-machine refusal is gone; this test no longer applies"
+    assert min(adds) < min(refusal), (
+        "the migration that refuses a null tasks.machine can roll its ADD COLUMN "
+        "back, leaving the operator a statement that cannot run (N188)"
+    )
 
 
 def test_the_reply_budget_is_configurable_and_validated():
