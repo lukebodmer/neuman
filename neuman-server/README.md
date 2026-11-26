@@ -39,6 +39,7 @@ src/neuman_server/         — the Python package: the decision core
 
   composition/             — wiring and transport; sees everything, decides nothing
     app.py                 — app factory, lifespan, startup ordering, health
+    feeds.py               — the frames one branch's sockets share, and where a late reader starts (D113)
     runtime.py             — writes what the runtime host should run, from the baseline (D78)
     http/                  — the session surface: REST + WS over TLS, cookies
       auth.py              — login/logout: resolves a principal through identity
@@ -49,7 +50,8 @@ src/neuman_server/         — the Python package: the decision core
       models.py            — the models-and-GPU panel: state, load and unload, for operators
       policy.py            — a user reading their own effective policy
       sessions.py          — a user's own agent sessions: list, open, delete
-      ws.py                — WebSocket bridge: streams harness events, feeds the inbox
+      ws.py                — WebSocket bridge: fans a branch's harness events out to its
+                             sockets, streams the resume, feeds the inbox
     serve.py               — both listeners: the network port and the admin socket
     adminapi/              — the operator surface: Unix socket, peer credentials
       deps.py              — the peer's identity, from SO_PEERCRED and pwd

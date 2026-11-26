@@ -190,6 +190,21 @@ class EventStore:
             )
         return [EventRow.of(row) for row in await cursor.fetchall()]
 
+    async def head(self, branch_id: str) -> int:
+        """The branch's newest seq, or 0 for a branch with no events yet.
+
+        Read when a socket attaches to a branch, so the live stream and the
+        projection are cut at the same row (D113). One indexed aggregate over
+        `(branch_id, seq)`, not a read of the log.
+        """
+
+        cursor = await self._conn.execute(
+            "SELECT coalesce(max(seq), 0) AS newest FROM session_events WHERE branch_id = %s",
+            (branch_id,),
+        )
+        row = await cursor.fetchone()
+        return int(row["newest"]) if row else 0
+
     async def window(
         self,
         branch_id: str,

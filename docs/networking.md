@@ -20,7 +20,7 @@ There are two categories, and they are deliberately different:
 |---|---|---|---|
 | Session surface | TCP `bind:port`, default `127.0.0.1:8443` | the client, and an operator's tooling → server | TLS (optional at the server, a proxy may terminate), session cookie, CSRF and Origin per unsafe request |
 | Client channel | WebSocket `bind:port/client`, one per (account, machine) | client → server | the same session cookie, re-checked on the upgrade; the account is the session's, and `hello` names the machine and carries the tools and its home |
-| Client UI | TCP `127.0.0.1:8642`, and one WebSocket per open session through it | the user's browser → client | loopback only, a per-install token cookie, same origin as the executor, and the core's cookie never reaches the browser |
+| Client UI | TCP `127.0.0.1:8642`, and one WebSocket per branch the window is showing through it | the user's browser → client | loopback only, a per-install token cookie, same origin as the executor, and the core's cookie never reaches the browser |
 | Admin | Unix `/run/neuman/admin/admin.sock` | operator CLI → server | mode `0660`, group `neuman`; authority re-checked in the core |
 | Browse / CDP | Unix socket in the user runtime directory: `$XDG_RUNTIME_DIR` on Linux, `$TMPDIR` on macOS | the client's `browse` tool → the user's Chromium | mode `0600` in the user's `0700` runtime directory; both ends are on the user's machine |
 | Tool package host | Unix `$XDG_RUNTIME_DIR/neuman-<package>.sock` | a package's tools → its host, e.g. the add-on inside the user's Blender | mode `0600` in the user's `0700` runtime directory, set by the umask at `bind`; both ends are on the user's machine |
@@ -65,19 +65,33 @@ The browser never reaches this port. It talks to the client's UI on loopback,
 and the client makes the API calls with the session it holds — so the browser
 sees one origin, and the core sees one credential either way.
 
-**The browser's WebSocket is per open branch.** The UI server proxies
-`/ws/branches/{id}` to the core, and the page holds one for each branch it has
-open — several at once while more than one turn is running. Each upgrade
-carries the same cookie and is Origin-checked like the first. A session keeps
-its socket for as long as it is running a turn, blocked on an approval, or
-holding a reply the reader has not seen; switching sessions moves the transcript
-rather than closing the connection (D63). Closing the window closes all of them
-together, which is what keeps the core's rule that a vanished client cannot
-leave a turn burning budget true. A second connection to a branch that already
-has a turn running is answered `turn_in_flight` and starts nothing: one branch
-runs one turn at a time whatever the number of sockets, because a second turn
-would write into the same append-only log while the first is mid-dispatch
-(D63, N179).
+**The browser's WebSocket is per branch, and a socket on a branch is a window on
+it.** The UI server proxies `/ws/branches/{id}` to the core, and the page holds
+one for the branch it has on screen, plus any branch it started a turn in — a
+running view keeps its socket, because parking it would be a Stop (D63). Each
+upgrade carries the same cookie and is Origin-checked like the first. The socket
+asks where to resume (`?after=`), and the core answers with a `resume` frame:
+the branch's in-flight step from its buffer, then every frame the branch emits,
+whichever socket started the turn (D113). The projection is drawn through
+`resume_seq` and the frames begin after it, so a window that opens mid-turn
+draws the history and the live step without drawing either twice. Switching
+sessions moves the transcript and closes the socket it is leaving; closing the
+window closes the rest.
+
+**Ownership is still the socket's.** The turn belongs to the socket that sent
+the `message`: that socket's close cancels it, which is what keeps the rule that
+a vanished client cannot leave a turn burning budget true (D63). A watching
+socket owns nothing, so its close stops nothing, and the terminal frame the
+harness emits on cancellation is what tells a watcher the turn is over. A second
+connection to a branch that already has a turn running is answered
+`turn_in_flight` and starts nothing: one branch runs one turn at a time whatever
+the number of sockets, because a second turn would write into the same
+append-only log while the first is mid-dispatch (D63, N179).
+
+**A watcher that falls behind is disconnected, not waited for.** Frames are
+published from inside the turn, so a queue that cannot take one closes that
+socket with `4408` and the window reconnects for a fresh resume. The alternative
+would let one stalled tab stall the model.
 
 **The rail's working-set read is a poll, not a held request.** `GET /api/active`
 goes through the same `/api` forward, which the client performs on a worker

@@ -2012,17 +2012,22 @@ class Harness:
             await self._tool_result(branch_id, call_id, name, detail, exit_code=-1)
             return
 
-        await self._log(
+        proposed = await self._log(
             branch_id,
             "tool_proposal",
             {"tool_call_id": call_id, "name": name, "arguments": args},
         )
+        # `seq` is the proposal's row, and it is what a reader that joins the
+        # branch draws its projection up to: the assistant message that asked for
+        # this call is a row at or before it, and the card comes from there while
+        # the approval state comes from the frames after (D113).
         await self._emit(
             {
                 "type": "tool_proposal",
                 "tool_call_id": call_id,
                 "name": name,
                 "arguments": args,
+                "seq": proposed.seq,
             }
         )
 
@@ -2691,7 +2696,7 @@ class Harness:
     async def _record_context_actions(self, branch_id: str, actions: list[Any]) -> None:
         for action in actions:
             if action.kind == "compact":
-                await self._log(
+                folded = await self._log(
                     branch_id,
                     "harness_event",
                     {"type": "compaction", **action.detail},
@@ -2702,10 +2707,15 @@ class Harness:
                 # the bar alternated between two sizes and nothing on screen
                 # accounted for either (N119). Now the only thing that moves it
                 # downward is this, so this is what has to say so.
+                #
+                # `seq` is that row: a display projection draws the compaction
+                # note at it, so a reader that joins after this frame draws the
+                # note from the projection and does not need the frame (D113).
                 await self._emit(
                     {
                         "type": "compacted",
                         "summarized_messages": action.detail.get("summarized_messages", 0),
+                        "seq": folded.seq,
                     }
                 )
             else:
@@ -2763,7 +2773,7 @@ class Harness:
         if image is not None:
             payload["image"] = image
 
-        await self._log(branch_id, "tool_result", payload)
+        logged = await self._log(branch_id, "tool_result", payload)
 
         # The image bytes are deliberately not emitted. The browser frame is for a
         # human reading a transcript, and megabytes of base64 over the WebSocket
@@ -2775,7 +2785,12 @@ class Harness:
         emitted = {k: v for k, v in payload.items() if k != "image"}
         if image is not None:
             emitted["has_image"] = True
-        await self._emit({"type": "tool_result", **emitted})
+        # The row this frame accompanies, which is where a reader that joins the
+        # branch draws its projection up to before applying the live step (D113).
+        # A frame whose rows are durable but that does not name them would leave a
+        # late reader cutting the projection at an older row and drawing a step
+        # the frames then draw again.
+        await self._emit({"type": "tool_result", "seq": logged.seq, **emitted})
 
     async def _log(self, branch_id: str, kind: str, payload: dict[str, Any]) -> EventRecord:
         return await events.append(

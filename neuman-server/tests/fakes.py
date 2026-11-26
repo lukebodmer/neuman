@@ -918,6 +918,10 @@ class FakeEvents:
                 return event
         return None
 
+    async def head(self, branch_id: str) -> int:
+        events = self.rows.get(branch_id) or []
+        return events[-1].seq if events else 0
+
     def kinds(self, session_id: str) -> list[str]:
         return [event.kind for event in self.rows.get(session_id, [])]
 

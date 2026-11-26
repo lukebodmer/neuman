@@ -266,6 +266,14 @@ more.
   happened on a machine the appliance does not control.
 - **Administrators are accountable.** An administrator can change any grant,
   including their own, and every change is written to the tamper-evident record.
+- **Watching a turn reads it; owning it is what spends.** A socket on a branch
+  may follow a turn another window — or another computer with the same account —
+  started, because the account can already read that branch and this reaches
+  nothing new. A turn's life stays with the socket that started it: a viewer
+  that stays open does not keep a turn running, and a viewer that goes does not
+  stop one (D113). The cost: opening a session somewhere else is not a way to
+  rescue a turn whose owner just closed the lid, and the terminal frame a viewer
+  receives when the owner goes is the only notice it gets.
 - **Neuman governs actions, not intentions.** It does not constrain what a model
   tries. It decides what happens when it tries.
 - **Tasks run within their owner's reach.** An agent step's envelope narrows the

@@ -1513,8 +1513,11 @@ Final until explicitly reversed here, with a new entry.
   refuses every later request on the branch for the same reason (N179). The
   registry also answers which account is running where, which is what the
   overview reports. It does not widen what a window can see: a turn running on
-  another window's socket is reported to the operator and refuses a second turn,
-  but the second window holds no transcript of it.
+  another window's socket is reported to the operator and refuses a second turn.
+  *Amended by D113:* the second window may now hold a transcript of it — a
+  socket that asks where to resume is a watcher on the branch — but the turn's
+  owner is unchanged, so watching still does not admit a second turn and still
+  does not keep the first alive.
 
   **The rail reports the account's work, not only this window's.** What a window
   holds is its own — views, sockets, transcripts, scroll, composer — but what is
@@ -3323,6 +3326,95 @@ Final until explicitly reversed here, with a new entry.
   the intended refusal, not a failure: the window learns its machine from the
   client it is served by, and a window that does not know is a window that would
   guess.
+
+- **D113 — A branch's socket is a window on it, and the turn still belongs to
+  the socket that started it.** A session open on the laptop showed nothing while
+  the desktop drove it, and a refresh was the only way to see the change. The
+  rail was already live — `GET /api/active` carries the account's state to every
+  device and even serves a remote approval card — but the transcript was not,
+  and the reason was not the network: `ws.py` closed its `emit` over the socket
+  that sent the `message`, so a turn's frames had exactly one destination, and a
+  view that was merely *open* held no socket at all (`ensureSocket` opened one on
+  send, `parkView` closed it when the view stopped being live). The same gap was
+  a second tab on one computer; two computers only made it visible. D63 said so
+  on purpose — "the second window holds no transcript of it" — so this is the
+  entry that changes it.
+
+  **The socket gains a second meaning, without losing the first.** `?after=` on
+  the upgrade asks for a `resume` frame: the branch's in-flight step, buffered
+  per branch in `Services.feeds`, followed by every frame the branch emits. The
+  socket that did not ask is exactly what 0.1.0's was — frames from the turn it
+  starts, nothing else — which is what makes this additive rather than a protocol
+  every client must learn. It degrades the other way too: a new window against a
+  core that never answers the handshake sees what it saw before, a transcript
+  that catches up when it is reopened. The turn's owner is unchanged: the socket
+  that sent the `message` holds the task and its close still cancels (D63), so a
+  watcher cannot keep a turn alive, and a watcher's disconnect stops nothing.
+
+  **The projection and the stream are cut at one row, and the row is durable.** A
+  late reader has two halves to compose: `GET /api/sessions/{id}` (the log so
+  far) and the buffer (the step that is not a row yet). They are cut at
+  `resume_seq`, which the route and the socket both take from the feed, so a
+  window draws the projection through it and applies the frames after it. A
+  *boundary* frame — `tool_proposal`, `tool_result`, `compacted`, `done`, and the
+  `user_message` that opens a turn — is one whose rows the projection now
+  reproduces, so it clears the buffer and moves the cut to itself. A
+  `user_message` mid-turn is a *steer*, not a prompt: its row sits in the middle
+  of a reply whose earlier tokens are not rows at all, so it stays buffered and
+  the cut stays where it was. What is buffered is therefore always one step:
+  never a row the projection also holds, never a turn's whole history. A step
+  boundary between the read and the upgrade is the one case where the two halves
+  land on different rows; the client compares the numbers and redraws rather than
+  patching, because the rows in between are exactly what neither side has.
+
+  **A slow reader is dropped, never waited for.** `publish` runs inside the
+  turn's emit path, so it cannot `await`: a queue that has fallen behind is sent
+  a tombstone and its socket closed with `4408`, and the window answers by
+  reconnecting for a fresh resume. The alternative — backpressure — would let one
+  stalled browser tab stall the model. A buffer that overflows its cap keeps its
+  tail and says `complete: false`; a reader that joins then is told the reply
+  starts above the stream rather than handed a fragment as though it were the
+  whole.
+
+  **What a watcher may do is what a socket on the branch could always do.** The
+  inbox is the branch's (D12, D63), so any socket on it can steer, interrupt or
+  answer an approval — which now means the laptop can Stop a turn the desktop
+  started. That is the same account and the same branch, and refusing it would
+  mean a window that can watch and not act, which is worse than either. The
+  prompt already reaches a second window through `GET /api/branches/{id}/pending`;
+  the resume only says `state: "approval"` so the card is fetched rather than
+  waited for on the poll.
+
+  **The costs, in one place.** One socket per view on screen, each with a session
+  resolve and a `max(seq)` on upgrade — small, but connections now grow with what
+  is open rather than with what is running. One step's frames held per live
+  branch, bounded and dropped with the last socket. A live step can be replayed,
+  so its tokens exist twice for as long as it streams. And a transcript follows a
+  turn it did not start, which is the point, but it also means the reader cannot
+  tell from the transcript which computer is running it — the machine chip and
+  the rail are where that fact lives, as they already were.
+
+  **Rejected: polling the log with a cursor.** This is D99's shape for task runs,
+  and it fails here for the reason the frames exist: `tool_approval_required`
+  carries the preview and `usage` carries the step's cost, and neither is a log
+  row — the preview is deliberately not recorded because it describes an act that
+  did not happen. A reader would need a second mapping from rows to frames that
+  is not the one the live path uses, plus `/pending` for the card, and tokens
+  would arrive in one-second chunks through the client proxy's thread-per-request
+  `/api` forward. **Rejected: letting a watcher keep a turn alive.** A turn would
+  then burn budget while a browser tab sat open on a branch nobody was reading;
+  the owner's socket is the consent to spend.
+  **Rejected: one account-wide stream.** It would carry the same frames with an
+  extra branch id on each, and every window would filter what it holds — the
+  socket is already per branch, and D63's rule that a connection is a branch is
+  what makes the authorisation check one lookup.
+
+  **What it does not change.** Task runs still poll their own log and are still
+  not watchable (D99): an agent step's session is scoped to its run and has no
+  window. Nothing here is persisted — a feed lives while a socket does, and a
+  restart loses a buffer, not a fact. Watching records nothing: a person reading
+  their own work is not an act the chain answers for, the same rule as
+  `GET /api/active`, and a second viewer changes no row and no permission.
 
 ## Platform ground truth
 

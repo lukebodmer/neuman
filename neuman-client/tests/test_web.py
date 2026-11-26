@@ -35,6 +35,14 @@ def _handle(code: str) -> str:
     return match.group(1)
 
 
+def _track(code: str) -> str:
+    """The rail-state tracker's body: the other switch over `frame.type` (D63)."""
+
+    match = re.search(r"function trackViewFrame\(.*?\n\}", code, re.S)
+    assert match, "trackViewFrame() is gone; this test would pass vacuously"
+    return match.group(0)
+
+
 def test_the_client_does_not_mark_an_approval_it_could_not_send():
     """A verdict the socket dropped must leave the buttons alone.
 
@@ -2641,8 +2649,20 @@ def test_a_switch_moves_the_transcript_and_keeps_its_socket():
     assert "ws/branches/${view.id}" in connect.group(2), (
         "the connection is not named for its view"
     )
-    assert "withView(view, () => handle(frame))" in connect.group(2), (
+    assert "deliver(view, frame)" in connect.group(2), (
+        "a frame is drawn in the socket's callback rather than queued for its view"
+    )
+
+    # The queue is what lets a `resume` re-read the projection before the frames
+    # behind it are drawn; the drawing itself lives one function down (D113).
+    draw = re.search(r"function drawFrame\(([^)]*)\)\s*\{(.*?)\n\}", script, re.S)
+    assert draw, "drawFrame() is gone; this test would pass vacuously"
+    assert draw.group(1).strip() == "view, frame"
+    assert "withView(view, () => handle(frame))" in draw.group(2), (
         "a background frame is not drawn into its own view"
+    )
+    assert "if (view === currentView) handle(frame)" in draw.group(2), (
+        "the visible frame is not drawn into the visible transcript"
     )
 
     send = re.search(r"function send\(([^)]*)\)\s*\{(.*?)\n\}", script, re.S)
@@ -2692,7 +2712,13 @@ def test_a_background_frame_draws_into_its_own_view():
 
     connect = re.search(r"function connect\(([^)]*)\)\s*\{(.*?)\n\}", script, re.S)
     assert connect, "connect() is gone; this test would pass vacuously"
-    assert "trackViewFrame(view, frame)" in connect.group(2), (
+    assert "deliver(view, frame)" in connect.group(2), (
+        "the frame is drawn in the socket callback instead of its view's queue"
+    )
+
+    draw = re.search(r"function drawFrame\(.*?\n\}", script, re.S)
+    assert draw, "drawFrame() is gone; this test would pass vacuously"
+    assert "trackViewFrame(view, frame)" in draw.group(0), (
         "the rail state is not folded in before the frame is drawn"
     )
 
@@ -6393,3 +6419,88 @@ def test_a_dragged_file_never_replaces_the_page():
         "dragover must cancel before deciding whether this view accepts a drop"
     )
     assert "/api/drops?name=" in code
+
+
+def test_an_open_session_asks_to_watch_its_branch():
+    """A session on screen follows a turn another window started (D113).
+
+    The socket is the branch's window, not only the owner of the turn it starts:
+    `?after=` asks for the resume handshake, and naming the cursor is what makes
+    the change additive — a client that does not ask sees exactly the frames
+    0.1.0 sent it.
+    """
+
+    script = (WEB / "neuman.js").read_text()
+
+    connect = re.search(r"function connect\(view\)\s*\{(.*?)\n\}", script, re.S)
+    assert connect, "connect() is gone; this test would pass vacuously"
+    assert "?after=${after}" in connect.group(1), (
+        "the socket does not ask for the resume handshake, so it is not a watcher"
+    )
+
+    show = re.search(r"function showView\(.*?\n\}", script, re.S)
+    assert show, "showView is gone; this test would pass vacuously"
+    assert "if (!view.socket) connect(view)" in show.group(0), (
+        "an idle session on screen is not listening, so a turn started elsewhere is unseen"
+    )
+
+
+def test_a_resume_cuts_the_projection_at_the_feeds_row():
+    """The projection and the live step meet at one row, and only one.
+
+    A view draws `GET /api/sessions/{id}` through `resume_seq` and then applies
+    the frames after it. The two numbers come from different requests, so they
+    are compared rather than assumed equal: a step boundary in between is the one
+    window where neither side holds the rows in the middle, and patching that
+    would draw a call twice or drop one.
+    """
+
+    script = (WEB / "neuman.js").read_text()
+
+    resume = re.search(r"async function applyResume\(view, frame\)\s*\{(.*?)\n\}", script, re.S)
+    assert resume, "applyResume() is gone; this test would pass vacuously"
+    body = resume.group(1)
+    assert "view.projectionSeq !== frame.from_seq" in body, (
+        "the resume assumes the projection was read at its own cut"
+    )
+    assert "drawable(answer.messages || [], frame.from_seq)" in body, (
+        "the redraw keeps rows the live stream is about to send again"
+    )
+    assert "redrawProjection(view, drawable(" in body, (
+        "a cut that moved leaves a gap instead of a redrawn transcript"
+    )
+    assert "for (const queued of frame.frames || []) drawFrame(view, queued)" in body, (
+        "the buffered step is not drawn after the projection"
+    )
+
+    # Opening a session cuts the first draw the same way. A step that ended
+    # after the last boundary is in the log but not yet in a frame, and drawing
+    # it here as well as from the stream is the duplicate this avoids.
+    open_ = re.search(r"async function openSession\(.*?\n\}", script, re.S)
+    assert open_, "openSession() is gone; this test would pass vacuously"
+    assert "replay(drawable(answer.messages || [], view.projectionSeq))" in open_.group(0)
+
+
+def test_a_socket_that_was_only_watching_does_not_end_the_turn():
+    """Watching is not owning: only the socket that started a turn stops it.
+
+    `ws.py` cancels a turn when its owner's socket goes, so a window whose only
+    connection was a watch must not present a dropped connection as the turn's
+    death — the branch is still running it (D113).
+    """
+
+    script = (WEB / "neuman.js").read_text()
+
+    close = re.search(r"const wasRunning = view\.running && ([^;]+);", script)
+    assert close, "the socket-close handler no longer distinguishes owner from watcher"
+    assert close.group(1).strip() == "view.turnOwner", close.group(1)
+
+    # The ownership is claimed where a turn is started and surrendered where one
+    # ends, so a later turn in either direction is not read from a stale flag.
+    start = re.search(r"function markTurnStarted\(view\)\s*\{(.*?)\n\}", script, re.S)
+    assert start and "view.turnOwner = true" in start.group(1)
+    done = re.search(r'case "done":(.*?)break;', _track(script), re.S)
+    assert done, "the done case is gone; this test would pass vacuously"
+    assert "view.turnOwner = false" in done.group(1), (
+        "a finished turn leaves this window claiming to own it"
+    )

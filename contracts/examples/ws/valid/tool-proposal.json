@@ -1,1 +1,1 @@
-{"type": "tool_proposal", "tool_call_id": "call_a1b2c3", "name": "fs_read", "arguments": {"path": "/srv/eng/q3.md"}}
+{"type": "tool_proposal", "tool_call_id": "call_a1b2c3", "name": "fs_read", "arguments": {"path": "/srv/eng/q3.md"}, "seq": 7}

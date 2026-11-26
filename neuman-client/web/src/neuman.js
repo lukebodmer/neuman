@@ -1272,6 +1272,21 @@ function endThought() {
 // drawn and swapped back out, so every renderer below keeps its single-view
 // shape while more than one session can have a turn in flight.
 
+// The rows of a projection a transcript may draw, given the row the live stream
+// resumes from.
+//
+// A running branch has rows past the cut that the live frames will draw — the
+// step in flight is a `response_final` in the log once its stream ends, and the
+// frames behind it rebuild the same bubble. Filtering is what keeps the two
+// halves from drawing a reply twice (D113). A `null` cut means a core that does
+// not name one, which draws everything as 0.1.0 did.
+function drawable(messages, through) {
+  if (!Number.isInteger(through)) return messages;
+  return messages.filter(
+    (message) => message.seq === undefined || message.seq === null
+      || message.seq <= through);
+}
+
 function makeView(session, branch) {
   const holder = document.createElement("div");
   holder.dataset.session = session.id;
@@ -1317,6 +1332,22 @@ function makeView(session, branch) {
     unread: false,
     state: "open",
     detail: "",
+    // Whether the unread reply belongs to a turn *this* window started. A turn
+    // another window started is watched, not owned: the server cancels a turn
+    // when its owner's socket goes, and this window's socket going must not be
+    // read as that (D113).
+    turnOwner: false,
+    // The row the projection in this view was drawn through. A socket's resume
+    // names its own cut, and the two are compared rather than assumed equal:
+    // a step boundary between the read and the upgrade is exactly the window
+    // in which neither side holds the rows in between (D113).
+    projectionSeq: null,
+    // Frames waiting to be drawn, and whether the queue is being drained. A
+    // `resume` may have to re-read the projection before the frames after it
+    // can be drawn, so delivery is sequential rather than one callback per
+    // frame.
+    inbox: [],
+    draining: false,
     touchedAt: Date.now(),
     workingDir: branch.working_dir ?? null,
     // Which computer this conversation's tools run on (D112). Held on the view
@@ -1483,6 +1514,7 @@ function warmWindowMs() {
 function markTurnFailed(view) {
   view.running = false;
   view.busy = false;
+  view.turnOwner = false;
   // No turn is running on this view, so the next message opens one rather
   // than steering one the server does not have.
   view.turnOpen = false;
@@ -1500,6 +1532,10 @@ function markTurnFailed(view) {
 function markTurnStarted(view) {
   view.running = true;
   view.busy = true;
+  // This window sent the message, so this window's socket is the turn's owner:
+  // the server cancels it when that socket goes (D63). A turn that arrives as
+  // frames on a socket that did not send it is watched instead (D113).
+  view.turnOwner = true;
   view.unread = false;
   view.touchedAt = Date.now();
   view.lastTool = null;
@@ -1595,6 +1631,7 @@ function trackViewFrame(view, frame) {
     case "done":
       view.running = false;
       view.busy = false;
+      view.turnOwner = false;
       view.unread = view !== currentView;
       // A reply that landed while the reader was elsewhere is what the Active
       // row is for, so the view opens at that reply rather than at whatever
@@ -1735,6 +1772,12 @@ function showView(view) {
   paintComposerMode();
   renderSessions();
   focusViewEntry(view);
+  // An open session listens, even when it is idle: a turn started in this
+  // branch from another window, or another computer, is drawn here as it
+  // happens rather than on the next reopen (D113). Switching away closes it
+  // (`parkView`), so the cost is one socket per view on screen, not one per
+  // view ever looked at.
+  if (!view.socket) connect(view);
 }
 
 function discardView(view) {
@@ -1744,12 +1787,12 @@ function discardView(view) {
 }
 
 // A view that has just stopped being on screen. It keeps its nodes and its place
-// in the working set, but not its socket: an idle session has nothing to listen
-// for, and the next message reopens one (`ensureSocket`).
+// in the working set, but not its socket: the window only follows the session it
+// is showing, and the next open re-reads the projection and resumes (D113).
 //
-// A running turn keeps its socket, because the socket is the turn (D63) — the
-// server cancels it when the last client goes. An unread reply has already had
-// its socket closed by `done`.
+// A running turn keeps its socket, because a turn this window started dies with
+// it (D63) — and a turn another window started is covered by that window's
+// socket, so parking this view cannot stop it.
 function parkView(view) {
   view.touchedAt = Date.now();
   if (view.running) return;
@@ -1789,6 +1832,10 @@ function closeViewSocket(view) {
     view.settleOpen = null;
     settle(false);
   }
+  // Frames still queued belong to this connection. A reconnect opens with a
+  // resume, which redraws from a known row; drawing one of them after that
+  // would put a token from the old stream under the new cut.
+  view.inbox.length = 0;
   const sock = view.socket;
   if (!sock) return;
   view.socket = null;
@@ -5960,6 +6007,35 @@ async function loadActive() {
     if (held) settlePending(held);
   }
 
+  // What this window holds has to agree with what the core says the account is
+  // doing. A turn started in another window — or another computer — reaches
+  // this one as frames, but a view whose socket was not open when it started
+  // (a parked tab, a reconnect in backoff) has no frames to fold in. So the poll
+  // reconciles, and it only ever clears a turn this window does not own: a turn
+  // it owns ends when its own socket goes, and that path already says so (D113).
+  for (const row of rows) {
+    const held = views.get(row.branch_id);
+    if (!held) continue;
+    const live = row.state === "running" || row.state === "approval";
+    if (live && !held.running) {
+      held.running = true;
+      held.busy = true;
+      held.turnOpen = true;
+      held.touchedAt = Date.now();
+      setViewPhase(held, row.state === "approval" ? "approval" : "tool", row.tool || "");
+      if (held === currentView) setBusy(true);
+    } else if (!live && held.running && !held.turnOwner) {
+      // The turn the socket was watching ended, and its `done` never arrived
+      // (the socket dropped). A turn this window *owns* is left alone: its
+      // socket close is what ends it, and that path already clears the state.
+      held.running = false;
+      held.busy = false;
+      held.turnOpen = false;
+      setViewPhase(held, "open", "");
+      if (held === currentView) setBusy(false);
+    }
+  }
+
   const signature = rows.map((row) => `${row.id}:${row.state}:${row.tool || ""}`).join("|");
   if (signature === activeSignature) return;
   const first = activeSignature === null;
@@ -6357,11 +6433,17 @@ async function openSession(id, branchId = null) {
       branches: answer.branches || [],
     });
     const view = makeView(answer, answer.branch);
+    // Where the live stream picks up, from the same feed the socket will read:
+    // the projection is drawn through this row and the resume's frames begin
+    // after it, so no prompt or tool card is drawn twice (D113).
+    view.projectionSeq = answer.resume_seq ?? null;
     views.set(view.id, view);
     // The projection is a transcript rather than a set of frames. It is drawn
     // once into the view's holder, before the view is mounted, so opening a
-    // session costs one build and switching back to it costs a move.
-    withView(view, () => replay(answer.messages || []));
+    // session costs one build and switching back to it costs a move. The cut is
+    // applied here as well as on a resume: a step that ended after the last
+    // boundary is exactly what the live frames are about to draw.
+    withView(view, () => replay(drawable(answer.messages || [], view.projectionSeq)));
     view.followTail = true;
 
     // A session opened while its turn is blocked on a person has to show the
@@ -7047,7 +7129,15 @@ function connect(view) {
   // No token in the URL: the WebSocket authenticates on upgrade from the same
   // HttpOnly cookie, so a URL that leaks into a log or a Referer carries
   // nothing useful.
-  const sock = new WebSocket(`${scheme}//${location.host}/ws/branches/${view.id}`);
+  //
+  // `after` is this view's projection point, and naming it asks for the resume
+  // handshake: the socket is then a watcher on the branch rather than only the
+  // owner of the turn it starts (D113). The value is not trusted by the core —
+  // it answers with the feed's own cut — so the two are compared and a gap is
+  // redrawn rather than patched.
+  const after = view.projectionSeq === null ? 0 : view.projectionSeq;
+  const sock = new WebSocket(
+    `${scheme}//${location.host}/ws/branches/${view.id}?after=${after}`);
   view.socket = sock;
 
   // Resolved when this socket is usable, so the first message of a new session
@@ -7076,57 +7166,20 @@ function connect(view) {
       if (view === currentView) note("Received a frame that was not JSON.");
       return;
     }
-
-    // The rail's state is a fact about the frame whether or not anybody is
-    // looking at the transcript, so it is folded in first. `handle` is what
-    // needs a surface; it draws into the view's holder when the view is hidden.
-    trackViewFrame(view, frame);
-
-    // Rendering a frame must not be able to strand the session.
-    //
-    // `handle` used to be called bare. A throw inside it escaped the listener
-    // into the console, and because `setBusy(false)` lives in exactly two
-    // places — a socket close and the `done` case — a render error inside
-    // `done` left the composer saying "Steer" with Stop live, forever: the
-    // socket was healthy, so the `onclose` fallback never ran either. A
-    // finished turn presented as a frozen app, and the only evidence was an
-    // exception in a console nobody had open (N99).
-    //
-    // So the failure is contained and *shown*. The transcript is where a reader
-    // is already looking, and a visible "this frame did not render" beats a
-    // silent one every time — it names the frame, so the bug is reportable
-    // rather than just felt.
-    try {
-      if (view === currentView) handle(frame);
-      else withView(view, () => handle(frame));
-    } catch (error) {
-      const report = () => note(
-        `Could not render a "${frame && frame.type}" frame: ${error && error.message}`);
-      if (view === currentView) report();
-      else withView(view, report);
-      // Rethrown on a macrotask so the console still gets the real stack with
-      // its original trace, without that throw skipping the recovery below.
-      setTimeout(() => {
-        throw error;
-      });
-    } finally {
-      // The turn's end is a fact about the session, not about whether its last
-      // frame drew. `done` means no turn is running, so the controls return to
-      // idle even if rendering it failed — which is precisely the case that
-      // used to wedge.
-      if (frame && frame.type === "done" && view === currentView) {
-        setBusy(false);
-        // A job that ended while the model was not waiting on it sends no
-        // frame (there is no turn to send on); the turn's end is where the row
-        // finds out it is gone.
-        refreshJobs();
-      }
-    }
+    // Queued rather than drawn inline: a `resume` may have to re-read the
+    // projection before the frames behind it mean anything, and frames that
+    // arrive during that read must land after it rather than in the middle
+    // (D113).
+    deliver(view, frame);
   };
   sock.onclose = (event) => {
     if (view.socket !== sock) return;
     view.socket = null;
     view.settleOpen = null;
+    // Frames still queued belong to the socket that just went. The next one
+    // opens with a resume, and drawing a stale frame after that would put a
+    // token from the old stream under the new cut.
+    view.inbox.length = 0;
     settle(false);
 
     // 4401/4403/4404 are the server's own codes for unauthenticated, wrong
@@ -7146,14 +7199,17 @@ function connect(view) {
       return;
     }
 
-    // A dropped connection is a cancelled turn server-side — the socket's own
-    // close handler is what stops work that nobody can watch. So the rail stops
-    // saying it is thinking, and a reply that was in flight is not presented as
-    // one that landed.
-    const wasRunning = view.running;
+    // A dropped connection is a cancelled turn server-side, but only for the
+    // socket that *owned* it. A socket that was watching a turn another window
+    // started is not the turn's life, so its going stops nothing — and this
+    // window must not claim the turn died when the branch says otherwise. The
+    // working-set poll and the next resume are what correct a genuinely dead
+    // turn (D113).
+    const wasRunning = view.running && view.turnOwner;
     if (wasRunning) {
       view.running = false;
       view.busy = false;
+      view.turnOwner = false;
       view.unread = view !== currentView;
       view.state = "done";
       view.detail = "";
@@ -7163,14 +7219,21 @@ function connect(view) {
       if (view.unread) view.followTail = true;
     }
     if (view === currentView) {
-      setBusy(false);
-      // A restart the person asked for by installing is not a dropped
-      // connection, and it should not read like one (D111).
-      note(
-        lastLink && lastLink.state === "updating"
-          ? "Neuman updated — reconnecting…"
-          : `Disconnected${event.code ? ` (${event.code})` : ""}. Reconnecting…`
-      );
+      setBusy(view.busy);
+      if (event.code === 4408) {
+        // The feed dropped this reader for falling behind rather than stall the
+        // turn; the reconnect asks for a fresh resume, which is the only correct
+        // way back onto a stream that moved on (D113).
+        note("Fell behind the live transcript — catching up…");
+      } else {
+        // A restart the person asked for by installing is not a dropped
+        // connection, and it should not read like one (D111).
+        note(
+          lastLink && lastLink.state === "updating"
+            ? "Neuman updated — reconnecting…"
+            : `Disconnected${event.code ? ` (${event.code})` : ""}. Reconnecting…`
+        );
+      }
     } else if (wasRunning) {
       withView(view, () => note(`Disconnected${event.code ? ` (${event.code})` : ""}.`));
     }
@@ -7183,6 +7246,156 @@ function connect(view) {
   };
 
   return opened;
+}
+
+// -- delivering a branch's stream ---------------------------------------------
+//
+// A frame is queued rather than drawn in the socket's callback, because a
+// `resume` may have to re-read the projection before the frames behind it can
+// be applied, and drawing those in the callback would interleave a stale
+// transcript with a fresh one. One view's queue, drained in order.
+
+function deliver(view, frame) {
+  view.inbox.push(frame);
+  if (!view.draining) drainInbox(view);
+}
+
+async function drainInbox(view) {
+  view.draining = true;
+  try {
+    while (view.inbox.length) {
+      const frame = view.inbox.shift();
+      if (frame.type === "resume") await applyResume(view, frame);
+      else drawFrame(view, frame);
+    }
+  } finally {
+    view.draining = false;
+  }
+}
+
+// One frame onto one view's transcript.
+function drawFrame(view, frame) {
+  // The rail's state is a fact about the frame whether or not anybody is
+  // looking at the transcript, so it is folded in first. `handle` is what
+  // needs a surface; it draws into the view's holder when the view is hidden.
+  trackViewFrame(view, frame);
+
+  // Rendering a frame must not be able to strand the session.
+  //
+  // `handle` used to be called bare. A throw inside it escaped the listener
+  // into the console, and because `setBusy(false)` lives in exactly two
+  // places — a socket close and the `done` case — a render error inside
+  // `done` left the composer saying "Steer" with Stop live, forever: the
+  // socket was healthy, so the `onclose` fallback never ran either. A
+  // finished turn presented as a frozen app, and the only evidence was an
+  // exception in a console nobody had open (N99).
+  //
+  // So the failure is contained and *shown*. The transcript is where a reader
+  // is already looking, and a visible "this frame did not render" beats a
+  // silent one every time — it names the frame, so the bug is reportable
+  // rather than just felt.
+  try {
+    if (view === currentView) handle(frame);
+    else withView(view, () => handle(frame));
+  } catch (error) {
+    const report = () => note(
+      `Could not render a "${frame && frame.type}" frame: ${error && error.message}`);
+    if (view === currentView) report();
+    else withView(view, report);
+    // Rethrown on a macrotask so the console still gets the real stack with
+    // its original trace, without that throw skipping the recovery below.
+    setTimeout(() => {
+      throw error;
+    });
+  } finally {
+    // The turn's end is a fact about the session, not about whether its last
+    // frame drew. `done` means no turn is running, so the controls return to
+    // idle even if rendering it failed — which is precisely the case that
+    // used to wedge.
+    if (frame && frame.type === "done" && view === currentView) {
+      setBusy(false);
+      // A job that ended while the model was not waiting on it sends no
+      // frame (there is no turn to send on); the turn's end is where the row
+      // finds out it is gone.
+      refreshJobs();
+    }
+  }
+}
+
+// The branch's live step, as the socket found it when this window attached.
+//
+// Async so the one case that must re-read — a step boundary landed between the
+// projection read and the upgrade, so the two halves are cut at different rows —
+// can do so before the frames after it are drawn.
+async function applyResume(view, frame) {
+  if (view.projectionSeq !== frame.from_seq) {
+    let answer;
+    try {
+      answer = await api(
+        "GET", `/api/sessions/${view.sessionId}?branch=${encodeURIComponent(view.id)}`);
+    } catch (error) {
+      // The frames behind a resume are drawn from a projection this window does
+      // not have; leaving them undrawn is right, and the next open re-reads.
+      if (view === currentView) note(`Could not catch up: ${error.message}`);
+      return;
+    }
+    if (!views.has(view.id)) return;
+    // Only rows the feed's cut accounts for: anything newer is exactly what the
+    // `frames` carry, and drawing both is the duplicate this cut exists to stop.
+    redrawProjection(view, drawable(answer.messages || [], frame.from_seq));
+    view.projectionSeq = frame.from_seq;
+  }
+
+  const live = frame.state !== "idle";
+  view.running = live;
+  view.busy = live;
+  view.turnOpen = live;
+  if (!live) view.turnOwner = false;
+  if (live) view.touchedAt = Date.now();
+  // `tool` rather than `thinking`: the resume cannot tell whether the step is a
+  // model call or a dispatch, and "running" is true either way. The next frame
+  // refines it.
+  if (live) {
+    setViewPhase(view, frame.state === "approval" ? "approval" : "tool", "");
+  } else {
+    setViewPhase(view, "open", "");
+  }
+  if (view === currentView) setBusy(view.busy);
+  if (frame.state === "approval") loadPending(view);
+
+  for (const queued of frame.frames || []) drawFrame(view, queued);
+
+  if (frame.complete === false && view === currentView) {
+    note("Joined this reply part-way: its beginning is above the live stream.");
+  }
+}
+
+// Draw a view's transcript again from a projection, in place.
+//
+// The nodes are rebuilt rather than patched, because the alternative is a diff
+// against a transcript that may be missing an unknown middle. Only the case
+// above reaches this, so it is not on the path of opening a session.
+function redrawProjection(view, messages) {
+  withView(view, () => {
+    agentTurn = null;
+    reasoningTurn = null;
+    workRun = null;
+    reserveH = 0;
+    pinned = null;
+    followTail = true;
+    promptCursor = null;
+    toolCards = new Map();
+    toolRows = new Map();
+    scratchOrigins = new Map();
+    if (reserveEl) {
+      reserveEl.style.height = "0px";
+      reserveEl.remove();
+    }
+    log.replaceChildren();
+    replay(messages);
+  });
+  view.turnOpen = false;
+  view.busy = false;
 }
 
 function setBusy(busy) {
@@ -7347,6 +7560,11 @@ function handle(frame) {
       break;
 
     case "tool_proposal":
+      // A call already on the transcript is the same call. The projection draws
+      // a card for every `tool_calls` entry it holds, so a replayed proposal —
+      // one that arrived in a resume after the row was written — must not add a
+      // second card for it (D113).
+      if (toolCards.has(frame.tool_call_id)) return;
       // A tool call closes whatever bubbles are open, so what comes *after* it starts
       // fresh below the card.
       //

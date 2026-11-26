@@ -13,7 +13,12 @@ once — that is what a fork is for. The session owns the title and the rail row
 the branch owns the settings and the log.
 
 The socket carries four inbound kinds — `message` (start a turn), `approval`,
-`steer`, `interrupt` — and streams the harness's events out verbatim.
+`steer`, `interrupt` — and streams the harness's events out verbatim. A socket
+that asks where to resume (`?after=`) is also a *watcher*: it is sent a `resume`
+frame carrying the buffer of the branch's in-flight step, and then every frame
+the branch emits, whichever socket started the turn (D113). The turn itself
+still belongs to the socket that sent the message, and that socket's close is
+still what stops it.
 
 Authentication happens on the upgrade: the cookie is checked, and Origin is
 checked explicitly because browsers do not apply CORS to WebSockets.
@@ -58,6 +63,77 @@ def ws_routes() -> list[Any]:
     return [WebSocketRoute("/ws/branches/{branch_id}", _branch_socket)]
 
 
+async def _attach(
+    websocket: WebSocket, services: Any, branch_id: str
+) -> tuple[asyncio.Queue[dict[str, Any] | None] | None, asyncio.Task[None] | None]:
+    """Register this socket on the branch's feed, and tell a watcher where to start.
+
+    A socket asks by naming its cursor (`?after=`). The value is the caller's
+    own bookkeeping and is not trusted: the answer is the feed's position, which
+    is derived from rows the core wrote. Its *presence* is what opts in, which
+    is what keeps this additive — a client that does not ask sees exactly the
+    frames it saw in 0.1.0, and a client that does is a watcher (D113).
+
+    Returns `(None, None)` for a socket that did not ask. Either way the branch
+    gets a feed: the buffer is what a later watcher catches up from, and it has
+    to be filling from the turn's first frame rather than from the first reader.
+    """
+
+    async with services.database.connection() as conn:
+        head = await EventStore(conn).head(branch_id)
+    if websocket.query_params.get("after") is None:
+        services.feeds.attach(branch_id, head)
+        return None, None
+
+    queue, from_seq, frames, complete = services.feeds.join(branch_id, head)
+    turn = services.running_turn(branch_id)
+    # The state a window would otherwise learn from the working-set poll, up to
+    # four seconds later: whether a turn is running, and whether it is waiting on
+    # a person. One field rather than a boolean beside it — two facts that always
+    # agree are two chances to disagree.
+    pending = turn.inbox.pending() if turn is not None else []
+    try:
+        await websocket.send_json(
+            {
+                "type": "resume",
+                "from_seq": from_seq,
+                "state": "idle" if turn is None else ("approval" if pending else "running"),
+                "complete": complete,
+                "frames": frames,
+            }
+        )
+    except Exception:
+        services.feeds.leave(branch_id, queue)
+        raise
+
+    return queue, asyncio.create_task(_drain(websocket, queue))
+
+
+async def _drain(websocket: WebSocket, queue: asyncio.Queue[dict[str, Any] | None]) -> None:
+    """Send this branch's frames to one socket, in order, until it goes away.
+
+    A `None` in the queue is the feed's tombstone: this reader fell behind and
+    was dropped rather than allowed to stall the turn (`feeds.py`). Closing with
+    4408 tells the window to come back and ask for a fresh resume, which is the
+    only correct way to rejoin a stream that has moved on.
+    """
+
+    try:
+        while True:
+            frame = await queue.get()
+            if frame is None:
+                await websocket.close(code=4408)
+                return
+            await websocket.send_json(frame)
+    except Exception:  # noqa: BLE001 - a closed socket is the normal exit
+        # Close so the receive loop wakes. That loop is where a turn's ownership
+        # lives, so a *watcher's* dead socket cannot stop a turn it never owned.
+        try:
+            await websocket.close(code=1011)
+        except Exception:  # noqa: BLE001 - already closed is the same outcome
+            pass
+
+
 async def _branch_socket(websocket: WebSocket) -> None:
     services = websocket.app.state.services
     branch_id = websocket.path_params["branch_id"]
@@ -100,8 +176,15 @@ async def _branch_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     inbox = services.inbox_for(branch_id)
     turn: asyncio.Task[Any] | None = None
+    # `None` for a socket that did not ask for the handshake: it is the socket
+    # that owns a turn and nothing else, exactly the behaviour that shipped in
+    # 0.1.0. A socket that named its cursor is also a watcher, and its frames
+    # arrive through the branch's feed rather than from the turn (D113).
+    queue: asyncio.Queue[dict[str, Any] | None] | None = None
+    sender: asyncio.Task[None] | None = None
 
     try:
+        queue, sender = await _attach(websocket, services, branch_id)
         while True:
             message = await websocket.receive_json()
             kind = message.get("type")
@@ -133,7 +216,15 @@ async def _branch_socket(websocket: WebSocket) -> None:
                     continue
                 inbox.clear_interrupt()
                 turn = asyncio.create_task(
-                    _run_turn(websocket, services, principal, branch_id, message, inbox)
+                    _run_turn(
+                        websocket,
+                        services,
+                        principal,
+                        branch_id,
+                        message,
+                        inbox,
+                        watching=queue is not None,
+                    )
                 )
                 # The session id and the account id travel with the turn so the
                 # rail can answer "what is this account running" without a query
@@ -153,11 +244,18 @@ async def _branch_socket(websocket: WebSocket) -> None:
     except Exception as exc:  # noqa: BLE001 - a disconnect is the normal exit
         _log.debug("websocket closed", fields={"branch": branch_id, "reason": str(exc)})
     finally:
+        if sender is not None:
+            sender.cancel()
+        if queue is not None:
+            services.feeds.leave(branch_id, queue)
+        services.feeds.detach(branch_id)
         if turn is not None and not turn.done():
             # A vanished client must not leave a turn burning budget. The
             # registry entry outlives the socket only until the cancellation
             # lands, so a reconnect in that window still sees a turn winding
-            # down rather than starting a second one over it.
+            # down rather than starting a second one over it. A *watcher* that
+            # goes does not reach this: it owns no turn, so the turn keeps
+            # running under the socket that started it (D113).
             inbox.post(InboxMessage(kind="interrupt"))
             turn.cancel()
 
@@ -196,8 +294,16 @@ async def _run_turn(
     branch_id: str,
     message: dict[str, Any],
     inbox: Any,
+    *,
+    watching: bool,
 ) -> None:
-    """Run one turn in one branch, streaming its events to this socket."""
+    """Run one turn in one branch, streaming its events to this socket.
+
+    `watching` says this socket joined the branch's feed, so its frames reach it
+    through the queue like every other reader's. A socket that did not ask is
+    sent them directly, which is the 0.1.0 path and keeps an old client working
+    beside a new one (D113).
+    """
 
     content = message.get("content")
     model = message.get("model")
@@ -243,6 +349,12 @@ async def _run_turn(
             return
 
     async def emit(event: dict[str, Any]) -> None:
+        # Published first, always: a watcher may be attached while this socket
+        # did not ask for the handshake, and a frame that skipped the feed would
+        # be visible to one window and invisible to the rest (D113).
+        services.feeds.publish(branch_id, event)
+        if watching:
+            return
         try:
             await websocket.send_json(event)
         except Exception:  # noqa: BLE001 - the client may have gone

@@ -2754,6 +2754,11 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
    "additionalProperties": false,
    "description": "Outbound: the oldest span of the conversation was replaced by a summary, so the capacity bar is about to fall by most of its width and the agent has lost detail it may be asked about. Advisory, like `truncated` \u2014 a client that ignores it is correct, just less informative. It exists because an unexplained drop reads as a defect: while an earlier version edited history without recording the edit the reported prompt size alternated between two histories and nothing on screen accounted for either (N119, N120). Compaction is the only move that changes what the next step projects, so it is the only thing that moves the bar downward, and the only one that needs to say so.",
    "properties": {
+    "seq": {
+     "description": "The row in this branch's log that this frame accompanies. A reader that joins the branch draws its projection through this row and applies the frames after it, so a boundary frame without one would leave the cut behind its own content (D113).",
+     "minimum": 1,
+     "type": "integer"
+    },
     "summarized_messages": {
      "description": "How many messages the summary replaced. Zero is legitimate: a history short enough to need no summary produces no action at all, so a frame carrying zero means the span was empty rather than that nothing happened.",
      "minimum": 0,
@@ -2764,7 +2769,8 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
     }
    },
    "required": [
-    "type"
+    "type",
+    "seq"
    ],
    "type": "object"
   },
@@ -2883,6 +2889,47 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
    ],
    "type": "object"
   },
+  "resume": {
+   "additionalProperties": false,
+   "description": "Outbound, and first on every socket that asked where to resume from (`?after=`): the branch's in-flight step, so a window that opened a session mid-turn draws the history from its own projection and the live step from here without drawing either twice. A socket that does not ask never receives one, which is what keeps this additive rather than a change to what 0.1.0 clients see (D113).\n\n`state` says whether a turn is running, and whether it is blocked on a person \u2014 the one fact a reader needs in order to open in the right state before the first frame arrives. An empty `frames` on a running turn is ordinary: the step is waiting on the model, or on a person.\n\n`from_seq` is the cut. The client draws its projection only through that row \u2014 with `GET /api/sessions/{id}` answering the same number as `resume_seq`, taken from the same feed \u2014 and then applies `frames`, which begin after it. The buffer holds one step: a boundary frame (`user_message`, `tool_proposal`, `tool_result`, `compacted`, `done`) writes a row the projection reproduces, so it clears the buffer and moves `from_seq` to itself.",
+   "properties": {
+    "complete": {
+     "description": "False when the buffer overflowed its cap, so `frames` starts part-way into the reply rather than at its first token. The reader is told rather than shown a fragment as though it were the whole.",
+     "type": "boolean"
+    },
+    "frames": {
+     "description": "The frames emitted since `from_seq`, oldest first. The same shapes a live socket receives, which is what lets one renderer draw both.",
+     "items": {
+      "$ref": "#"
+     },
+     "type": "array"
+    },
+    "from_seq": {
+     "description": "The last row in this branch's log that the projection accounts for. Zero is a branch with no rows.",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "state": {
+     "description": "The coarse state the rail draws. `approval` means the turn is blocked on a person and `GET /api/branches/{id}/pending` has the card; it is reported here so a window opening mid-wait does not have to wait for the working-set poll to learn it.",
+     "enum": [
+      "idle",
+      "running",
+      "approval"
+     ]
+    },
+    "type": {
+     "const": "resume"
+    }
+   },
+   "required": [
+    "type",
+    "from_seq",
+    "state",
+    "complete",
+    "frames"
+   ],
+   "type": "object"
+  },
   "steer": {
    "additionalProperties": false,
    "description": "Inbound: extra user input folded into the conversation at the next safe point, without ending the turn.",
@@ -2979,6 +3026,11 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
     "name": {
      "type": "string"
     },
+    "seq": {
+     "description": "The row in this branch's log that this frame accompanies. A reader that joins the branch draws its projection through this row and applies the frames after it, so a boundary frame without one would leave the cut behind its own content (D113).",
+     "minimum": 1,
+     "type": "integer"
+    },
     "tool_call_id": {
      "$ref": "#/$defs/toolCallId"
     },
@@ -2990,7 +3042,8 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
     "type",
     "tool_call_id",
     "name",
-    "arguments"
+    "arguments",
+    "seq"
    ],
    "type": "object"
   },
@@ -3028,6 +3081,11 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
      },
      "type": "object"
     },
+    "seq": {
+     "description": "The row in this branch's log that this frame accompanies. A reader that joins the branch draws its projection through this row and applies the frames after it, so a boundary frame without one would leave the cut behind its own content (D113).",
+     "minimum": 1,
+     "type": "integer"
+    },
     "structured": {
      "description": "Structured output from a runner-native operation (e.g. a trash destination).",
      "type": [
@@ -3057,7 +3115,8 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
     "exit_code",
     "wall_ms",
     "timed_out",
-    "cancelled"
+    "cancelled",
+    "seq"
    ],
    "type": "object"
   },
@@ -3297,6 +3356,9 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
   },
   {
    "$ref": "#/$defs/waiting"
+  },
+  {
+   "$ref": "#/$defs/resume"
   }
  ],
  "properties": {
@@ -3318,7 +3380,8 @@ RESOURCES["ws.schema.json"] = json.loads(r"""
     "compacted",
     "error",
     "done",
-    "waiting"
+    "waiting",
+    "resume"
    ]
   }
  },

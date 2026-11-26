@@ -17,6 +17,7 @@ so the server and the chat UI cannot drift apart silently.
 
 from __future__ import annotations
 
+import contextlib
 import time
 
 import pytest
@@ -1338,3 +1339,178 @@ def test_pending_is_scoped_to_the_branchs_owner(surface):
             assert client.get(f"/api/branches/{row.branch_id}/pending").status_code == 200
 
             _answer_and_finish(socket)
+
+
+# -- watching a branch another socket is running (D113) ----------------------
+
+
+def watch(client, branch_id: str, after: int = 0):
+    """A socket that asked where to resume from: the watcher, not the owner.
+
+    `?after=` is the whole opt-in. Without it a socket behaves exactly as it did
+    in 0.1.0, which is what keeps a second window additive rather than a
+    protocol change every client must learn.
+    """
+
+    return client.websocket_connect(f"/ws/branches/{branch_id}?after={after}")
+
+
+def resume(socket) -> dict:
+    frame = receive(socket)
+    validate_frame(frame)
+    assert frame["type"] == "resume", frame
+    return frame
+
+
+def test_a_watching_socket_receives_the_turn_another_socket_started(surface):
+    """The property this exists for: a session open elsewhere follows the turn.
+
+    The watcher joins while the turn is blocked on a person, which is the case
+    that matters most — the approval card is the one thing a second window must
+    be able to show, and it is served from the inbox rather than the log.
+    """
+
+    surface.gateway.scripts = [tool_reply("fs_write", "call_1"), text_reply("finished")]
+
+    with surface.client() as client:
+        session_id = open_session(surface, client)
+        with client.websocket_connect(f"/ws/branches/{session_id}") as owner:
+            owner.send_json({"type": "message", "content": "one", "model": "m"})
+            while receive(owner)["type"] != "tool_approval_required":
+                pass
+
+            with watch(client, session_id) as watcher:
+                first = resume(watcher)
+                assert first["state"] == "approval"
+                assert first["complete"] is True
+                # The step in flight is the call being asked about; everything
+                # before it is a row the projection holds, so it is not
+                # buffered (feeds.BOUNDARY).
+                assert [frame["type"] for frame in first["frames"]] == [
+                    "tool_approval_required"
+                ]
+
+                owner.send_json(
+                    {"type": "approval", "tool_call_id": "call_1", "approved": False}
+                )
+
+                seen = []
+                while True:
+                    frame = receive(watcher)
+                    validate_frame(frame)
+                    seen.append(frame["type"])
+                    if frame["type"] == "done":
+                        break
+
+                assert "tool_decision" in seen, seen
+                assert "tool_result" in seen, seen
+                assert "token" in seen, seen
+
+
+def test_a_watcher_that_leaves_does_not_stop_the_turn(surface):
+    """Watching is not owning: the turn belongs to the socket that started it."""
+
+    surface.gateway.scripts = [tool_reply("fs_write", "call_1"), text_reply()]
+
+    with surface.client() as client:
+        session_id = open_session(surface, client)
+        with client.websocket_connect(f"/ws/branches/{session_id}") as owner:
+            owner.send_json({"type": "message", "content": "one", "model": "m"})
+            while receive(owner)["type"] != "tool_approval_required":
+                pass
+
+            with watch(client, session_id) as watcher:
+                resume(watcher)
+
+            owner.send_json({"type": "approval", "tool_call_id": "call_1", "approved": True})
+            while receive(owner)["type"] != "done":
+                pass
+
+            assert surface.services.running_turn(session_id) is None
+
+
+def test_the_owner_leaving_still_stops_the_turn_and_tells_the_watcher(surface):
+    """A vanished owner is still a Stop, and a watcher is told rather than left.
+
+    The watcher holds no turn, so it cannot be the thing that keeps one burning
+    budget — but it must not be left showing `running` for a turn that is over,
+    which is what the harness's terminal frame on cancellation is for.
+    """
+
+    surface.gateway.scripts = [tool_reply("fs_write", "call_1"), text_reply()]
+
+    with surface.client() as client:
+        session_id = open_session(surface, client)
+        with contextlib.ExitStack() as stack:
+            owner = stack.enter_context(client.websocket_connect(f"/ws/branches/{session_id}"))
+            owner.send_json({"type": "message", "content": "one", "model": "m"})
+            while receive(owner)["type"] != "tool_approval_required":
+                pass
+
+            watcher = stack.enter_context(watch(client, session_id))
+            resume(watcher)
+
+            owner.close()
+
+            ended = None
+            while True:
+                frame = receive(watcher)
+                if frame["type"] == "done":
+                    ended = frame
+                    break
+            assert ended["reason"] == "interrupted", ended
+
+            # And the branch is free: the watcher can start the next turn.
+            deadline = time.monotonic() + 5
+            while (
+                surface.services.running_turn(session_id) is not None
+                and time.monotonic() < deadline
+            ):
+                time.sleep(0.01)
+            watcher.send_json({"type": "message", "content": "two", "model": "m"})
+            assert receive(watcher)["type"] == "user_message"
+
+
+def test_the_session_read_and_the_socket_agree_on_where_the_stream_resumes(surface):
+    """One number, from one place: the window cannot cut the two halves differently.
+
+    The projection is drawn to `resume_seq` and the socket's frames begin after
+    it. If the route and the feed disagreed, a reader would either drop a call
+    or draw one twice.
+    """
+
+    surface.gateway.scripts = [tool_reply("fs_write", "call_1"), text_reply()]
+
+    with surface.client() as client:
+        session_id = open_session(surface, client)
+        with client.websocket_connect(f"/ws/branches/{session_id}") as owner:
+            owner.send_json({"type": "message", "content": "one", "model": "m"})
+            while receive(owner)["type"] != "tool_approval_required":
+                pass
+
+            answer = client.get(f"/api/sessions/{session_id}")
+            assert answer.status_code == 200
+            body = answer.json()
+            named = body["resume_seq"]
+            # Past the opening prompt: the proposal is a boundary too, so the cut
+            # has to have moved to *its* row. A projection cut at the first
+            # message would draw the assistant turn but lose the card behind it.
+            assert named > body["messages"][0]["seq"]
+
+            with watch(client, session_id) as watcher:
+                assert resume(watcher)["from_seq"] == named
+
+
+def test_a_socket_that_does_not_ask_is_not_a_watcher(surface):
+    """The additive half: 0.1.0's frames are unchanged for a socket that asks nothing."""
+
+    surface.gateway.scripts = [text_reply()]
+
+    with surface.client() as client:
+        session_id = open_session(surface, client)
+        with client.websocket_connect(f"/ws/branches/{session_id}") as socket:
+            socket.send_json({"type": "message", "content": "one", "model": "m"})
+            # Straight to the turn's first frame: no resume, no handshake.
+            assert receive(socket)["type"] == "user_message"
+            while receive(socket)["type"] != "done":
+                pass

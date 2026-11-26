@@ -452,7 +452,15 @@ async def _get_session(request: Request) -> Response:
         if branch is None:
             return JSONResponse({"error": "not_found"}, status_code=404)
 
-        events = await EventStore(conn).read(branch.id, kinds=PROJECTION_KINDS)
+        store = EventStore(conn)
+        events = await store.read(branch.id, kinds=PROJECTION_KINDS)
+        # The row this projection can be trusted through, and the one a socket
+        # resuming this branch must be cut at (D113). Equal to `max(seq)` on an
+        # idle branch; on a running one it is the last durable boundary, so the
+        # in-flight step is left to the live stream rather than drawn twice.
+        resume_seq = services_of(request).feeds.resume_seq(
+            branch.id, await store.head(branch.id)
+        )
         row = replace(
             row,
             branch_count=len(all_branches),
@@ -464,6 +472,10 @@ async def _get_session(request: Request) -> Response:
             **_session_json(row),
             "branches": [_branch_json(item) for item in all_branches],
             "branch": _branch_json(branch),
+            # Where the live stream picks up: a window draws the projection, then
+            # applies the frames the socket resumes it with, and no row appears
+            # twice because both halves are cut here.
+            "resume_seq": resume_seq,
             # The projection, not the raw log: this is what the model saw, which
             # is what a transcript should show. The browser also wants the tool
             # name, exit status and a write's diff, which `for_display` adds.

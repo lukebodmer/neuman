@@ -44,6 +44,7 @@ from ..decision.policy.source import PolicySource
 from ..foundation import Settings, configure_logging, get_logger
 from ..foundation.db import Database, migrate
 from ..foundation.state import PresetError, load_presets
+from .feeds import BranchFeeds
 from .runtime import publish_runtime
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -139,6 +140,12 @@ class Services:
     # refuses the half-answered history (N179). The overview reads the same
     # map, so "is anyone waiting on a turn" has one answer.
     turns: dict[str, RunningTurn] = field(default_factory=dict)
+    # The live frames of every branch that has a socket on it (D113). One
+    # registry per branch, beside `turns` and with the same lifetime rule: in
+    # memory, one process, and nothing here that is not also in the log. A turn
+    # publishes through it so a second socket — another window, or another
+    # computer holding the same account — sees the step it is on.
+    feeds: BranchFeeds = field(default_factory=BranchFeeds)
     # Task runs under way: run id -> the asyncio task walking its steps. Held
     # so the event loop keeps a reference to it, and so a test can await a run
     # to its end; an agent step's own turn is in `turns` like any other.
@@ -289,10 +296,17 @@ class Services:
         self.inboxes.pop(branch_id, None)
 
     def drop_inboxes(self, branch_ids: Sequence[str]) -> None:
-        """Drop every branch's inbox when its session is removed or closed."""
+        """Drop every branch's inbox when its session is removed or closed.
+
+        The branch's live feed goes with it. A removed session's transcript is
+        not reachable anywhere, and a buffer of frames from it would be the one
+        copy left in memory — the sockets on it are being refused by their next
+        read anyway.
+        """
 
         for branch_id in branch_ids:
             self.drop_inbox(branch_id)
+            self.feeds.drop(branch_id)
 
 
 def build_services(settings: Settings) -> Services:
