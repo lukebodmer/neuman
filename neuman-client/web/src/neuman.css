@@ -258,8 +258,17 @@
 
      Hero text is centred; the composer's is not. Centring the box's contents
      would move the caret away from where typing starts. */
+  /* One value per row, and there are three: log, banner, composer. Two values
+     left the composer's row at `auto` and gave the flexible space to the banner
+     — which is `display: none` until something is wrong with the link, so the
+     box sat at the floor of the window with an empty track above it. The grid
+     grew a third row when the version banner arrived (D111) and this rule kept
+     the two it was written with, so the draft quietly stopped being centred and
+     nothing said so — the heading still hung in the right place relative to the
+     box, which is why it read as "the layout is different now" rather than as a
+     bug (N189). */
   body.drafting {
-    grid-template-rows: 0 minmax(0, 1fr);
+    grid-template-rows: 0 auto minmax(0, 1fr);
   }
   body.drafting #log {
     flex: none;

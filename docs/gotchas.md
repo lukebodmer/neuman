@@ -4624,3 +4624,30 @@ alternative on a machine with no third-party apt source is no browser at all.
   the operator supplies cannot be created in the same transaction that demands
   it.
 
+### N189 — The draft's message box fell back to the floor of the window
+- **What:** a new session is a centred hero: "What are we working on?" above the
+  message box, both in the middle of an otherwise empty window. After the version
+  banner arrived it was at the bottom instead, with the heading hanging above it
+  in the right place relative to the box — so it read as "the layout is different
+  now" rather than as something broken.
+- **Cause:** `body` is a three-row grid — `log`, `banner`, `composer` — and
+  `body.drafting` centres the box by collapsing the first row and giving the
+  rest to the last. The banner (D111) added the middle row; the draft rule kept
+  the two values it had been written with, and CSS assigns the values it is
+  given in order: row one collapsed, row two took the flexible track, row three
+  fell to `auto`. Row two is the banner, which is `display: none` unless the
+  link is broken. So the flexible space went to an invisible element and the
+  box sat at the floor.
+- **Found:** reported as "the context window is at the very bottom instead of
+  the middle", twice — the first report arrived while a session was pinned to
+  the wrong computer, and the machine bug was mistaken for the cause until it
+  was fixed and the layout was still wrong.
+- **Fix:** `grid-template-rows: 0 auto minmax(0, 1fr)` — one value per declared
+  area, with the banner sized by its content so it still appears when it has
+  something to say.
+- **The check:** `test_the_draft_layout_gives_a_row_to_every_grid_area` counts
+  the areas the body grid declares against the tracks each `grid-template-rows`
+  rule names, and counts `minmax(0, 1fr)` as one. Verified failing on the old
+  rule. It fails for the next row somebody adds, not just this one — which is
+  the point, because the failure was silent: nothing overflowed, nothing
+  scrolled, and every element was where it said it was.

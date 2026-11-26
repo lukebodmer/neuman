@@ -3936,6 +3936,62 @@ def test_no_rule_in_the_stylesheet_carries_a_colour_literal():
     assert "rgb(0 0 0" not in bare, "a hardcoded black shadow is back"
 
 
+def _track_count(value: str) -> int:
+    """How many tracks a `grid-template-rows` value names.
+
+    Whitespace-separated, except that a `minmax(0, 1fr)` is one track however
+    many spaces it has inside it — which is the whole reason this is not a
+    `.split()`.
+    """
+
+    depth = 0
+    tracks = 0
+    in_token = False
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char.isspace() and depth == 0:
+            in_token = False
+            continue
+        if not in_token:
+            tracks += 1
+            in_token = True
+    return tracks
+
+
+def test_the_draft_layout_gives_a_row_to_every_grid_area():
+    """N189: the draft centres the message box by re-sizing the body grid's rows.
+
+    `body` is a three-row grid — log, banner, composer — and `body.drafting`
+    collapsed the log and gave the rest to the composer so the box sat in the
+    middle of the window. When the version banner (D111) added the middle row,
+    the draft rule still declared two, so the flexible track was the *banner's*:
+    an element that is `display: none` unless the link is broken. The box went
+    back to the floor of the window with an empty row above it and nothing said
+    so, because the heading still hung off the box's top edge in the right place
+    relative to it.
+
+    Counting the areas against the rows is the check that would have failed, and
+    it fails for the next row somebody adds rather than for this one.
+    """
+
+    css = (WEB / "neuman.css").read_text()
+    bare = re.sub(r"/\*.*?\*/", "", css, flags=re.DOTALL)
+
+    areas = re.search(r"grid-template-areas:\s*((?:\s*\"[^\"]+\"\s*)+);", bare)
+    assert areas is not None, "the body grid declares no areas"
+    declared = len(re.findall(r'"', areas.group(1))) // 2
+
+    rows = re.findall(r"grid-template-rows:\s*([^;]+);", bare)
+    assert rows, "no grid rows at all"
+    for value in rows:
+        assert _track_count(value) == declared, (
+            f"{_track_count(value)} tracks for {declared} grid areas: {value.strip()}"
+        )
+
+
 def test_every_palette_is_legible():
     """Contrast is a property of a pair, which is why the tokens are semantic.
 
