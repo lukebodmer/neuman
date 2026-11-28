@@ -1444,7 +1444,8 @@ A session may hold several **branches**. A branch is one transcript with its
 own working directory, attachments, tool selection, model, reasoning level and
 approval mode; switching between them is moving between transcripts, not
 opening another rail row. The row counts them (`⑂3`) and the status line's
-branch chip names the one on screen and opens the switcher.
+branch chip is the branch glyph; it opens the switcher, whose rows carry the
+titles. The chip's title names the branch on screen.
 
 A fork is an **edit of a prompt**, made in place. Hovering a turn-opening user
 message shows a pencil on the bubble's corner; pressing it turns that bubble
@@ -1463,10 +1464,10 @@ below the node, so the transcript does not repeat that prompt as a second lane
 title. Pressing the node opens the local tree for that boundary — the parent (the
 branch whose turn ended there) and the branches that continue from it, with the
 current branch and the path through it marked. The footer branch chip's menu is
-the whole session's tree, nested the same way. A child forked at a branch's first
-prompt is drawn as a sibling at the branch's own origin, because the two share
-every word above it. The footer branch menu's hint names the files and messages
-that already happened; the UI does not call a fork a rewind. The branch the rail
+the whole session's tree, drawn with the same dots and rails. A child forked at
+a branch's first prompt is drawn as a sibling at the branch's own origin, because
+the two share every word above it. The footer branch menu's hint names the files
+and messages that already happened; the UI does not call a fork a rewind. The branch the rail
 opens is the one with the newest activity; there is no branch pointer to go stale
 (D83).
 

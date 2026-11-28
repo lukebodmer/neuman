@@ -2948,13 +2948,123 @@ def test_the_fork_menu_draws_the_parent_and_its_children():
     assert "left: 13.5px" in css
     assert "left: -9.5px" in css
     assert "width: 22px" in css
-    assert "height: auto; bottom: -2px" in css
+    assert "height: auto; bottom: -4px" in css
 
     assert "function displayParentId" in script
     tree = re.search(r"function renderBranchMenu\(.*?\n\}", script, re.S)
     assert tree, "renderBranchMenu() is gone; this test would pass vacuously"
-    assert "walk(null, 0)" in tree.group(0), "the footer branch list is flat"
-    assert 'style.setProperty("--depth", depth)' in tree.group(0)
+    assert "paint(branch, 0, [])" in tree.group(0), "the footer branch list is flat"
+    assert "host.append(branchMenuRow(" in tree.group(0), (
+        "the walk draws only the roots; a child row is never appended"
+    )
+    assert "[...active, index < kids.length - 1]" in tree.group(0), (
+        "the tree does not know which rails cross a child's subtree"
+    )
+    row = re.search(r"function branchMenuRow\(.*?\n\}", script, re.S)
+    assert row, "branchMenuRow() is gone; this test would pass vacuously"
+    assert 'el("span", "fork-dot")' in row.group(0)
+    assert 'el("span", "tree-rail")' in row.group(0), (
+        "the branch list indents without drawing the rail"
+    )
+    assert 'el("span", "tree-elbow")' in row.group(0)
+    assert 'style.setProperty("--depth", depth)' in row.group(0)
+    assert 'rail.style.bottom = "-4px"' in row.group(0), (
+        "a rail stops short of the next row's padding edge"
+    )
+    assert "branchRecordLabel" in row.group(0), "the menu does not show branch titles"
+
+
+def test_the_branch_chip_is_a_glyph_and_the_menu_holds_the_titles():
+    """A branch title is a sentence, and the status line has room for a symbol.
+
+    A branch is labelled by the first thing said in it, truncated to 28
+    characters. On the status line that is a fragment that still needs the menu
+    to show the other branches, so the chip is the branch glyph and the titles
+    live in the menu. The title attribute keeps the current branch's name one
+    hover away; the menu is where it becomes readable.
+    """
+
+    markup = (WEB / "index.html").read_text()
+    script = (WEB / "neuman.js").read_text()
+    css = (WEB / "neuman.css").read_text()
+
+    chip = re.search(r'<button id="branch-chip".*?</button>', markup, re.S)
+    assert chip, "the branch chip is gone; this test would pass vacuously"
+    assert 'class="fork-glyph"' in chip.group(0), "the chip is not the branch symbol"
+    assert 'id="branch-label"' not in markup, "the chip still carries a title"
+    assert 'class="chev"' not in chip.group(0), "a one-glyph chip has no menu to point at"
+
+    paint = re.search(r"function paintBranchChip\(.*?\n\}", script, re.S)
+    assert paint, "paintBranchChip() is gone; this test would pass vacuously"
+    assert "branchLabel(currentView)" in paint.group(0), (
+        "the chip no longer names the current branch even as a tooltip"
+    )
+    assert 'chip.setAttribute("aria-label", title)' in paint.group(0), (
+        "the glyph has no accessible name"
+    )
+
+    assert '<div id="branch-choices" class="fork-tree"></div>' in markup
+    assert 'id="branch-count"' in markup
+    assert "#branch-choices .tree-rail {" in css
+    assert "#branch-choices .tree-elbow {" in css
+    assert "padding-left: calc(9px + var(--depth, 0) * 23px)" in css
+    assert 'id="branch-label"' not in css, "a dead rule styles the removed label"
+    assert "#branch-chip .chev" not in css, "a dead rule styles the removed chevron"
+
+
+def test_the_machine_chip_is_a_glyph_and_the_menu_holds_the_names():
+    """A hostname is wide, and "where" has one answer.
+
+    The chip carries the monitor glyph; the machine's name is its tooltip and
+    the menu. `foreign` stays the one state it colours, because tools running
+    somewhere other than the computer in front of you is the fact worth a
+    glance; the name itself is a hover or a press away.
+    """
+
+    markup = (WEB / "index.html").read_text()
+    script = (WEB / "neuman.js").read_text()
+    css = (WEB / "neuman.css").read_text()
+
+    chip = re.search(r'<button id="machine-chip".*?</button>', markup, re.S)
+    assert chip, "the machine chip is gone; this test would pass vacuously"
+    assert 'class="where"' in chip.group(0), "the chip is not the monitor glyph"
+    assert 'id="machine-label"' not in markup, "the chip still carries a hostname"
+    assert 'class="chev"' not in chip.group(0), "a one-glyph chip has no menu to point at"
+
+    paint = re.search(r"function paintMachineChip\(.*?\n\}", script, re.S)
+    assert paint, "paintMachineChip() is gone; this test would pass vacuously"
+    assert "currentView.machine" in paint.group(0)
+    assert 'chip.setAttribute("aria-label", title)' in paint.group(0), (
+        "the glyph has no accessible name"
+    )
+    menu = re.search(r"function renderMachineMenu\(.*?\n\}", script, re.S)
+    assert menu, "renderMachineMenu() is gone; this test would pass vacuously"
+    assert 'el("span", "machine-name", machine.label)' in menu.group(0), (
+        "the menu does not show the machine names"
+    )
+
+    assert 'id="machine-count"' in markup
+    assert "#machine-label" not in css, "a dead rule styles the removed hostname"
+    assert "#machine-chip .chev" not in css, "a dead rule styles the removed chevron"
+
+
+def test_the_branch_rail_is_drawn_behind_its_dots():
+    """A connector that crosses the mark it connects reads as a struck-through dot.
+
+    `.fork-row` is positioned, so the rail pseudo-elements paint after the row's
+    ordinary children and ran over the dots. The dot now has its own stacking
+    position above the rail, and its panel-coloured ring is what cuts the line
+    where it meets the dot (N191).
+    """
+
+    css = (WEB / "neuman.css").read_text()
+    dot = re.search(r"\n  \.fork-dot \{\n(.*?)\n  \}", css, re.S)
+    assert dot, ".fork-dot is gone; this test would pass vacuously"
+    assert "position: relative; z-index: 1;" in dot.group(1), (
+        "the rail paints over the dot it connects"
+    )
+    assert ".fork-parent::before" in css
+    assert ".fork-child::before" in css
 
 
 def test_the_edit_action_hangs_off_the_bubble_it_edits():

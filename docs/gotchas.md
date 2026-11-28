@@ -4243,9 +4243,10 @@ fixed 14px elbow could not span the gap. The parent's rail had the same guessed
 (`left: 13.5px` from the row's padding box), and give every child its own
 vertical segment at the same x (`left: -9.5px`). A child's elbow is 22px — from
 that rail to the child dot's centre — and a non-last child's segment continues
-through the 2px gap (`bottom: -2px`), while the last child's segment stops at
-`50%`, its elbow. The container has no rail of its own; the segments are per
-row, so the rail ends where the last row does.
+across the 2px gap and both rows' 1px transparent borders (`bottom: -4px`),
+while the last child's segment stops at `50%`, its elbow. The container has no
+rail of its own; the segments are per row, so the rail ends where the last row
+does.
 
 **The lesson:** a connector between two boxes must be placed from the geometry
 of the things it connects — the dot's centre inside the row's padding — not
@@ -4685,3 +4686,21 @@ alternative on a machine with no third-party apt source is no browser at all.
   guard. It fails on the old call, not just on this branch: any future caller
   that reaches for `connect` where `ensureSocket` belongs is caught by the first
   assertion.
+
+### N191 — The branch rail drew across its own dots
+- **What:** the parent's trunk and each child's elbow ran over the dots they
+  connect. The white source dot had a grey line through its centre and every
+  child dot's panel-coloured ring was cut by the line the ring existed to stop,
+  so the tree read as dots and scratches rather than one rail behind its marks.
+- **Why:** `.fork-row` is positioned and creates a stacking context, and its
+  rail is an absolutely positioned element — a `::before` in the fork menu, a
+  span in the branch switcher. A positioned descendant paints after a row's
+  ordinary in-flow children, so the line was drawn above `.fork-dot` however
+  early it came in the markup.
+- **Fix:** the dot carries `position: relative; z-index: 1`, putting it and its
+  ring above the rail. The line now stops at the ring, which is what makes it
+  read as passing behind the dot. The branch switcher's tree uses the same row
+  classes, so it inherits the fix.
+- **The check:** `test_the_branch_rail_is_drawn_behind_its_dots` asserts the
+  dot's stacking position rather than a screenshot, because the failure is
+  paint order and the two menus share the rule.

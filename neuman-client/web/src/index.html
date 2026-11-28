@@ -803,8 +803,11 @@
          chip it is present for every session, because "where" is a fact about
          every message and the one thing the person at the window cannot work
          out: this page is served by the machine they are sitting at, and the
-         branch may name another. Marked `foreign` when it does, which is the
-         only state worth a colour.
+         branch may name another. The chip is the monitor glyph; the machine's
+         name is its tooltip and the menu. `foreign` is the one state it colours
+         — tools running somewhere other than the computer in front of you. The
+         cost is that which computer you are on is a hover or a press away;
+         naming it took a hostname on a line that is already a row of controls.
 
          Before the directory, because it is what makes the directory mean
          something: a path is a path on one computer, and the two were once
@@ -812,18 +815,20 @@
     <button id="machine-chip" class="hidden" aria-haspopup="menu" aria-expanded="false"
             title="The computer this conversation runs on">
       <svg class="where" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4.5h14v9H3zM7 16.5h6M10 13.5v3" /></svg>
-      <span id="machine-label">this computer</span>
-      <span class="chev" aria-hidden="true">▾</span>
     </button>
 
-    <!-- Which branch of this session the next message runs in. Invisible until
-         there is more than one branch, because "main" on a session that has
-         never forked says nothing. A fork never adds a row to the rail: it adds
-         an entry here. -->
+    <!-- Which branch of this session the next message runs in. The chip is the
+         branch glyph and nothing else: a branch's title is up to 28 characters
+         of the first thing said in it, which truncates to a sentence fragment
+         on this line and says less than the glyph. The titles are in the menu,
+         where there is room for them. The cost is that which branch you are in
+         is no longer readable without hovering or opening the menu. Invisible
+         until there is more than one branch, because a single branch has
+         nothing to switch to. A fork never adds a row to the rail: it adds an
+         entry here. -->
     <button id="branch-chip" class="hidden" aria-haspopup="menu" aria-expanded="false"
             title="Branches of this session">
-      <span id="branch-label">main</span>
-      <span class="chev" aria-hidden="true">▾</span>
+      <span class="fork-glyph" aria-hidden="true">⑂</span>
     </button>
 
     <!-- The path, and the action that belongs to it. Hidden entirely when none
@@ -886,11 +891,19 @@
   </div>
 
   <div id="branch-menu" class="hidden" role="menu" aria-label="Branches">
-    <div id="branch-choices"></div>
+    <div class="fork-menu-head">
+      <span class="fork-menu-title">Branches</span>
+      <span class="fork-menu-count" id="branch-count"></span>
+    </div>
+    <div id="branch-choices" class="fork-tree"></div>
     <p class="hint">A branch is the same conversation up to the point it forked. Files and messages from before that point already happened.</p>
   </div>
 
   <div id="machine-menu" class="hidden" role="menu" aria-label="Machines">
+    <div class="fork-menu-head">
+      <span class="fork-menu-title">Machines</span>
+      <span class="fork-menu-count" id="machine-count"></span>
+    </div>
     <div id="machine-choices"></div>
     <p class="hint">A conversation runs on one computer at a time. Moving a branch that has already run tools continues it on a new branch, so the earlier paths still mean what they meant.</p>
   </div>

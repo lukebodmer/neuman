@@ -4153,9 +4153,12 @@ async function persistBranchChoice(change) {
   applyBranchChoices(currentView);
 }
 
-// The branch chip, and the menu it opens. Hidden for a session that has only
-// its root branch: "main" on a conversation that has never forked is a label
-// with nothing to choose.
+// The branch chip, and the menu it opens. The chip is the branch glyph rather
+// than a title: a title is up to 28 characters of the first thing said in the
+// branch, and at this width it is a sentence fragment that still needs a press
+// to show the other branches. The cost is that the current branch's name is a
+// hover or a press away rather than on the line. Hidden for a session that has
+// only its root branch: one branch has nothing to switch to.
 function paintBranchChip() {
   const chip = $("branch-chip");
   const menu = $("branch-menu");
@@ -4167,10 +4170,11 @@ function paintBranchChip() {
   const session = sessions.get(currentView.sessionId) || currentView.session;
   const branches = (session && session.branches) || [currentView.branch];
   chip.classList.toggle("hidden", branches.length < 2);
-  $("branch-label").textContent = branchLabel(currentView);
-  chip.title = branches.length > 1
-    ? `Branch ${branchLabel(currentView)} of ${branches.length}`
+  const title = branches.length > 1
+    ? `Branch: ${branchLabel(currentView)} · ${branches.length} in this session`
     : "The root branch of this session";
+  chip.title = title;
+  chip.setAttribute("aria-label", title);
 }
 
 // Which computer this conversation runs on, and the menu that changes it.
@@ -4212,14 +4216,15 @@ function paintMachineChip() {
   }
   chip.classList.remove("hidden");
   const here = !localMachine || currentView.machine === localMachine;
-  $("machine-label").textContent = currentView.machine;
   // The one state worth a colour: this conversation's tools are not on the
   // computer in front of you. Everything else is the ordinary case and reads as
   // a label rather than a warning.
   chip.classList.toggle("foreign", !here);
-  chip.title = here
+  const title = here
     ? `Tools run on ${currentView.machine}, this computer`
     : `Tools run on ${currentView.machine}, not on this computer`;
+  chip.title = title;
+  chip.setAttribute("aria-label", title);
 }
 
 async function loadMachines() {
@@ -4237,6 +4242,9 @@ function renderMachineMenu() {
   const box = $("machine-choices");
   if (!box) return;
   box.replaceChildren();
+  $("machine-count").textContent = machineChoices.length
+    ? `${machineChoices.length} ${machineChoices.length === 1 ? "machine" : "machines"}`
+    : "";
   if (!machineChoices.length) {
     box.append(el("p", "hint", "No other computer has connected to this account yet."));
     return;
@@ -4345,9 +4353,89 @@ function displayParentId(branch, byId) {
   return null;
 }
 
+// A row is indented one step per level (23px) and its 8px dot sits 9px in, so
+// the first dot's centre is 13px from the row's padding edge and every rail and
+// elbow can be placed from the row's depth alone. Each rail is drawn on every
+// row it crosses, which is what lets a level above a subtree reach a later
+// sibling on the other side of it.
+const BRANCH_INDENT = 23;
+const BRANCH_DOT_CENTRE = 13;
+
+// One branch row: the dot, the title and what the branch is doing. The same
+// row the fork menu draws, because the two menus are the same question at two
+// scales — this one is the whole session, that one is the branches at a single
+// boundary. `running` and `finished` are the one thing a switcher needs that a
+// local fork view does not: a branch left behind may still be working.
+function branchMenuRow(branch, depth, active, hasChildren) {
+  const view = views.get(branch.id);
+  const row = el("button", "fork-row");
+  row.type = "button";
+  row.setAttribute("role", "menuitem");
+  row.style.setProperty("--depth", depth);
+
+  // `active[k]` is true when the ancestor at depth k has a later sibling, so
+  // its rail has to pass through this row. The parent (k = depth - 1) always
+  // reaches this row's elbow; it crosses the row only when a later sibling
+  // needs it to.
+  for (let k = 0; k < depth; k += 1) {
+    const parent = k === depth - 1;
+    if (!parent && !active[k]) continue;
+    const rail = el("span", "tree-rail");
+    rail.setAttribute("aria-hidden", "true");
+    rail.style.left = `${BRANCH_DOT_CENTRE + BRANCH_INDENT * k}px`;
+    rail.style.top = "0";
+    if (parent && !active[k]) rail.style.height = "50%";
+    else rail.style.bottom = "-4px";
+    row.append(rail);
+  }
+  if (depth > 0) {
+    const elbow = el("span", "tree-elbow");
+    elbow.setAttribute("aria-hidden", "true");
+    elbow.style.left = `${BRANCH_DOT_CENTRE + BRANCH_INDENT * (depth - 1)}px`;
+    elbow.style.top = "50%";
+    elbow.style.width = `${BRANCH_INDENT}px`;
+    row.append(elbow);
+  }
+  if (hasChildren) {
+    const trunk = el("span", "tree-rail");
+    trunk.setAttribute("aria-hidden", "true");
+    trunk.style.left = `${BRANCH_DOT_CENTRE + BRANCH_INDENT * depth}px`;
+    trunk.style.top = "50%";
+    trunk.style.bottom = "-4px";
+    row.append(trunk);
+  }
+
+  const dot = el("span", "fork-dot");
+  dot.setAttribute("aria-hidden", "true");
+  const label = branch.id === currentView.id
+    ? branchLabel(currentView)
+    : branchRecordLabel(branch, view);
+  row.append(dot, el("span", "fork-name", label));
+  if (branch.id === currentView.id) {
+    row.classList.add("current");
+    row.setAttribute("aria-current", "true");
+  }
+  const when = new Date(branch.created_at).toLocaleString();
+  row.title = branch.forked_from
+    ? `Forked from another branch · ${when}`
+    : `The root branch · ${when}`;
+  // The live state from the view, when this window has one; a branch that is
+  // running behind the visible one is the reason the menu exists.
+  if (view && view.running) row.append(el("span", "branch-state", "running"));
+  if (view && view.unread) row.append(el("span", "branch-state", "finished"));
+  row.onclick = () => switchBranch(branch.id);
+  return row;
+}
+
+// The session's branches, drawn as the tree they are. A flat, indented list
+// said "deeper" but not "from whom"; the rail from each parent down to its
+// children is the same drawing the fork menu uses, so a branch point reads the
+// same whether you found it in the transcript or in this list. The parent is
+// the display parent, so two branches forked at the same boundary sit as
+// siblings under the branch that owns that turn.
 function renderBranchMenu() {
   const host = $("branch-choices");
-  host.innerHTML = "";
+  host.replaceChildren();
   if (!currentView) return;
   const session = sessions.get(currentView.sessionId) || currentView.session;
   const branches = (session && session.branches) || [currentView.branch];
@@ -4358,41 +4446,25 @@ function renderBranchMenu() {
     if (!children.has(parentId)) children.set(parentId, []);
     children.get(parentId).push(branch);
   }
+  $("branch-count").textContent =
+    `${branches.length} ${branches.length === 1 ? "branch" : "branches"}`;
 
-  const rows = [];
-  const walk = (parentId, depth) => {
-    for (const branch of children.get(parentId) || []) {
-      rows.push({ branch, depth });
-      walk(branch.id, depth + 1);
-    }
+  const drawn = new Set();
+  const paint = (branch, depth, active) => {
+    drawn.add(branch.id);
+    const kids = (children.get(branch.id) || []).filter((kid) => !drawn.has(kid.id));
+    host.append(branchMenuRow(branch, depth, active, kids.length > 0));
+    kids.forEach((kid, index) => {
+      paint(kid, depth + 1, [...active, index < kids.length - 1]);
+    });
   };
-  walk(null, 0);
+
+  for (const branch of children.get(null) || []) paint(branch, 0, []);
   // A branch whose recorded parent is missing is still a branch this account
   // can read. Show it at the top rather than dropping it from the only list of
   // branches in the window.
   for (const branch of branches) {
-    if (!rows.some((row) => row.branch.id === branch.id)) rows.push({ branch, depth: 0 });
-  }
-
-  for (const { branch, depth } of rows) {
-    const view = views.get(branch.id);
-    const label = branch.id === currentView.id
-      ? branchLabel(currentView)
-      : branchRecordLabel(branch, view);
-    const button = el("button", branch.id === currentView.id ? "current" : null, label);
-    button.style.setProperty("--depth", depth);
-    button.setAttribute("role", "menuitem");
-    if (branch.id === currentView.id) button.setAttribute("aria-current", "true");
-    const when = new Date(branch.created_at).toLocaleString();
-    button.title = branch.forked_from
-      ? `Forked from another branch · ${when}`
-      : `The root branch · ${when}`;
-    // The live state from the view, when this window has one; a branch that is
-    // running behind the visible one is the reason the menu exists.
-    if (view && view.running) button.appendChild(el("span", "branch-state", "running"));
-    if (view && view.unread) button.appendChild(el("span", "branch-state", "finished"));
-    button.onclick = () => switchBranch(branch.id);
-    host.appendChild(button);
+    if (!drawn.has(branch.id)) paint(branch, 0, []);
   }
 }
 

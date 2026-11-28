@@ -2158,9 +2158,14 @@ Final until explicitly reversed here, with a new entry.
   a child forked at a branch's first prompt is drawn as a sibling at that
   branch's own origin. The parent row in the node's local menu is the branch
   whose turn ended there; the children are the continuations from it. The footer
-  branch menu is the whole session's tree, nested by the same display parent. A
-  flat list of branches could not show that two alternatives share every word
-  above the fork.
+  branch menu is the whole session's tree, nested by the same display parent and
+  drawn with the same dot-and-rail tree as the node's local menu. A flat list of
+  branches could not show that two alternatives share every word above the fork.
+  The status line states the current branch with one glyph rather than its
+  title, because a title is the first thing said in the branch and at that width
+  it is a truncated fragment that still needs the menu to answer what else is
+  there. The cost is that which branch you are reading is a hover or a press
+  away; the titles live in the menu, where there is room for them.
 
   **Editing a prompt is the fork gesture.** The user bubble becomes the editor;
   Send forks *before* that turn and sends the edited text into the new branch.
@@ -3226,6 +3231,15 @@ Final until explicitly reversed here, with a new entry.
   the address. The model never chooses: it is told the machine, exactly as it is
   told a working directory, because a targeting decision that lands on the
   wrong computer is silent wrong data rather than an error.
+
+  **The window states the machine with one glyph.** The status line already
+  carries approval, model, reasoning, branch and directory, so a hostname there
+  is the widest thing on it and the first to truncate. The chip is the monitor
+  symbol; its name is the tooltip and the menu, and `foreign` — tools running
+  somewhere other than the computer in front of you — is the one state it
+  colours. **The cost:** which computer a branch runs on is a hover or a press
+  away rather than readable at a glance; the warning hue is what remains
+  visible without one, and a machine that is this computer needs no warning.
 
   **Moving is a fork, unless nothing has run.** `PATCH` a branch's machine is
   allowed while the branch has no `tool_result` — nothing in the transcript
